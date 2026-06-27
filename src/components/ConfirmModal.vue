@@ -20,6 +20,7 @@ function reject() {
     <div class="modal">
       <h3>确认操作</h3>
       <p class="preview">{{ currentInterrupt.preview }}</p>
+      <pre v-if="currentInterrupt.args && Object.keys(currentInterrupt.args).length" class="args">{{ JSON.stringify(currentInterrupt.args, null, 2) }}</pre>
       <p class="action">操作: {{ currentInterrupt.action }}</p>
       <div class="buttons">
         <button class="btn-reject" @click="reject">拒绝</button>
@@ -63,7 +64,17 @@ function reject() {
 .action {
   font-size: 13px;
   color: #71717a;
-  margin-bottom: 20px;
+  margin-bottom: 12px;
+}
+
+.args {
+  background: #0f1117;
+  border-radius: 6px;
+  padding: 10px;
+  font-size: 11px;
+  color: #a1a1aa;
+  margin-bottom: 16px;
+  overflow-x: auto;
 }
 
 .buttons {

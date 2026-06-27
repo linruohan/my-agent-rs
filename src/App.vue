@@ -1,13 +1,11 @@
 <script setup lang="ts">
-import { onMounted, onUnmounted } from 'vue';
+import { onUnmounted } from 'vue';
 import ChatView from '@/views/ChatView.vue';
+import { useTauriNative } from '@/composables/useTauriNative';
 import { useAgentWs } from '@/composables/useAgentWs';
 
-const { connect, disconnect } = useAgentWs();
-
-onMounted(() => {
-  connect();
-});
+useTauriNative();
+const { disconnect } = useAgentWs();
 
 onUnmounted(() => {
   disconnect();

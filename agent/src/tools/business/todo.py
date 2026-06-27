@@ -1,7 +1,7 @@
 from __future__ import annotations
 
 import sqlite3
-from datetime import datetime
+from datetime import datetime, timezone
 from pathlib import Path
 from typing import Any
 
@@ -35,7 +35,7 @@ def create_todo_record(title: str, due_date: str = "", priority: str = "normal")
     try:
         cur = conn.execute(
             "INSERT INTO todos (title, due_date, priority, created_at) VALUES (?, ?, ?, ?)",
-            (title, due_date, priority, datetime.utcnow().isoformat()),
+            (title, due_date, priority, datetime.now(timezone.utc).isoformat()),
         )
         conn.commit()
         return {

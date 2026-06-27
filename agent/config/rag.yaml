@@ -4,6 +4,7 @@ chunking:
   chunk_overlap: 100
 
 embedding:
+  # provider: local | huggingface | ollama | openai
   provider: local
   model: BAAI/bge-m3
   dimension: 1024

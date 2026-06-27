@@ -35,7 +35,10 @@ def create_llm(provider_cfg: dict[str, Any] | None = None, **kwargs: Any) -> Bas
         return ChatAnthropic(model=model, api_key=api_key, temperature=temperature, **kwargs)
 
     if provider_type == "ollama":
-        from langchain_community.chat_models import ChatOllama
+        try:
+            from langchain_ollama import ChatOllama
+        except ImportError:
+            from langchain_community.chat_models import ChatOllama
 
         base_url = cfg.get("base_url", "http://localhost:11434")
         return ChatOllama(model=model, base_url=base_url, temperature=temperature, **kwargs)

@@ -1,6 +1,5 @@
 from __future__ import annotations
 
-import asyncio
 from typing import Any
 
 from langchain_core.tools import BaseTool
@@ -13,7 +12,7 @@ class ToolRegistry:
         self.config = config
         self._tools: dict[str, BaseTool] = {}
         self._meta: dict[str, dict[str, Any]] = {}
-        self._lock = asyncio.Lock()
+        self._lock = __import__("asyncio").Lock()
 
     def register(
         self, tool: BaseTool, category: str, meta: dict[str, Any] | None = None
@@ -44,6 +43,21 @@ class ToolRegistry:
                 return self.config[cat][name]
         return {}
 
+    def _tool_entry(self, name: str, tool: BaseTool) -> dict[str, Any]:
+        meta = self._meta.get(name, {})
+        category = meta.get("category", "")
+        if category == "mcp":
+            cfg = {"enabled": True, "risk": meta.get("risk", "medium")}
+        else:
+            cfg = self._find_config(name)
+        return {
+            "name": name,
+            "description": tool.description or "",
+            "category": category,
+            "enabled": cfg.get("enabled", False),
+            "risk": meta.get("risk", cfg.get("risk", "low")),
+        }
+
     def requires_confirmation(self, tool_name: str) -> bool:
         cfg = self._find_config(tool_name)
         if "requires_confirmation" in cfg:
@@ -67,43 +81,97 @@ class ToolRegistry:
             return tools
 
     def list_all(self) -> list[dict[str, Any]]:
-        result = []
-        for name, tool in self._tools.items():
-            cfg = self._find_config(name)
-            meta = self._meta.get(name, {})
-            result.append(
-                {
-                    "name": name,
-                    "description": tool.description,
-                    "category": meta.get("category"),
-                    "enabled": cfg.get("enabled", False),
-                    "risk": meta.get("risk", cfg.get("risk", "low")),
-                }
-            )
-        return result
+        return [self._tool_entry(name, tool) for name, tool in self._tools.items()]
+
+
+def _register_capability(registry: ToolRegistry, config: dict[str, Any]) -> None:
+    cap = config.get("capability", {})
+
+    if cap.get("web_search", {}).get("enabled"):
+        from tools.capability.web_search import create_web_search_tool
+
+        cfg = cap["web_search"]
+        registry.register(
+            create_web_search_tool(cfg), "capability", {"risk": cfg.get("risk", "low")}
+        )
+
+    if cap.get("web_fetch", {}).get("enabled"):
+        from tools.capability.web_fetch import create_web_fetch_tool
+
+        cfg = cap["web_fetch"]
+        registry.register(
+            create_web_fetch_tool(cfg), "capability", {"risk": cfg.get("risk", "low")}
+        )
+
+    if cap.get("text_editor", {}).get("enabled"):
+        from tools.capability.text_editor import create_text_editor_tool
+
+        cfg = cap["text_editor"]
+        registry.register(
+            create_text_editor_tool(cfg),
+            "capability",
+            {"risk": cfg.get("risk", "medium")},
+        )
+
+    if cap.get("code_execution", {}).get("enabled"):
+        from tools.capability.code_sandbox import create_code_execution_tool
+
+        cfg = cap["code_execution"]
+        registry.register(
+            create_code_execution_tool(cfg),
+            "capability",
+            {"risk": cfg.get("risk", "high")},
+        )
+
+    if cap.get("bash", {}).get("enabled"):
+        from tools.capability.bash import create_bash_tool
+
+        cfg = cap["bash"]
+        registry.register(
+            create_bash_tool(cfg), "capability", {"risk": cfg.get("risk", "high")}
+        )
+
+    if cap.get("computer", {}).get("enabled"):
+        from tools.capability.computer import create_computer_tool
+
+        cfg = cap["computer"]
+        registry.register(
+            create_computer_tool(cfg), "capability", {"risk": cfg.get("risk", "high")}
+        )
+
+    if cap.get("tool_search", {}).get("enabled"):
+        from tools.capability.tool_search import create_tool_search_tool
+
+        cfg = cap["tool_search"]
+        registry.register(
+            create_tool_search_tool(registry, cfg),
+            "capability",
+            {"risk": cfg.get("risk", "low")},
+        )
+
+
+def _register_business(registry: ToolRegistry, config: dict[str, Any]) -> None:
+    from tools.business.calendar import create_calendar_tools
+    from tools.business.email import create_email_tools
+    from tools.business.file import create_file_tools
+    from tools.business.notes import create_notes_tools
+    from tools.business.todo import create_todo_tools
+
+    factories = [
+        create_todo_tools,
+        create_calendar_tools,
+        create_file_tools,
+        create_notes_tools,
+        create_email_tools,
+    ]
+    for factory in factories:
+        for tool in factory():
+            cfg = config.get("business", {}).get(tool.name, {})
+            registry.register(tool, "business", {"risk": cfg.get("risk", "low")})
 
 
 def build_registry(config: dict[str, Any]) -> ToolRegistry:
-    from tools.capability.web_search import create_web_search_tool
-    from tools.business.calendar import create_calendar_tools
-    from tools.business.todo import create_todo_tools
-
     registry = ToolRegistry(config)
-
-    ws_cfg = config.get("capability", {}).get("web_search", {})
-    if ws_cfg.get("enabled"):
-        registry.register(
-            create_web_search_tool(ws_cfg),
-            "capability",
-            {"risk": ws_cfg.get("risk", "low")},
-        )
-
-    for tool in create_todo_tools():
-        cfg = config.get("business", {}).get(tool.name, {})
-        registry.register(tool, "business", {"risk": cfg.get("risk", "low")})
-
-    for tool in create_calendar_tools():
-        cfg = config.get("business", {}).get(tool.name, {})
-        registry.register(tool, "business", {"risk": cfg.get("risk", "low")})
-
+    _register_capability(registry, config)
+    _register_business(registry, config)
     return registry

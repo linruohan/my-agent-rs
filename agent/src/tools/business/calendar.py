@@ -1,7 +1,7 @@
 from __future__ import annotations
 
 import sqlite3
-from datetime import datetime
+from datetime import datetime, timezone
 from typing import Any
 
 from infra.config import get_data_dir
@@ -44,7 +44,7 @@ def create_event_record(
             INSERT INTO events (title, start_time, end_time, location, description, created_at)
             VALUES (?, ?, ?, ?, ?, ?)
             """,
-            (title, start_time, end_time, location, description, datetime.utcnow().isoformat()),
+            (title, start_time, end_time, location, description, datetime.now(timezone.utc).isoformat()),
         )
         conn.commit()
         return {

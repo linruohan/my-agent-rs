@@ -1,7 +1,7 @@
 from __future__ import annotations
 
-import sys
 from pathlib import Path
+from unittest.mock import MagicMock
 
 import pytest
 
@@ -20,6 +20,13 @@ def test_app(monkeypatch, tmp_path):
 
     monkeypatch.setattr("agent.graph.get_checkpointer", lambda: MemorySaver())
 
+    mock_llm = MagicMock()
+    mock_llm.bind_tools.return_value = mock_llm
+    monkeypatch.setattr(
+        "agent.graph.create_llm_with_fallback",
+        lambda *a, **k: (mock_llm, "mock"),
+    )
+
     from main import build_app
 
     app = build_app(port=8765)
@@ -36,3 +43,4 @@ async def test_health_endpoint(test_app):
         assert resp.status_code == 200
         data = resp.json()
         assert data["status"] == "ok"
+        assert data["version"] == "0.1.0"

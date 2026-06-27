@@ -5,24 +5,33 @@ import asyncio
 import os
 import signal
 import sys
+from contextlib import asynccontextmanager
 from pathlib import Path
 
 SRC_DIR = Path(__file__).resolve().parent / "src"
+AGENT_DIR = Path(__file__).resolve().parent
 if str(SRC_DIR) not in sys.path:
     sys.path.insert(0, str(SRC_DIR))
+
+if getattr(sys, "frozen", False):
+    meipass = Path(getattr(sys, "_MEIPASS", AGENT_DIR))
+    os.environ.setdefault("AGENT_CONFIG_DIR", str(meipass / "config"))
 
 import uvicorn
 from fastapi import FastAPI
 
 from agent.graph import create_agent_graph, get_checkpointer
 from agent.runner import AgentRunner
+from api.config_route import router as config_router
 from api.health import router as health_router
+from api.health import VERSION
+from api.tools_route import create_tools_router
 from api.ws import create_ws_router
+from infra.hitl import hitl_timeout_manager
 from infra.config import load_app_config, load_tools_config
+from infra.scheduler import get_scheduler, shutdown_scheduler
 from infra.session_store import SessionStore
 from tools.registry import build_registry
-
-VERSION = "0.1.0"
 
 
 def build_app(port: int = 8765) -> FastAPI:
@@ -33,9 +42,25 @@ def build_app(port: int = 8765) -> FastAPI:
     runner = AgentRunner(graph, registry)
     session_store = SessionStore()
 
-    app = FastAPI(title="Personal Assistant Agent", version=VERSION)
+    @asynccontextmanager
+    async def lifespan(app: FastAPI):
+        from loguru import logger
+
+        get_scheduler()
+        mcp_cfg = tools_cfg.get("mcp_servers", {})
+        if any(v.get("enabled") for v in mcp_cfg.values()):
+            tools = await registry.resolve_all(include_mcp=True)
+            runner.graph = create_agent_graph(registry, checkpointer)
+            logger.info("MCP enabled; {} tools available", len(tools))
+        yield
+        shutdown_scheduler()
+
+    app = FastAPI(title="Personal Assistant Agent", version=VERSION, lifespan=lifespan)
     app.include_router(health_router)
-    app.include_router(create_ws_router(runner, session_store, port))
+    app.include_router(config_router)
+    app.include_router(create_tools_router(registry))
+    ws_router = create_ws_router(runner, session_store, port)
+    app.include_router(ws_router)
 
     @app.post("/shutdown")
     async def shutdown():
@@ -57,22 +82,13 @@ def main():
     host = args.host or app_cfg.get("host", "127.0.0.1")
     requested_port = args.port or app_cfg.get("port", 0) or 8765
 
+    os.environ.setdefault("AGENT_API_VERSION", app_cfg.get("version", VERSION))
+
     app = build_app(port=requested_port if requested_port else 8765)
 
     config = uvicorn.Config(app, host=host, port=requested_port, log_level="info")
     server = uvicorn.Server(config)
 
-    async def serve_with_ready():
-        await server.serve()
-        actual_port = requested_port
-        if server.servers:
-            for s in server.servers:
-                if s.sockets:
-                    actual_port = s.sockets[0].getsockname()[1]
-                    break
-        print(f"READY port={actual_port}", flush=True)
-
-    # Hook into startup to print READY
     original_startup = server.startup
 
     async def startup_with_ready(sockets=None):

@@ -7,18 +7,35 @@
     "dev": "vite",
     "build": "vue-tsc --noEmit && vite build",
     "preview": "vite preview",
-    "tauri": "tauri"
+    "tauri": "tauri",
+    "setup": "powershell -NoProfile -ExecutionPolicy Bypass -File scripts/setup.ps1",
+    "setup:sh": "bash scripts/setup.sh",
+    "dev:web": "powershell -NoProfile -ExecutionPolicy Bypass -File scripts/run-web.ps1",
+    "dev:web:sh": "bash scripts/run-web.sh",
+    "dev:desktop": "powershell -NoProfile -ExecutionPolicy Bypass -File scripts/run-desktop.ps1",
+    "dev:desktop:sh": "bash scripts/run-desktop.sh",
+    "tauri:dev": "powershell -NoProfile -ExecutionPolicy Bypass -File scripts/run-desktop.ps1",
+    "dev:sidecar": "powershell -NoProfile -ExecutionPolicy Bypass -File scripts/run-sidecar.ps1",
+    "dev:sidecar:sh": "bash scripts/run-sidecar.sh",
+    "dev:all": "powershell -NoProfile -ExecutionPolicy Bypass -File scripts/run.ps1",
+    "build:sidecar": "python scripts/build_sidecar.py",
+    "build:web": "powershell -NoProfile -ExecutionPolicy Bypass -File scripts/build.ps1 -DevOnly",
+    "build:all": "powershell -NoProfile -ExecutionPolicy Bypass -File scripts/build.ps1",
+    "build:all:sh": "bash scripts/build.sh",
+    "test:agent": "python -m pytest tests/agent -v",
+    "test": "powershell -NoProfile -ExecutionPolicy Bypass -File scripts/test.ps1"
   },
   "dependencies": {
-    "vue": "^3.5.13",
-    "pinia": "^2.3.0",
     "@tauri-apps/api": "^2.2.0",
+    "@tauri-apps/plugin-dialog": "^2.2.0",
     "@tauri-apps/plugin-shell": "^2.2.0",
-    "@tauri-apps/plugin-dialog": "^2.2.0"
+    "@tauri-apps/plugin-updater": "^2.10.1",
+    "pinia": "^2.3.0",
+    "vue": "^3.5.13"
   },
   "devDependencies": {
-    "@vitejs/plugin-vue": "^5.2.1",
     "@tauri-apps/cli": "^2.2.0",
+    "@vitejs/plugin-vue": "^5.2.1",
     "typescript": "^5.7.2",
     "vite": "^6.0.5",
     "vue-tsc": "^2.2.0"

@@ -1,7 +1,13 @@
 host: 127.0.0.1
 port: 0
 data_dir: ../data
+version: "0.1.0"
+
 hitl:
   timeout_sec: 300
   on_timeout: reject
   notify_before_sec: 30
+
+llm:
+  default_provider: deepseek
+  request_timeout_sec: 60

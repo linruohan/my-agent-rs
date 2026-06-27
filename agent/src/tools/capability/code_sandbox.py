@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import subprocess
 import sys
+import os
 import tempfile
 import textwrap
 from dataclasses import dataclass, field
@@ -50,7 +51,7 @@ class SandboxRunner:
                 text=True,
                 timeout=self.config.timeout,
                 cwd=str(workspace),
-                env={**dict(subprocess.os.environ), **env},
+                env={**dict(os.environ), **env},
             )
         except subprocess.TimeoutExpired:
             return f"[SANDBOX_TIMEOUT] Execution exceeded {self.config.timeout}s"

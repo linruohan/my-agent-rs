@@ -3,13 +3,17 @@ import { useSessionStore } from '@/stores/session';
 import { useAgentWs } from '@/composables/useAgentWs';
 
 const sessionStore = useSessionStore();
-const { createSession, deleteSession } = useAgentWs();
+const { createSession, deleteSession, connectionError, isConnected } = useAgentWs();
 
 function selectSession(threadId: string) {
   sessionStore.setCurrentThread(threadId);
 }
 
 function handleNewSession() {
+  if (!isConnected()) {
+    createSession();
+    return;
+  }
   createSession();
 }
 
@@ -38,7 +42,9 @@ function handleDelete(threadId: string, e: Event) {
         <span class="title">{{ s.title }}</span>
         <button class="btn-delete" @click="handleDelete(s.thread_id, $event)">×</button>
       </li>
-      <li v-if="sessionStore.sessions.length === 0" class="empty">暂无会话，点击新建</li>
+      <li v-if="sessionStore.sessions.length === 0" class="empty">
+        {{ connectionError || '暂无会话，点击新建' }}
+      </li>
     </ul>
   </aside>
 </template>

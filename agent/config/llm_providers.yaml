@@ -1,3 +1,8 @@
+fallback_chain:
+  - deepseek
+  - qwen
+  - ollama
+
 default_provider: deepseek
 
 providers:
@@ -7,6 +12,8 @@ providers:
     model: deepseek-chat
     api_key_env: DEEPSEEK_API_KEY
     supports_tool_call: true
+    timeout_sec: 60
+    max_retries: 2
 
   openai:
     type: openai_compatible
@@ -14,12 +21,16 @@ providers:
     model: gpt-4o
     api_key_env: OPENAI_API_KEY
     supports_tool_call: true
+    timeout_sec: 60
+    max_retries: 2
 
   anthropic:
     type: anthropic
     model: claude-sonnet-4-20250514
     api_key_env: ANTHROPIC_API_KEY
     supports_tool_call: true
+    timeout_sec: 90
+    max_retries: 2
 
   qwen:
     type: openai_compatible
@@ -27,12 +38,16 @@ providers:
     model: qwen-plus
     api_key_env: DASHSCOPE_API_KEY
     supports_tool_call: true
+    timeout_sec: 60
+    max_retries: 2
 
   ollama:
     type: ollama
     base_url: http://localhost:11434
     model: qwen2.5:7b
     supports_tool_call: true
+    timeout_sec: 120
+    max_retries: 1
 
   custom:
     type: openai_compatible

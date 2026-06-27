@@ -10,7 +10,10 @@ const settings = useSettingsStore();
     <span :class="['ws', settings.wsConnected ? 'connected' : 'disconnected']">
       WebSocket: {{ settings.wsConnected ? '已连接' : '未连接' }}
     </span>
-    <span>Sidecar: {{ settings.sidecarStatus }} (port {{ settings.sidecarPort }})</span>
+    <span :class="['sidecar', settings.sidecarStatus]">
+      Sidecar: {{ settings.sidecarStatus }}
+      <template v-if="settings.sidecarPort"> (port {{ settings.sidecarPort }})</template>
+    </span>
   </footer>
 </template>
 
@@ -31,5 +34,13 @@ const settings = useSettingsStore();
 
 .ws.disconnected {
   color: #ef4444;
+}
+
+.sidecar.error {
+  color: #ef4444;
+}
+
+.sidecar.starting {
+  color: #f59e0b;
 }
 </style>

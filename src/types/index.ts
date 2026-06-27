@@ -20,6 +20,7 @@ export interface InterruptEvent {
   thread_id: string;
   action: string;
   preview: string;
+  args?: Record<string, unknown>;
 }
 
 export interface Session {

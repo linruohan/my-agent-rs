@@ -9,8 +9,12 @@ from fastapi import APIRouter, WebSocket, WebSocketDisconnect
 from agent.runner import AgentRunner
 from infra.session_store import SessionStore
 
+from infra.hitl import hitl_timeout_manager
+
 router = APIRouter()
 VERSION = "0.1.0"
+
+_thread_emitters: dict[str, Any] = {}
 
 
 class ConnectionManager:
@@ -42,6 +46,12 @@ def create_ws_router(
 
         async def emit(msg: dict[str, Any]):
             await ws.send_json(msg)
+
+        async def auto_hitl_resume(thread_id: str, decision: str, edited_args: dict | None):
+            emitter = _thread_emitters.get(thread_id, emit)
+            await runner.resume(thread_id, decision, edited_args, emitter)
+
+        hitl_timeout_manager.set_resume_callback(auto_hitl_resume)
 
         try:
             while True:
@@ -93,6 +103,7 @@ def create_ws_router(
                         )
                         continue
                     session_store.touch(thread_id)
+                    _thread_emitters[thread_id] = emit
                     asyncio.create_task(runner.run(thread_id, content, emit))
                     continue
 
@@ -111,6 +122,81 @@ def create_ws_router(
                     asyncio.create_task(
                         runner.resume(thread_id, decision, edited_args, emit)
                     )
+                    continue
+
+                if msg_type == "memory.get":
+                    from memory.store import MemoryStore
+
+                    store = MemoryStore()
+                    namespace = data.get("namespace", "user")
+                    key = data.get("key", "preferences")
+                    value = store.get(namespace, key)
+                    await ws.send_json(
+                        {"type": "memory.get", "namespace": namespace, "key": key, "value": value}
+                    )
+                    continue
+
+                if msg_type == "memory.set":
+                    from memory.store import MemoryStore
+
+                    store = MemoryStore()
+                    namespace = data.get("namespace", "user")
+                    key = data.get("key", "preferences")
+                    value = data.get("value", {})
+                    store.put(namespace, key, value)
+                    await ws.send_json(
+                        {"type": "memory.set", "namespace": namespace, "key": key, "ok": True}
+                    )
+                    continue
+
+                if msg_type == "rag.ingest":
+                    from memory.rag import RagStore
+
+                    rag = RagStore()
+                    path = data.get("path", "")
+                    content = data.get("content", "")
+                    if path:
+                        result = rag.ingest_file(path)
+                    elif content:
+                        source = data.get("source", "inline")
+                        count = rag.ingest_text(content, source=source)
+                        result = f"Ingested {count} chunks from {source}"
+                    else:
+                        result = "path or content required"
+                    await ws.send_json({"type": "rag.ingest", "result": result})
+                    continue
+
+                if msg_type == "rag.search":
+                    from memory.rag import RagStore
+
+                    rag = RagStore()
+                    query = data.get("query", "")
+                    results = rag.search(query, top_k=data.get("top_k", 6))
+                    await ws.send_json({"type": "rag.search", "query": query, "results": results})
+                    continue
+
+                if msg_type == "rag.list":
+                    from memory.rag import RagStore
+
+                    rag = RagStore()
+                    sources = rag.list_sources()
+                    await ws.send_json({"type": "rag.list", "sources": sources})
+                    continue
+
+                if msg_type == "rag.delete":
+                    from memory.rag import RagStore
+
+                    rag = RagStore()
+                    source = data.get("source", "")
+                    ok = rag.delete_source(source) if source else False
+                    await ws.send_json({"type": "rag.deleted", "source": source, "ok": ok})
+                    continue
+
+                if msg_type == "scheduler.list":
+                    from infra.scheduler import list_pending_jobs
+
+                    jobs = list_pending_jobs()
+                    await ws.send_json({"type": "scheduler.list", "jobs": jobs})
                     continue
 
                 await ws.send_json(

@@ -1,6 +1,7 @@
 import { ref } from 'vue';
 import { useSessionStore } from '@/stores/session';
 import { useSettingsStore } from '@/stores/settings';
+import { useKnowledgeStore } from '@/stores/knowledge';
 import type { ToolCall } from '@/types';
 
 const RECONNECT_DELAYS = [1000, 2000, 4000, 8000, 16000];
@@ -8,11 +9,21 @@ const RECONNECT_DELAYS = [1000, 2000, 4000, 8000, 16000];
 let ws: WebSocket | null = null;
 let reconnectAttempt = 0;
 let reconnectTimer: ReturnType<typeof setTimeout> | null = null;
+let pendingCreateTitle: string | undefined;
 
 export function useAgentWs() {
   const sessionStore = useSessionStore();
   const settingsStore = useSettingsStore();
-  const port = ref(settingsStore.sidecarPort);
+  const knowledgeStore = useKnowledgeStore();
+  const connectionError = ref('');
+
+  function wsUrl() {
+    return `ws://127.0.0.1:${settingsStore.sidecarPort}/ws`;
+  }
+
+  function isConnected() {
+    return ws?.readyState === WebSocket.OPEN;
+  }
 
   function handleMessage(msg: Record<string, unknown>) {
     const type = msg.type as string;
@@ -21,7 +32,12 @@ export function useAgentWs() {
       case 'connected':
         if (msg.port) settingsStore.setSidecarPort(msg.port as number);
         settingsStore.setWsConnected(true);
+        connectionError.value = '';
         listSessions();
+        if (pendingCreateTitle !== undefined) {
+          sendRaw({ type: 'session.create', title: pendingCreateTitle });
+          pendingCreateTitle = undefined;
+        }
         break;
 
       case 'token':
@@ -56,6 +72,7 @@ export function useAgentWs() {
           thread_id: msg.thread_id as string,
           action: msg.action as string,
           preview: msg.preview as string,
+          args: (msg.args as Record<string, unknown>) || {},
         });
         break;
 
@@ -95,18 +112,52 @@ export function useAgentWs() {
 
       case 'pong':
         break;
+
+      case 'rag.list':
+        knowledgeStore.setSources((msg.sources as string[]) || []);
+        knowledgeStore.isLoading = false;
+        break;
+
+      case 'rag.ingest':
+        knowledgeStore.setIngestResult((msg.result as string) || '完成');
+        knowledgeStore.isLoading = false;
+        listRagSources();
+        break;
+
+      case 'rag.search':
+        knowledgeStore.setSearchResults(
+          (msg.results as Array<{ source: string; content: string; score: number }>) || []
+        );
+        knowledgeStore.isLoading = false;
+        break;
+
+      case 'rag.deleted':
+        knowledgeStore.isLoading = false;
+        listRagSources();
+        break;
     }
   }
 
   function connect() {
-    if (ws?.readyState === WebSocket.OPEN) return;
+    if (settingsStore.sidecarStatus === 'starting') {
+      connectionError.value = 'Sidecar 正在启动，请稍候…';
+      return;
+    }
+    if (settingsStore.sidecarStatus === 'error') {
+      connectionError.value = 'Sidecar 启动失败，请在设置页重启 Sidecar';
+      return;
+    }
 
-    const url = `ws://127.0.0.1:${port.value}/ws`;
+    const url = wsUrl();
+    if (ws?.readyState === WebSocket.OPEN && ws.url === url) return;
+
+    ws?.close();
     ws = new WebSocket(url);
 
     ws.onopen = () => {
       reconnectAttempt = 0;
       settingsStore.setWsConnected(true);
+      connectionError.value = '';
     };
 
     ws.onmessage = (e) => {
@@ -124,11 +175,13 @@ export function useAgentWs() {
 
     ws.onerror = () => {
       settingsStore.setWsConnected(false);
+      connectionError.value = `无法连接 Sidecar (port ${settingsStore.sidecarPort})`;
     };
   }
 
   function scheduleReconnect() {
     if (reconnectAttempt >= RECONNECT_DELAYS.length) return;
+    if (settingsStore.sidecarStatus !== 'running') return;
     const delay = RECONNECT_DELAYS[reconnectAttempt++];
     reconnectTimer = setTimeout(connect, delay);
   }
@@ -142,7 +195,9 @@ export function useAgentWs() {
   function sendRaw(data: Record<string, unknown>) {
     if (ws?.readyState === WebSocket.OPEN) {
       ws.send(JSON.stringify(data));
+      return true;
     }
+    return false;
   }
 
   function send(content: string, threadId: string) {
@@ -177,8 +232,13 @@ export function useAgentWs() {
     sendRaw({ type: 'session.list' });
   }
 
-  function createSession(title?: string) {
-    sendRaw({ type: 'session.create', title });
+  function createSession(title?: string): boolean {
+    if (isConnected()) {
+      return sendRaw({ type: 'session.create', title });
+    }
+    pendingCreateTitle = title;
+    connect();
+    return false;
   }
 
   function deleteSession(threadId: string) {
@@ -189,8 +249,28 @@ export function useAgentWs() {
     sendRaw({ type: 'ping' });
   }
 
+  function listRagSources() {
+    knowledgeStore.isLoading = true;
+    sendRaw({ type: 'rag.list' });
+  }
+
+  function ingestRagContent(source: string, content: string) {
+    knowledgeStore.isLoading = true;
+    sendRaw({ type: 'rag.ingest', source, content });
+  }
+
+  function searchRag(query: string, topK = 6) {
+    knowledgeStore.isLoading = true;
+    sendRaw({ type: 'rag.search', query, top_k: topK });
+  }
+
+  function deleteRagSource(source: string) {
+    knowledgeStore.isLoading = true;
+    sendRaw({ type: 'rag.delete', source });
+  }
+
   return {
-    port,
+    connectionError,
     connect,
     disconnect,
     send,
@@ -200,5 +280,10 @@ export function useAgentWs() {
     createSession,
     deleteSession,
     ping,
+    listRagSources,
+    ingestRagContent,
+    searchRag,
+    deleteRagSource,
+    isConnected,
   };
 }

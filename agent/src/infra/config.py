@@ -39,6 +39,35 @@ def load_tools_config() -> dict[str, Any]:
     return load_yaml("tools.yaml")
 
 
+def load_user_llm_config() -> dict[str, Any]:
+    path = get_data_dir() / "llm_user.yaml"
+    if not path.exists():
+        return {}
+    with path.open(encoding="utf-8") as f:
+        return yaml.safe_load(f) or {}
+
+
+def save_user_llm_config(data: dict[str, Any]) -> None:
+    path = get_data_dir() / "llm_user.yaml"
+    get_data_dir().mkdir(parents=True, exist_ok=True)
+    with path.open("w", encoding="utf-8") as f:
+        yaml.safe_dump(data, f, allow_unicode=True, default_flow_style=False)
+
+
+def load_llm_providers_config() -> dict[str, Any]:
+    cfg = load_yaml("llm_providers.yaml")
+    user = load_user_llm_config()
+    if user.get("default_provider"):
+        cfg["default_provider"] = user["default_provider"]
+    custom = user.get("custom")
+    if isinstance(custom, dict) and custom:
+        providers = cfg.setdefault("providers", {})
+        base = providers.get("custom", {})
+        if isinstance(base, dict):
+            providers["custom"] = {**base, **custom}
+    return cfg
+
+
 def get_workspace_dir() -> Path:
     """Return sandbox workspace for file tools (resolved absolute path)."""
     tools_cfg = load_yaml("tools.yaml")

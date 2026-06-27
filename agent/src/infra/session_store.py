@@ -1,7 +1,7 @@
 from __future__ import annotations
 
 import sqlite3
-from datetime import datetime
+from datetime import datetime, timezone
 from pathlib import Path
 from typing import Any
 from uuid import uuid4
@@ -33,7 +33,7 @@ class SessionStore:
 
     def create(self, title: str | None = None) -> dict[str, Any]:
         thread_id = str(uuid4())
-        now = datetime.utcnow().isoformat()
+        now = datetime.now(timezone.utc).isoformat()
         display_title = title or "新会话"
         with sqlite3.connect(self.db_path) as conn:
             conn.execute(
@@ -65,7 +65,7 @@ class SessionStore:
         return row is not None
 
     def touch(self, thread_id: str) -> None:
-        now = datetime.utcnow().isoformat()
+        now = datetime.now(timezone.utc).isoformat()
         with sqlite3.connect(self.db_path) as conn:
             conn.execute(
                 "UPDATE sessions SET updated_at = ? WHERE thread_id = ?",

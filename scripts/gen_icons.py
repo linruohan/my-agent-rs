@@ -28,9 +28,36 @@ def write_png(path: Path, width: int, height: int, rgba=(59, 130, 246, 255)):
     path.write_bytes(png)
 
 
+def write_ico(path: Path, size: int = 32, rgba=(59, 130, 246, 255)):
+    """Write a minimal valid Windows .ico (required by tauri-winres)."""
+    r, g, b, a = rgba
+    row = bytes([b, g, r, a]) * size
+    xor_rows = b"".join(row for _ in range(size))
+    and_row = b"\x00" * ((size + 31) // 32 * 4)
+    and_mask = and_row * size
+    bmp_header = struct.pack(
+        "<IIIHHIIIIII",
+        40,
+        size,
+        size * 2,
+        1,
+        32,
+        0,
+        len(xor_rows) + len(and_mask),
+        0,
+        0,
+        0,
+        0,
+    )
+    image_data = bmp_header + xor_rows + and_mask
+    header = struct.pack("<HHH", 0, 1, 1)
+    entry = struct.pack("<BBBBHHII", size, size, 0, 0, 1, 32, len(image_data), 22)
+    path.write_bytes(header + entry + image_data)
+
+
 write_png(ICONS / "32x32.png", 32, 32)
 write_png(ICONS / "128x128.png", 128, 128)
 write_png(ICONS / "128x128@2x.png", 256, 256)
-write_png(ICONS / "icon.ico", 32, 32)
+write_ico(ICONS / "icon.ico", 32)
 write_png(ICONS / "icon.icns", 32, 32)
 print("Icons generated.")

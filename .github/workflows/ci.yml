@@ -1,0 +1,70 @@
+name: CI
+
+on:
+  push:
+    branches: [master, main]
+  pull_request:
+    branches: [master, main]
+
+jobs:
+  python-tests:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+          cache: pip
+          cache-dependency-path: agent/pyproject.toml
+
+      - name: Install agent dependencies
+        run: |
+          python -m pip install --upgrade pip
+          pip install -e "./agent[dev]"
+
+      - name: Run pytest
+        run: python -m pytest tests/agent -v --tb=short
+        env:
+          AGENT_CONFIG_DIR: ${{ github.workspace }}/agent/config
+          AGENT_DATA_DIR: ${{ github.workspace }}/data
+
+      - name: Prepare data dirs
+        run: mkdir -p data/{checkpoints,workspace,vectorstore}
+
+  frontend-build:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "20"
+          cache: npm
+
+      - name: Install and build frontend
+        run: |
+          npm ci
+          python scripts/ensure_sidecar_stub.py
+          npm run build
+
+  rust-check:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: dtolnay/rust-toolchain@stable
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "20"
+          cache: npm
+
+      - name: Install frontend deps
+        run: |
+          npm ci
+          python scripts/ensure_sidecar_stub.py
+
+      - name: Cargo check
+        working-directory: src-tauri
+        run: cargo check

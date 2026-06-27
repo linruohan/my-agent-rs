@@ -7,7 +7,7 @@
     "frontendDist": "../dist",
     "devUrl": "http://localhost:1420",
     "beforeDevCommand": "npm run dev",
-    "beforeBuildCommand": "npm run build"
+    "beforeBuildCommand": "npm run build && npm run build:sidecar"
   },
   "app": {
     "windows": [
@@ -39,6 +39,14 @@
   "plugins": {
     "shell": {
       "open": true
+    },
+    "updater": {
+      "active": false,
+      "dialog": true,
+      "endpoints": [
+        "https://github.com/YOUR_ORG/my-agent-rs/releases/latest/download/latest.json"
+      ],
+      "pubkey": "REPLACE_WITH_TAURI_SIGNER_PUBLIC_KEY"
     }
   }
 }
