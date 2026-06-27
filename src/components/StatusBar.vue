@@ -14,6 +14,9 @@ const settings = useSettingsStore();
       Sidecar: {{ settings.sidecarStatus }}
       <template v-if="settings.sidecarPort"> (port {{ settings.sidecarPort }})</template>
     </span>
+    <span v-if="settings.lastTurnDurationMs != null">
+      耗时: {{ settings.lastTurnDurationMs }}ms
+    </span>
   </footer>
 </template>
 

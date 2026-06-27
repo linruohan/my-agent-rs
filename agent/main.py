@@ -26,9 +26,9 @@ from api.config_route import router as config_router
 from api.health import router as health_router
 from api.health import VERSION
 from api.tools_route import create_tools_router
-from api.ws import create_ws_router
+from api.ws import create_ws_router, manager
 from infra.hitl import hitl_timeout_manager
-from infra.config import load_app_config, load_tools_config
+from infra.config import load_app_config, load_effective_tools_config
 from infra.scheduler import get_scheduler, shutdown_scheduler
 from infra.session_store import SessionStore
 from tools.registry import build_registry
@@ -47,16 +47,23 @@ def _uvicorn_log_config() -> dict:
 
 
 def build_app(port: int = 8765) -> FastAPI:
-    tools_cfg = load_tools_config()
+    tools_cfg = load_effective_tools_config()
     registry = build_registry(tools_cfg)
     runner = AgentRunner(None, registry)
     session_store = SessionStore()
+
+    from infra.auth import get_or_create_token
+
+    get_or_create_token()
 
     @asynccontextmanager
     async def lifespan(app: FastAPI):
         from loguru import logger
 
         checkpointer, conn = await create_sqlite_checkpointer()
+        app.state.checkpointer = checkpointer
+        app.state.conn = conn
+        app.state.registry = registry
         runner.graph = create_agent_graph(registry, checkpointer)
 
         get_scheduler()
@@ -89,7 +96,7 @@ def build_app(port: int = 8765) -> FastAPI:
     app = FastAPI(title="Personal Assistant Agent", version=VERSION, lifespan=lifespan)
     app.include_router(health_router)
     app.include_router(config_router)
-    app.include_router(create_tools_router(registry))
+    app.include_router(create_tools_router(registry, runner))
     ws_router = create_ws_router(runner, session_store, port)
     app.include_router(ws_router)
 

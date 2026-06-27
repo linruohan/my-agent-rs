@@ -44,3 +44,6 @@ async def test_health_endpoint(test_app):
         data = resp.json()
         assert data["status"] == "ok"
         assert data["version"] == "0.1.0"
+        assert "api_version" in data
+        assert "version_ok" in data
+        assert "auth_required" in data

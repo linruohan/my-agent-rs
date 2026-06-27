@@ -110,9 +110,15 @@ npm run build:sidecar
 
 `src-tauri/tauri.conf.json` 中已集成 `tauri-plugin-updater`（默认 `active: false`）。启用步骤：
 
-1. 使用 `tauri signer generate` 生成密钥对，填入 `pubkey`
-2. 配置 GitHub Releases 的 `latest.json` 端点
-3. 将 `active` 设为 `true`
+1. 使用 `tauri signer generate` 生成密钥对
+2. 设置环境变量并运行配置脚本：
+   ```powershell
+   $env:TAURI_UPDATER_PUBKEY = "<public-key>"
+   $env:TAURI_UPDATER_ENDPOINT = "https://github.com/YOUR_ORG/my-agent-rs/releases/latest/download/latest.json"
+   $env:TAURI_UPDATER_ACTIVE = "true"
+   ./scripts/configure_updater.ps1
+   ```
+3. CI 发布时在 GitHub Secrets 配置 `TAURI_UPDATER_PUBKEY` 与 `TAURI_SIGNING_PRIVATE_KEY`
 
 ### MCP 扩展
 

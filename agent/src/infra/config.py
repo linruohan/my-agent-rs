@@ -39,6 +39,38 @@ def load_tools_config() -> dict[str, Any]:
     return load_yaml("tools.yaml")
 
 
+def load_mcp_user_config() -> dict[str, Any]:
+    path = get_data_dir() / "mcp_user.yaml"
+    if not path.exists():
+        return {}
+    with path.open(encoding="utf-8") as f:
+        return yaml.safe_load(f) or {}
+
+
+def save_mcp_user_config(data: dict[str, Any]) -> None:
+    path = get_data_dir() / "mcp_user.yaml"
+    get_data_dir().mkdir(parents=True, exist_ok=True)
+    with path.open("w", encoding="utf-8") as f:
+        yaml.safe_dump(data, f, allow_unicode=True, default_flow_style=False)
+
+
+def load_effective_tools_config() -> dict[str, Any]:
+    """Merge tools.yaml with user MCP overrides from data/mcp_user.yaml."""
+    cfg = load_tools_config()
+    user = load_mcp_user_config()
+    user_mcp = user.get("mcp_servers")
+    if isinstance(user_mcp, dict) and user_mcp:
+        base_mcp = cfg.setdefault("mcp_servers", {})
+        for name, overrides in user_mcp.items():
+            if not isinstance(overrides, dict):
+                continue
+            if name in base_mcp and isinstance(base_mcp[name], dict):
+                base_mcp[name] = {**base_mcp[name], **overrides}
+            else:
+                base_mcp[name] = dict(overrides)
+    return cfg
+
+
 def load_user_llm_config() -> dict[str, Any]:
     path = get_data_dir() / "llm_user.yaml"
     if not path.exists():

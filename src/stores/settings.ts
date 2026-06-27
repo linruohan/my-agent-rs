@@ -32,6 +32,7 @@ export const useSettingsStore = defineStore('settings', () => {
   const temperature = ref(stored.temperature ?? 0.7);
   const customBaseUrl = ref(stored.customBaseUrl ?? '');
   const customModel = ref(stored.customModel ?? '');
+  const lastTurnDurationMs = ref<number | null>(null);
 
   watch([provider, temperature, customBaseUrl, customModel], () => {
     saveStored({
@@ -52,6 +53,10 @@ export const useSettingsStore = defineStore('settings', () => {
 
   function setSidecarStatus(status: typeof sidecarStatus.value) {
     sidecarStatus.value = status;
+  }
+
+  function setLastTurnDuration(ms: number | null) {
+    lastTurnDurationMs.value = ms;
   }
 
   function applyLlmConfig(cfg: {
@@ -77,9 +82,11 @@ export const useSettingsStore = defineStore('settings', () => {
     temperature,
     customBaseUrl,
     customModel,
+    lastTurnDurationMs,
     setSidecarPort,
     setWsConnected,
     setSidecarStatus,
+    setLastTurnDuration,
     applyLlmConfig,
   };
 });

@@ -6,8 +6,55 @@ on:
       - "v*"
 
 jobs:
-  build-linux:
-    runs-on: ubuntu-latest
+  build:
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - os: ubuntu-22.04
+            target: x86_64-unknown-linux-gnu
+            artifact: linux-x86_64
+            setup: bash scripts/setup.sh
+            build: bash scripts/build.sh --skip-tauri
+            tauri: npm run tauri build
+            shell: bash
+          - os: ubuntu-24.04-arm
+            target: aarch64-unknown-linux-gnu
+            artifact: linux-aarch64
+            setup: bash scripts/setup.sh
+            build: bash scripts/build.sh --skip-tauri
+            tauri: npm run tauri build
+            shell: bash
+          - os: macos-latest
+            target: aarch64-apple-darwin
+            artifact: macos-aarch64
+            setup: bash scripts/setup.sh
+            build: bash scripts/build.sh --skip-tauri
+            tauri: npm run tauri build
+            shell: bash
+          - os: macos-13
+            target: x86_64-apple-darwin
+            artifact: macos-x86_64
+            setup: bash scripts/setup.sh
+            build: bash scripts/build.sh --skip-tauri
+            tauri: npm run tauri build
+            shell: bash
+          - os: windows-latest
+            target: x86_64-pc-windows-msvc
+            artifact: windows-x86_64
+            setup: ./scripts/setup.ps1
+            build: ./scripts/build.ps1 -SkipTauri
+            tauri: npm run tauri build
+            shell: pwsh
+          - os: windows-11-arm
+            target: aarch64-pc-windows-msvc
+            artifact: windows-aarch64
+            setup: ./scripts/setup.ps1
+            build: ./scripts/build.ps1 -SkipTauri
+            tauri: npm run tauri build
+            shell: pwsh
+
+    runs-on: ${{ matrix.os }}
     steps:
       - uses: actions/checkout@v4
 
@@ -23,116 +70,98 @@ jobs:
           cache: npm
 
       - uses: dtolnay/rust-toolchain@stable
+        with:
+          targets: ${{ matrix.target }}
 
-      - name: Install system deps
+      - name: Install Linux deps
+        if: runner.os == 'Linux'
+        shell: bash
         run: |
           sudo apt-get update
           sudo apt-get install -y libwebkit2gtk-4.1-dev libappindicator3-dev librsvg2-dev patchelf
 
       - name: Setup and test
+        shell: ${{ matrix.shell }}
         run: |
-          bash scripts/setup.sh
+          ${{ matrix.setup }}
           python -m pytest tests/agent -q
         env:
           AGENT_CONFIG_DIR: ${{ github.workspace }}/agent/config
           AGENT_DATA_DIR: ${{ github.workspace }}/data
 
       - name: Build frontend and sidecar
-        run: bash scripts/build.sh --skip-tauri
+        shell: ${{ matrix.shell }}
+        run: ${{ matrix.build }}
+
+      - name: Configure updater (optional, Unix)
+        if: runner.os != 'Windows' && secrets.TAURI_UPDATER_PUBKEY != ''
+        shell: bash
+        run: bash scripts/configure_updater.sh
+        env:
+          TAURI_UPDATER_PUBKEY: ${{ secrets.TAURI_UPDATER_PUBKEY }}
+          TAURI_UPDATER_ENDPOINT: https://github.com/${{ github.repository }}/releases/latest/download/latest.json
+          TAURI_UPDATER_ACTIVE: "true"
+
+      - name: Configure updater (optional, Windows)
+        if: runner.os == 'Windows' && secrets.TAURI_UPDATER_PUBKEY != ''
+        shell: pwsh
+        run: ./scripts/configure_updater.ps1
+        env:
+          TAURI_UPDATER_PUBKEY: ${{ secrets.TAURI_UPDATER_PUBKEY }}
+          TAURI_UPDATER_ENDPOINT: https://github.com/${{ github.repository }}/releases/latest/download/latest.json
+          TAURI_UPDATER_ACTIVE: "true"
 
       - name: Build Tauri bundle
-        run: npm run tauri build
+        shell: ${{ matrix.shell }}
+        run: ${{ matrix.tauri }}
         env:
           AGENT_CONFIG_DIR: ${{ github.workspace }}/agent/config
           AGENT_DATA_DIR: ${{ github.workspace }}/data
+          TAURI_SIGNING_PRIVATE_KEY: ${{ secrets.TAURI_SIGNING_PRIVATE_KEY }}
+          TAURI_SIGNING_PRIVATE_KEY_PASSWORD: ${{ secrets.TAURI_SIGNING_PRIVATE_KEY_PASSWORD }}
 
-      - name: Upload artifacts
+      - name: Upload bundle
         uses: actions/upload-artifact@v4
         with:
-          name: linux-bundle
+          name: bundle-${{ matrix.artifact }}
           path: src-tauri/target/release/bundle/
 
-  build-macos:
-    runs-on: macos-latest
+  release:
+    needs: build
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
     steps:
       - uses: actions/checkout@v4
 
       - uses: actions/setup-python@v5
         with:
           python-version: "3.12"
-          cache: pip
-          cache-dependency-path: agent/pyproject.toml
 
-      - uses: actions/setup-node@v4
+      - name: Download all artifacts
+        uses: actions/download-artifact@v4
         with:
-          node-version: "20"
-          cache: npm
+          path: artifacts
 
-      - uses: dtolnay/rust-toolchain@stable
-
-      - name: Setup and test
+      - name: Generate latest.json
         run: |
-          bash scripts/setup.sh
-          python -m pytest tests/agent -q
-        env:
-          AGENT_CONFIG_DIR: ${{ github.workspace }}/agent/config
-          AGENT_DATA_DIR: ${{ github.workspace }}/data
+          VERSION="${GITHUB_REF#refs/tags/v}"
+          SIG_ARGS=""
+          if [ -f signatures.json ]; then
+            SIG_ARGS="--signatures signatures.json"
+          fi
+          python scripts/generate_latest_json.py \
+            --version "$VERSION" \
+            --repo "${{ github.repository }}" \
+            $SIG_ARGS \
+            -o latest.json
 
-      - name: Build frontend and sidecar
-        run: bash scripts/build.sh --skip-tauri
-
-      - name: Build Tauri bundle
-        run: npm run tauri build
-        env:
-          AGENT_CONFIG_DIR: ${{ github.workspace }}/agent/config
-          AGENT_DATA_DIR: ${{ github.workspace }}/data
-
-      - name: Upload artifacts
-        uses: actions/upload-artifact@v4
+      - name: Create GitHub Release
+        uses: softprops/action-gh-release@v2
         with:
-          name: macos-bundle
-          path: src-tauri/target/release/bundle/
-
-  build-windows:
-    runs-on: windows-latest
-    steps:
-      - uses: actions/checkout@v4
-
-      - uses: actions/setup-python@v5
-        with:
-          python-version: "3.12"
-          cache: pip
-          cache-dependency-path: agent/pyproject.toml
-
-      - uses: actions/setup-node@v4
-        with:
-          node-version: "20"
-          cache: npm
-
-      - uses: dtolnay/rust-toolchain@stable
-
-      - name: Setup and test
-        shell: pwsh
-        run: |
-          ./scripts/setup.ps1
-          python -m pytest tests/agent -q
+          files: |
+            artifacts/**/*
+            latest.json
+          generate_release_notes: true
         env:
-          AGENT_CONFIG_DIR: ${{ github.workspace }}/agent/config
-          AGENT_DATA_DIR: ${{ github.workspace }}/data
-
-      - name: Build frontend and sidecar
-        shell: pwsh
-        run: ./scripts/build.ps1 -SkipTauri
-
-      - name: Build Tauri bundle
-        shell: pwsh
-        run: npm run tauri build
-        env:
-          AGENT_CONFIG_DIR: ${{ github.workspace }}/agent/config
-          AGENT_DATA_DIR: ${{ github.workspace }}/data
-
-      - name: Upload artifacts
-        uses: actions/upload-artifact@v4
-        with:
-          name: windows-bundle
-          path: src-tauri/target/release/bundle/
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}

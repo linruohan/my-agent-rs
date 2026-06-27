@@ -1,12 +1,12 @@
 from __future__ import annotations
 
-import json
 import os
 from typing import Any
 
 import httpx
 
 from infra.auth import get_or_create_token
+from tools.capability.input_control import execute_input_action
 
 
 def capture_via_native_bridge() -> tuple[str, str]:
@@ -66,3 +66,40 @@ def capture_screen_png() -> tuple[str, str]:
         if err:
             return "", f"Native bridge: {err}; mss fallback: {e}"
         return "", str(e)
+
+
+def create_computer_tool(config: dict[str, Any]):
+    from langchain_core.tools import tool
+
+    input_cfg = {
+        "allowed_actions": config.get("allowed_actions", ["type", "click", "scroll"]),
+        "pyautogui_pause": config.get("pyautogui_pause", 0.05),
+    }
+
+    @tool
+    def computer(action: str, text: str = "") -> str:
+        """Computer control: screenshot | type | click X Y | scroll.
+
+        Args:
+            action: screenshot, type, click (with coords in action or text as X,Y), scroll
+            text: text to type, scroll amount, or click coordinates as X,Y
+        """
+        act = action.strip().lower()
+        if act in ("screenshot", "capture", "screen"):
+            b64, err = capture_screen_png()
+            if err:
+                return f"Screenshot failed: {err}"
+            source = "Tauri native bridge" if os.environ.get("NATIVE_BRIDGE_URL") else "mss"
+            return (
+                f"Screenshot captured via {source} ({len(b64)} bytes base64). "
+                "Use for visual analysis."
+            )
+
+        if act in ("type", "click", "scroll") or act.startswith("click"):
+            return execute_input_action(action, text, input_cfg)
+
+        return (
+            f"Unknown action: {action}. Supported: screenshot, type, click X Y, scroll"
+        )
+
+    return computer

@@ -33,6 +33,8 @@ capability:
     enabled: false
     risk: high
     requires_confirmation: true
+    allowed_actions: [type, click, scroll]
+    pyautogui_pause: 0.05
   tool_search:
     enabled: true
     risk: low
@@ -43,6 +45,34 @@ business:
     enabled: true
     risk: low
   list_todos:
+    enabled: true
+    risk: low
+  update_todo:
+    enabled: true
+    risk: low
+  complete_todo:
+    enabled: true
+    risk: low
+  delete_todo:
+    enabled: true
+    risk: medium
+    requires_confirmation: true
+  assign_todo_to_project:
+    enabled: true
+    risk: low
+  create_project:
+    enabled: true
+    risk: low
+  list_projects:
+    enabled: true
+    risk: low
+  update_project:
+    enabled: true
+    risk: low
+  get_project_status:
+    enabled: true
+    risk: low
+  add_project_document:
     enabled: true
     risk: low
   read_calendar:
@@ -63,6 +93,9 @@ business:
     enabled: true
     risk: low
   ingest_notes:
+    enabled: true
+    risk: low
+  read_email:
     enabled: true
     risk: low
   send_email:

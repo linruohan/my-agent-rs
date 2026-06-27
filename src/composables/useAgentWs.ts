@@ -30,6 +30,31 @@ function initBroadcastChannel(sessionStore: ReturnType<typeof useSessionStore>) 
   };
 }
 
+const AUTH_STORAGE_KEY = 'pa-sidecar-auth-token';
+
+async function fetchAuthToken(port: number): Promise<string | null> {
+  try {
+    const { invoke } = await import('@tauri-apps/api/core');
+    return await invoke<string>('get_sidecar_token');
+  } catch {
+    /* web-only mode */
+  }
+  try {
+    const cached = localStorage.getItem(AUTH_STORAGE_KEY);
+    if (cached) return cached;
+    const resp = await fetch(`http://127.0.0.1:${port}/auth/token`);
+    if (!resp.ok) return null;
+    const data = (await resp.json()) as { token?: string };
+    if (data.token) {
+      localStorage.setItem(AUTH_STORAGE_KEY, data.token);
+      return data.token;
+    }
+  } catch {
+    /* ignore */
+  }
+  return null;
+}
+
 function flushTokenBuffer(sessionStore: ReturnType<typeof useSessionStore>) {
   if (tokenBuffer) {
     sessionStore.appendToLastAssistant(tokenBuffer);
@@ -62,12 +87,29 @@ export function useAgentWs() {
         if (msg.port) settingsStore.setSidecarPort(msg.port as number);
         settingsStore.setWsConnected(true);
         connectionError.value = '';
+        if (msg.auth_required) {
+          void (async () => {
+            const port = (msg.port as number) || settingsStore.sidecarPort;
+            const token = await fetchAuthToken(port);
+            if (token) sendRaw({ type: 'auth', token });
+          })();
+        }
         listSessions();
         if (pendingCreateTitle !== undefined) {
           sendRaw({ type: 'session.create', title: pendingCreateTitle });
           pendingCreateTitle = undefined;
         }
         break;
+
+      case 'auth.ok':
+        break;
+
+      case 'tool_progress': {
+        const toolName = msg.tool_name as string;
+        const toolCallId = msg.tool_call_id as string | undefined;
+        sessionStore.updateToolProgress(toolName, toolCallId, msg.status as string);
+        break;
+      }
 
       case 'token':
         tokenBuffer += (msg.content as string) || '';
@@ -125,11 +167,16 @@ export function useAgentWs() {
         });
         break;
 
-      case 'done':
+      case 'done': {
         flushTokenBuffer(sessionStore);
         sessionStore.isStreaming = false;
         bc?.postMessage({ type: 'streaming.end' });
+        const metadata = msg.metadata as { duration_ms?: number } | undefined;
+        if (metadata?.duration_ms != null) {
+          settingsStore.setLastTurnDuration(metadata.duration_ms);
+        }
         break;
+      }
 
       case 'scheduler.reminder': {
         const title = (msg.title as string) || '提醒';
@@ -284,20 +331,33 @@ export function useAgentWs() {
     return false;
   }
 
-  function send(content: string, threadId: string) {
+  function send(
+    content: string,
+    threadId: string,
+    attachments?: Array<{ type: string; name: string; content: string }>
+  ) {
     sessionStore.isStreaming = true;
     bc?.postMessage({ type: 'streaming.start', threadId });
+    const displayContent =
+      attachments?.length && attachments.length > 0
+        ? `${content}\n📎 ${attachments.map((a) => a.name).join(', ')}`
+        : content;
     sessionStore.addMessage({
       id: crypto.randomUUID(),
       role: 'user',
-      content,
+      content: displayContent,
     });
     sessionStore.addMessage({
       id: crypto.randomUUID(),
       role: 'assistant',
       content: '',
     });
-    sendRaw({ type: 'chat.send', thread_id: threadId, content });
+    sendRaw({
+      type: 'chat.send',
+      thread_id: threadId,
+      content,
+      attachments: attachments?.length ? attachments : undefined,
+    });
   }
 
   function stop(threadId: string) {

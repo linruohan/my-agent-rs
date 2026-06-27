@@ -91,11 +91,26 @@ def list_events(start_date: str = "", end_date: str = "") -> list[dict[str, Any]
 
 
 def detect_conflicts(start_time: str, end_time: str) -> list[dict[str, Any]]:
-    events = list_events()
-    conflicts = []
-    for e in events:
+    conflicts: list[dict[str, Any]] = []
+    for e in list_events():
         if e["start_time"] < end_time and e["end_time"] > start_time:
             conflicts.append(e)
+
+    from tools.business.outlook_adapter import read_outlook_events
+
+    outlook_events, _ = read_outlook_events(start_time, end_time)
+    for e in outlook_events:
+        st = str(e.get("start_time", ""))
+        et = str(e.get("end_time", ""))
+        if st and et and st < end_time and et > start_time:
+            conflicts.append(
+                {
+                    "id": e.get("id"),
+                    "title": e.get("title", "Outlook event"),
+                    "start_time": st,
+                    "end_time": et,
+                }
+            )
     return conflicts
 
 
@@ -104,10 +119,23 @@ def create_calendar_tools():
 
     @tool
     def read_calendar(start_date: str = "", end_date: str = "") -> str:
-        """查询日历事件。可选 start_date / end_date 过滤（ISO 格式）。"""
+        """查询日历事件。可选 start_date / end_date 过滤（ISO 格式）。Windows 上优先读取 Outlook。"""
+        from tools.business.outlook_adapter import read_outlook_events
+
+        outlook_events, outlook_err = read_outlook_events(start_date, end_date)
+        if outlook_events:
+            lines = []
+            for e in outlook_events:
+                loc = f" @ {e['location']}" if e.get("location") else ""
+                lines.append(
+                    f"[Outlook] {e['title']}: {e['start_time']} ~ {e['end_time']}{loc}"
+                )
+            return "\n".join(lines)
+
         events = list_events(start_date, end_date)
         if not events:
-            return "指定范围内没有日历事件。"
+            hint = f"（Outlook: {outlook_err}）" if outlook_err else ""
+            return f"指定范围内没有日历事件。{hint}".strip()
         lines = []
         for e in events:
             loc = f" @ {e['location']}" if e["location"] else ""
@@ -124,14 +152,24 @@ def create_calendar_tools():
         location: str = "",
         description: str = "",
     ) -> str:
-        """创建日历事件。此操作可能需要用户确认后才会执行。"""
+        """创建日历事件。Windows 上优先写入 Outlook。此操作可能需要用户确认。"""
         conflicts = detect_conflicts(start_time, end_time)
         if conflicts:
             names = ", ".join(c["title"] for c in conflicts)
             return f"检测到时间冲突，与以下事件重叠: {names}。请调整时间后重试。"
+
+        from tools.business.outlook_adapter import create_outlook_event, outlook_available
+
+        if outlook_available():
+            ok, msg = create_outlook_event(
+                title, start_time, end_time, location, description
+            )
+            if ok:
+                return msg
+
         record = create_event_record(title, start_time, end_time, location, description)
         return (
-            f"已创建日历事件 #{record['id']}: {record['title']} "
+            f"已创建本地日历事件 #{record['id']}: {record['title']} "
             f"({record['start_time']} ~ {record['end_time']})"
         )
 

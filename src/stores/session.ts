@@ -56,6 +56,20 @@ export const useSessionStore = defineStore('session', () => {
     }
   }
 
+  function updateToolProgress(toolName: string, toolCallId: string | undefined, status: string) {
+    for (const [id, tc] of pendingToolCalls.value) {
+      const idMatch = toolCallId && (id === toolCallId || tc.id === toolCallId);
+      const nameMatch = tc.name === toolName && tc.status === 'running';
+      if (idMatch || (!toolCallId && nameMatch)) {
+        const msg = messages.value.find((m) => m.id === id || m.id === tc.id);
+        if (msg) {
+          msg.content = `执行中: ${toolName} (${status})`;
+        }
+        break;
+      }
+    }
+  }
+
   function loadHistory(
     historyMessages: Array<{
       role: string;
@@ -102,6 +116,7 @@ export const useSessionStore = defineStore('session', () => {
     appendToLastAssistant,
     addPendingToolCall,
     resolveToolCall,
+    updateToolProgress,
     resolveInterrupt,
     clearMessages,
     loadHistory,

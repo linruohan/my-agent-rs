@@ -101,6 +101,11 @@ def create_preprocess_node(
     return preprocess
 
 
+_PROGRESS_TOOLS = frozenset(
+    {"code_execution", "bash", "web_fetch", "web_search", "computer"}
+)
+
+
 def create_hitl_tools_node(registry: ToolRegistry):
     async def hitl_tools(state: AgentState, config: RunnableConfig) -> dict[str, Any]:
         emit = config.get("configurable", {}).get("_emit")
@@ -190,6 +195,18 @@ def create_hitl_tools_node(registry: ToolRegistry):
                 continue
 
             try:
+                if emit and name in _PROGRESS_TOOLS:
+                    await emit(
+                        {
+                            "type": "tool_progress",
+                            "thread_id": config.get("configurable", {}).get(
+                                "thread_id", ""
+                            ),
+                            "tool_call_id": tool_id,
+                            "tool_name": name,
+                            "status": "executing",
+                        }
+                    )
                 output = tool.invoke(args)
                 output_str = str(output)
                 citations = _extract_tool_citations(name, output_str)

@@ -7,12 +7,32 @@ import ToolCallCard from '@/components/ToolCallCard.vue';
 const sessionStore = useSessionStore();
 const { send, stop } = useAgentWs();
 const input = ref('');
+const pendingAttachments = ref<Array<{ type: string; name: string; content: string }>>([]);
+
+const ATTACH_ACCEPT = '.md,.txt,.markdown,.pdf,.json,.csv';
+
+async function handleFileSelect(e: Event) {
+  const inputEl = e.target as HTMLInputElement;
+  if (!inputEl.files?.length) return;
+  for (const file of Array.from(inputEl.files)) {
+    const content = await file.text();
+    pendingAttachments.value.push({ type: 'text', name: file.name, content });
+  }
+  inputEl.value = '';
+}
+
+function removeAttachment(index: number) {
+  pendingAttachments.value.splice(index, 1);
+}
 
 function handleSend() {
   const text = input.value.trim();
   if (!text || !sessionStore.currentThreadId) return;
-  send(text, sessionStore.currentThreadId);
+  const attachments =
+    pendingAttachments.value.length > 0 ? [...pendingAttachments.value] : undefined;
+  send(text, sessionStore.currentThreadId, attachments);
   input.value = '';
+  pendingAttachments.value = [];
 }
 
 function handleStop() {
@@ -65,6 +85,16 @@ const runningTools = () =>
       </template>
     </div>
     <div class="input-area">
+      <div v-if="pendingAttachments.length" class="attachments">
+        <span
+          v-for="(att, i) in pendingAttachments"
+          :key="i"
+          class="attachment-chip"
+        >
+          📎 {{ att.name }}
+          <button type="button" class="remove-att" @click="removeAttachment(i)">×</button>
+        </span>
+      </div>
       <textarea
         v-model="input"
         placeholder="输入消息… (Enter 发送, Shift+Enter 换行)"
@@ -72,6 +102,10 @@ const runningTools = () =>
         @keydown="handleKeydown"
       />
       <div class="actions">
+        <label class="btn-attach">
+          附件
+          <input type="file" :accept="ATTACH_ACCEPT" multiple hidden @change="handleFileSelect" />
+        </label>
         <button
           v-if="sessionStore.isStreaming"
           class="btn-stop"
@@ -200,5 +234,43 @@ textarea:focus {
   border-radius: 6px;
   cursor: pointer;
   font-size: 13px;
+}
+
+.attachments {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+}
+
+.attachment-chip {
+  background: #1f2128;
+  border: 1px solid #2a2d35;
+  border-radius: 6px;
+  padding: 4px 8px;
+  font-size: 12px;
+  color: #a1a1aa;
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+}
+
+.remove-att {
+  background: none;
+  border: none;
+  color: #71717a;
+  cursor: pointer;
+  font-size: 14px;
+  padding: 0 2px;
+}
+
+.btn-attach {
+  background: #374151;
+  color: #e4e4e7;
+  border: none;
+  padding: 8px 14px;
+  border-radius: 6px;
+  cursor: pointer;
+  font-size: 13px;
+  margin-right: auto;
 }
 </style>

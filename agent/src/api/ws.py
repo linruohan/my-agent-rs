@@ -10,11 +10,26 @@ from agent.runner import AgentRunner
 from infra.session_store import SessionStore
 
 from infra.hitl import hitl_timeout_manager
+from infra.auth import auth_required, verify_token
 
 router = APIRouter()
 VERSION = "0.1.0"
 
 _thread_emitters: dict[str, Any] = {}
+_authenticated_ws: set[int] = set()
+
+PROTECTED_MSG_TYPES = frozenset(
+    {
+        "chat.send",
+        "chat.stop",
+        "chat.resume",
+        "session.create",
+        "session.delete",
+        "rag.ingest",
+        "rag.delete",
+        "memory.set",
+    }
+)
 
 
 class ConnectionManager:
@@ -52,10 +67,21 @@ def create_ws_router(
     @ws_router.websocket("/ws")
     async def websocket_endpoint(ws: WebSocket):
         await manager.connect(ws)
-        await ws.send_json({"type": "connected", "port": port, "version": VERSION})
+        ws_id = id(ws)
+        await ws.send_json(
+            {
+                "type": "connected",
+                "port": port,
+                "version": VERSION,
+                "auth_required": auth_required(),
+            }
+        )
 
         async def emit(msg: dict[str, Any]):
             await ws.send_json(msg)
+
+        def is_authenticated() -> bool:
+            return not auth_required() or ws_id in _authenticated_ws
 
         async def auto_hitl_resume(thread_id: str, decision: str, edited_args: dict | None):
             emitter = _thread_emitters.get(thread_id, emit)
@@ -79,6 +105,31 @@ def create_ws_router(
                 raw = await ws.receive_text()
                 data = json.loads(raw)
                 msg_type = data.get("type")
+
+                if msg_type == "auth":
+                    token = data.get("token", "")
+                    if verify_token(token):
+                        _authenticated_ws.add(ws_id)
+                        await ws.send_json({"type": "auth.ok"})
+                    else:
+                        await ws.send_json(
+                            {
+                                "type": "error",
+                                "message": "Authentication failed",
+                                "code": "AUTH_FAILED",
+                            }
+                        )
+                    continue
+
+                if msg_type in PROTECTED_MSG_TYPES and not is_authenticated():
+                    await ws.send_json(
+                        {
+                            "type": "error",
+                            "message": "Authentication required",
+                            "code": "AUTH_FAILED",
+                        }
+                    )
+                    continue
 
                 if msg_type == "ping":
                     await ws.send_json({"type": "pong"})
@@ -146,7 +197,10 @@ def create_ws_router(
                         continue
                     session_store.touch(thread_id)
                     _thread_emitters[thread_id] = emit
-                    asyncio.create_task(runner.run(thread_id, content, emit))
+                    attachments = data.get("attachments")
+                    asyncio.create_task(
+                        runner.run(thread_id, content, emit, attachments=attachments)
+                    )
                     continue
 
                 if msg_type == "chat.stop":
@@ -265,5 +319,6 @@ def create_ws_router(
 
         except WebSocketDisconnect:
             manager.disconnect(ws)
+            _authenticated_ws.discard(ws_id)
 
     return ws_router

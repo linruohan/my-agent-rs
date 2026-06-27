@@ -26,6 +26,7 @@ class AgentRunner:
         thread_id: str,
         content: str,
         emit: EventCallback,
+        attachments: list[dict[str, Any]] | None = None,
     ) -> None:
         config = self._make_config(thread_id, emit)
         start = time.monotonic()
@@ -35,7 +36,8 @@ class AgentRunner:
             self._active[thread_id] = task
 
         try:
-            input_state = {"messages": [HumanMessage(content=content)]}
+            message_content = _build_user_message(content, attachments)
+            input_state = {"messages": [HumanMessage(content=message_content)]}
             metadata: dict[str, Any] = {"duration_ms": 0}
 
             async for event in self.graph.astream_events(
@@ -256,6 +258,23 @@ class AgentRunner:
                     }
                 )
         return result
+
+
+def _build_user_message(
+    content: str, attachments: list[dict[str, Any]] | None = None
+) -> str:
+    if not attachments:
+        return content
+    parts = [content]
+    for att in attachments:
+        name = att.get("name", "attachment")
+        att_type = att.get("type", "text")
+        att_content = att.get("content", "")
+        if att_type == "text" and att_content:
+            parts.append(f"\n\n[附件: {name}]\n{att_content}")
+        elif att_content:
+            parts.append(f"\n\n[附件: {name} ({att_type})]\n{att_content}")
+    return "".join(parts)
 
 
 def _extract_citations(text: str) -> list[dict[str, str]]:

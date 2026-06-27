@@ -53,6 +53,7 @@ impl SidecarManager {
     }
 
     fn apply_native_env(&self, cmd: &mut Command) {
+        cmd.env("AGENT_EXPECTED_VERSION", env!("CARGO_PKG_VERSION"));
         if let Some(ref token) = self.auth_token {
             cmd.env("SIDECAR_AUTH_TOKEN", token);
         }
@@ -68,7 +69,7 @@ impl SidecarManager {
         &self,
         sidecar: tauri_plugin_shell::process::Command,
     ) -> tauri_plugin_shell::process::Command {
-        let mut cmd = sidecar;
+        let mut cmd = sidecar.env("AGENT_EXPECTED_VERSION", env!("CARGO_PKG_VERSION"));
         if let Some(ref token) = self.auth_token {
             cmd = cmd.env("SIDECAR_AUTH_TOKEN", token);
         }
@@ -240,6 +241,8 @@ impl SidecarManager {
         struct HealthResponse {
             status: String,
             version: String,
+            #[serde(default)]
+            version_ok: bool,
         }
 
         let client = Client::new();
@@ -259,6 +262,11 @@ impl SidecarManager {
                             "Sidecar version mismatch: expected {EXPECTED_VERSION}, got {}",
                             body.version
                         ));
+                    }
+                    if !body.version_ok {
+                        log::warn!(
+                            "Sidecar API version negotiation: version_ok=false (continuing)"
+                        );
                     }
                     log::info!("Sidecar health OK (v{})", body.version);
                     return Ok(());

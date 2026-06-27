@@ -40,6 +40,10 @@ mcp = [
 computer = [
     "mss>=9.0",
     "pillow>=10.0",
+    "pyautogui>=0.9",
+]
+outlook = [
+    "pywin32>=306; sys_platform == 'win32'",
 ]
 rag = [
     "sentence-transformers>=3.0",

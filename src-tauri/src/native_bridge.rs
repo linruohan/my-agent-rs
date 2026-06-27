@@ -1,6 +1,7 @@
 use std::path::Path;
 use std::sync::Arc;
 
+use tauri::Manager;
 use tokio::io::{AsyncReadExt, AsyncWriteExt};
 use tokio::net::TcpListener;
 use tokio::sync::watch;

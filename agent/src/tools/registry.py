@@ -164,10 +164,12 @@ def _register_business(registry: ToolRegistry, config: dict[str, Any]) -> None:
     from tools.business.email import create_email_tools
     from tools.business.file import create_file_tools
     from tools.business.notes import create_notes_tools
+    from tools.business.project import create_project_tools
     from tools.business.todo import create_todo_tools
 
     factories = [
         create_todo_tools,
+        create_project_tools,
         create_calendar_tools,
         create_file_tools,
         create_notes_tools,

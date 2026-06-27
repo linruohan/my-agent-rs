@@ -2,15 +2,24 @@ from __future__ import annotations
 
 import os
 
-from fastapi import APIRouter
+from fastapi import APIRouter, Request
 
 from infra.config import load_app_config, load_llm_providers_config
+from infra.auth import auth_required, get_or_create_token
 
 router = APIRouter()
 
 
 def get_version() -> str:
     return str(load_app_config().get("version", "0.1.0"))
+
+
+def get_api_version() -> str:
+    return os.environ.get("AGENT_API_VERSION", get_version())
+
+
+def get_expected_version() -> str:
+    return os.environ.get("AGENT_EXPECTED_VERSION", get_version())
 
 
 def llm_key_status() -> dict[str, object]:
@@ -39,4 +48,22 @@ VERSION = get_version()
 
 @router.get("/health")
 async def health():
-    return {"status": "ok", "version": get_version(), **llm_key_status()}
+    api_version = get_api_version()
+    expected = get_expected_version()
+    return {
+        "status": "ok",
+        "version": get_version(),
+        "api_version": api_version,
+        "expected_version": expected,
+        "version_ok": api_version == expected,
+        "auth_required": auth_required(),
+        **llm_key_status(),
+    }
+
+
+@router.get("/auth/token")
+async def auth_token(request: Request):
+    host = request.client.host if request.client else request.url.hostname or ""
+    if host not in ("127.0.0.1", "::1", "localhost", "testserver", "testclient"):
+        return {"error": "forbidden"}
+    return {"token": get_or_create_token()}
