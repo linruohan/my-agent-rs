@@ -10,25 +10,53 @@
 |------|------|------|
 | 表现层 | Vue 3 + TypeScript + Vite | 聊天、设置、工具卡片、HITL 确认 |
 | 桌面壳 | Tauri 2（Rust） | 窗口、托盘、Sidecar 生命周期、原生 IPC |
-| 原生层 | Tauri Commands | keyring、文件对话框、系统通知 |
-| Agent 服务 | Python Sidecar（FastAPI + WebSocket） | LangGraph、Tools、Checkpoint、RAG |
-| 工具层 | ToolRegistry（统一注册） | 云端能力本地化 + 业务 Tool + MCP |
+| 原生层 | Tauri Commands | keyring、文件对话框、系统通知、屏幕截图 |
+| Agent 服务 | Python Sidecar（FastAPI + WebSocket） | LangGraph、ToolRegistry、Checkpoint、RAG |
+| 工具层 | ToolRegistry（统一注册） | Capability Tool + Business Tool + MCP |
 | 持久化 | SQLite | Checkpoint、SessionStore、配置 |
 | 通信 | WebSocket（127.0.0.1） | 前端 ↔ Sidecar 双向流式与控制 |
 
+### 架构数据流（Mermaid）
+
+```mermaid
+sequenceDiagram
+    participant U as 用户
+    participant V as Vue 3 (WebView)
+    participant R as Rust (Tauri)
+    participant S as Python Sidecar (FastAPI)
+    participant T as ToolRegistry
+    participant L as LangGraph Agent
+
+    U->>V: 1. 输入消息
+    V->>S: 2. WebSocket chat.send {thread_id, content}
+    S->>L: 3. invoke Agent (messages, config)
+    L->>L: 4. LLM 推理 → tool_calls
+    L->>T: 5. resolve_all() 获取工具
+    T-->>L: 6. 返回 Capability/Business/MCP 工具
+    L->>L: 7. ToolNode 执行（本地沙箱）
+    L->>S: 8. 流式返回 token / tool_start / tool_end
+    S->>V: 9. WebSocket 推送事件
+    V->>U: 10. 渲染消息 + 工具卡片
+
+    alt 敏感操作
+        L->>S: interrupt()
+        S->>V: interrupt 事件
+        V->>U: ConfirmModal
+        U->>V: 批准/拒绝/编辑
+        V->>S: chat.resume {decision}
+        S->>L: Command(resume=...)
+    end
+
+    R->>S: Sidecar 启停 / 健康检查 / keyring 注入
+    R->>V: invoke (文件对话框 / 屏幕截图)
 ```
-┌─────────────────────────────────────────────────────────┐
-│  Vue 3 SPA（Tauri WebView）                              │
-│  ChatView │ Settings │ ConfirmModal │ SessionSidebar    │
-└──────────┬──────────────────────────┬───────────────────┘
-           │ invoke                    │ WebSocket
-           ▼                           ▼
-┌──────────────────────┐    ┌─────────────────────────────┐
-│  Rust (src-tauri)     │    │  Python Sidecar (FastAPI)    │
-│  Sidecar 启停 │ 托盘  │───▶│  LangGraph Agent │ Tools    │
-│  keyring │ 文件对话框 │    │  SessionStore │ Checkpoint  │
-└──────────────────────┘    └─────────────────────────────┘
-```
+
+**关键组件说明**
+
+- **ToolRegistry**：统一管理三类工具，所有工具本地执行，与 LLM Provider 解耦
+- **Capability Tool**：复刻云端 Agent 能力（web_search、code_execution、text_editor 等）
+- **Business Tool**：个人助理专有逻辑（todo、calendar、email 等）
+- **MCP Tool**：外部生态扩展（可选）
 
 ---
 
@@ -59,12 +87,15 @@
 
 ### 1.3 非功能性需求
 
-| 维度 | 目标 |
-|------|------|
-| 响应延迟 | 简单任务 < 3s，复杂多步 < 15s |
+| 维度 | 目标（量化） |
+|------|--------------|
+| 首 token 延迟 | 本地模型 < 800ms，API 模型 < 1200ms |
+| 工具调用平均延迟 | p95 < 2000ms（不含用户确认） |
+| 端到端简单任务 | < 3s（含 1 次工具调用） |
+| 复杂多步任务 | < 15s（不含 HITL 等待） |
 | 可用性 | 桌面常驻、系统托盘、定时 + 事件触发 |
 | 安全性 | 敏感操作二次确认；API Key 系统密钥链存储 |
-| 可观测性 | 工具调用链、延迟、成功率日志 |
+| 可观测性 | 工具调用链、延迟、成功率 + LangSmith / OTEL 追踪 |
 | 可扩展性 | LLM、工具、前端模块均可独立替换 |
 
 ---
@@ -127,6 +158,37 @@
 | 窗口 / 托盘 / 通知 | ✓ | — |
 | API Key（keyring） | ✓ | 启动时注入 env |
 | 文件选择对话框 / 屏幕截图 | ✓ | 接收路径；computer 截图 |
+
+### 2.4 前端状态管理（Pinia Stores）
+
+**核心 Store 设计**
+
+```typescript
+// stores/session.ts
+export const useSessionStore = defineStore('session', () => {
+  const currentThreadId = ref<string | null>(null);
+  const pendingToolCalls = ref<Map<string, ToolCall>>(new Map()); // tool_call_id → ToolCall
+  const interruptQueue = ref<InterruptEvent[]>([]);               // 待确认的 HITL 事件
+  const messages = ref<Message[]>([]);
+
+  function addPendingToolCall(tc: ToolCall) {
+    pendingToolCalls.value.set(tc.id, tc);
+  }
+
+  function resolveInterrupt(decision: 'approve' | 'reject' | 'edit', editedArgs?: any) {
+    const event = interruptQueue.value.shift();
+    if (event) useAgentWs().resume(event.thread_id, decision, editedArgs);
+  }
+
+  return { currentThreadId, pendingToolCalls, interruptQueue, messages, addPendingToolCall, resolveInterrupt };
+});
+```
+
+**多标签页冲突处理**
+
+- 使用 `BroadcastChannel` 广播 `thread_id` 变更
+- 同一 `thread_id` 仅允许一个标签页持有 WebSocket 连接
+- 其他标签页降级为只读模式，显示「已在其他标签页打开」
 
 ### 2.3 LLM：可插拔 Provider
 
@@ -327,6 +389,54 @@ Agent interrupt → WS 推送 interrupt → Vue ConfirmModal
 - 健康：`GET http://127.0.0.1:{port}/health`
 - 退出：先发 HTTP `POST /shutdown`，超时再 kill
 
+**WebSocket 客户端重连策略（Vue 端）**
+
+```typescript
+// src/composables/useAgentWs.ts
+const RECONNECT_DELAYS = [1000, 2000, 4000, 8000, 16000]; // 指数退避
+let reconnectAttempt = 0;
+
+function connect() {
+  ws = new WebSocket(url);
+  ws.onopen = () => { reconnectAttempt = 0; /* 发送 auth token */ };
+  ws.onclose = () => scheduleReconnect();
+  ws.onerror = (e) => console.error(e);
+}
+
+function scheduleReconnect() {
+  if (reconnectAttempt >= RECONNECT_DELAYS.length) return;
+  const delay = RECONNECT_DELAYS[reconnectAttempt++];
+  setTimeout(connect, delay);
+}
+```
+
+**连接认证（可选，生产环境推荐）**
+
+Sidecar 启动时生成一次性 HMAC token，写入 `data/.sidecar_token`，前端通过 `localStorage` 或 Tauri Store 读取后在 `connected` 事件后立即发送 `auth` 消息：
+
+```json
+{ "type": "auth", "token": "hmac-sha256-xxx", "thread_id": "..." }
+```
+
+**HITL 超时策略**
+
+| 配置项 | 默认值 | 说明 |
+|--------|--------|------|
+| `hitl.timeout_sec` | 300 | 用户无响应时自动拒绝 |
+| `hitl.on_timeout` | `reject` | `reject` \| `approve` \| `wait` |
+| `hitl.notify_before_sec` | 30 | 超时前 30s 推送提醒 |
+
+**错误码枚举（`error.code`）**
+
+| code | 含义 | 客户端处理 |
+|------|------|------------|
+| `AUTH_FAILED` | 认证失败 | 重新获取 token |
+| `THREAD_NOT_FOUND` | thread_id 不存在 | 创建新会话 |
+| `TOOL_NOT_FOUND` | 工具不存在 | 降级为文本回复 |
+| `SANDBOX_TIMEOUT` | 沙箱执行超时 | 重试或提示用户 |
+| `PROVIDER_ERROR` | LLM 调用失败 | 触发 Provider 降级 |
+| `RATE_LIMIT` | API 限流 | 指数退避重试 |
+
 ---
 
 ## 四、模块设计
@@ -413,17 +523,34 @@ def web_fetch(url: str, max_chars: int = 50000) -> str:
     return text[:max_chars]
 ```
 
-**code_execution 本地沙箱**
+**code_execution 本地沙箱（安全边界）**
 
 ```python
 @tool
 def code_execution(code: str, language: str = "python") -> str:
     """Execute code in a restricted sandbox and return stdout/stderr."""
     return SandboxRunner(
-        workspace=WORKSPACE_DIR, timeout=90,
-        allowed_imports=["json", "math", "re", "datetime"], network=False,
+        workspace=WORKSPACE_DIR,
+        timeout=90,
+        allowed_imports=["json", "math", "re", "datetime", "numpy", "pandas"],
+        blocked_builtins=["__import__", "eval", "exec", "open"],
+        network=False,                 # 禁止 socket / requests
+        mem_limit_mb=256,
+        cpu_time_sec=30,
+        audit_log=True,                # 记录所有文件/网络尝试
     ).run_python(code)
 ```
+
+**沙箱安全措施**
+
+| 维度 | 措施 | 说明 |
+|------|------|------|
+| 进程隔离 | subprocess / Docker | 默认 subprocess；高风险场景用 Docker（seccomp + AppArmor） |
+| 资源限制 | mem_limit、cpu_time | 防止 fork bomb / 内存耗尽 |
+| 网络隔离 | network=False | 禁止 socket；code_execution 默认禁网 |
+| 文件系统 | chroot / 工作目录限制 | 仅允许读写 `~/AssistantWorkspace/sandbox/` |
+| 审计日志 | audit_log=True | 记录 import、open、exec 尝试，异常时告警 |
+| 白名单机制 | allowed_imports / blocked_builtins | 显式控制可用能力 |
 
 **text_editor（对齐 Claude text_editor 命令语义）**
 
@@ -532,20 +659,71 @@ business:
   search_notes:      { enabled: false, risk: low }
 ```
 
-#### 4.2.6 ToolRegistry
-
-所有工具统一注册、统一本地执行，**与 LLM Provider 无关**：
+#### 4.2.6 ToolRegistry 完整实现
 
 ```python
-class ToolRegistry:
-    def register(self, tool: BaseTool, category: str, meta: dict): ...
-    def get_enabled_tools(self) -> list[BaseTool]: ...
-    def requires_confirmation(self, tool_name: str) -> bool: ...
-    async def resolve_all(self) -> list[BaseTool]:
-        return self.get_enabled_tools() + await load_mcp_tools(...)
+# agent/src/tools/registry.py
+from __future__ import annotations
+import asyncio
+from typing import Any
+from langchain_core.tools import BaseTool
+from langchain_core.runnables import Runnable
 
-def create_agent(registry: ToolRegistry, checkpointer):
-    tools = registry.get_enabled_tools()
+class ToolRegistry:
+    """统一工具注册与解析中心。所有工具本地执行，与 LLM Provider 解耦。"""
+
+    def __init__(self, config: dict[str, Any]):
+        self.config = config
+        self._tools: dict[str, BaseTool] = {}
+        self._meta: dict[str, dict[str, Any]] = {}
+        self._lock = asyncio.Lock()
+
+    def register(self, tool: BaseTool, category: str, meta: dict[str, Any] | None = None) -> None:
+        """注册工具。category: capability | business | mcp"""
+        self._tools[tool.name] = tool
+        self._meta[tool.name] = {**(meta or {}), "category": category}
+
+    def get_enabled_tools(self, categories: list[str] | None = None) -> list[BaseTool]:
+        """返回当前启用的工具列表。可按类别过滤。"""
+        enabled = []
+        for name, tool in self._tools.items():
+            cfg = self._find_config(name)
+            if not cfg.get("enabled", False):
+                continue
+            if categories and self._meta[name]["category"] not in categories:
+                continue
+            enabled.append(tool)
+        return enabled
+
+    def _find_config(self, name: str) -> dict[str, Any]:
+        for cat in ("capability", "business"):
+            if name in self.config.get(cat, {}):
+                return self.config[cat][name]
+        return {}
+
+    def requires_confirmation(self, tool_name: str) -> bool:
+        cfg = self._find_config(tool_name)
+        if "requires_confirmation" in cfg:
+            return cfg["requires_confirmation"]
+        risk = self._meta.get(tool_name, {}).get("risk", "low")
+        return risk in ("medium", "high")
+
+    async def resolve_all(self, include_mcp: bool = True) -> list[BaseTool]:
+        """返回最终绑定给 LLM 的工具列表（含 MCP）。"""
+        async with self._lock:
+            tools = self.get_enabled_tools()
+            if include_mcp:
+                mcp_tools = await load_mcp_tools(self.config.get("mcp_servers", {}))
+                tools.extend(mcp_tools)
+            return tools
+
+    async def reload(self) -> None:
+        """热重载配置（不重启 Sidecar）。"""
+        # 实际项目中从磁盘重新读取 tools.yaml 并更新 self.config
+        pass
+
+def create_agent(registry: ToolRegistry, checkpointer) -> Runnable:
+    tools = registry.get_enabled_tools()  # 同步部分
     llm = create_llm(load_provider(get_default_provider())).bind_tools(tools)
     return create_react_agent(llm, tools, checkpointer=checkpointer)
 ```
@@ -601,14 +779,121 @@ Agent 生成 tool_call
 - 工具调用日志审计（操作类型、参数摘要、时间戳）
 - 输入校验：拒绝 shell 注入模式
 
+### 4.5 可观测性与监控（贯穿全生命周期）
+
+**追踪（Tracing）**
+
+- **LangSmith**（推荐）：完整 Agent 执行轨迹、token 用量、工具调用链
+- **OpenTelemetry**：Sidecar 暴露 OTLP endpoint，前端与 Rust 均可注入 trace context
+
+**指标（Metrics）**
+
+| 指标 | 单位 | 目标 |
+|------|------|------|
+| `agent.first_token_latency` | ms | < 800（本地模型） |
+| `agent.tool_call_duration` | ms | p95 < 2000 |
+| `sandbox.execution_time` | ms | p99 < 30000 |
+| `websocket.message_rate` | msg/s | 监控异常峰值 |
+| `provider.fallback_count` | count | 降级次数告警 |
+
+**日志结构化**
+
+```json
+{
+  "ts": "2026-06-27T11:00:00Z",
+  "level": "INFO",
+  "trace_id": "xxx",
+  "thread_id": "abc",
+  "event": "tool_end",
+  "tool": "web_search",
+  "duration_ms": 1240,
+  "result_len": 1532
+}
+```
+
+**告警规则（示例）**
+
+- 连续 3 次 Provider 降级 → 通知管理员
+- 沙箱执行时间 > 60s → 强制终止 + 告警
+- WebSocket 断连率 > 5% → 告警
+
+**UI 面板**
+
+- 实时 Token 消耗曲线
+- 工具调用成功率热力图
+- 活跃会话列表与状态
+
 ### 4.4 RAG 知识库（Phase 2）
 
+**完整流程**
+
 ```
-文档导入 → RecursiveCharacterTextSplitter 分块
-         → Embedding（与 LLM 同 Provider 或本地模型）
-         → 存入 FAISS/Chroma
-         → 检索时 top-k + MMR 去重
-         → 注入 Prompt 上下文
+文档导入（PDF / MD / TXT / DOCX）
+    ↓
+预处理（去重、清洗、元数据提取）
+    ↓
+分块策略
+    ├─ RecursiveCharacterTextSplitter（通用）
+    ├─ SemanticChunker（语义边界）
+    └─ MarkdownHeaderTextSplitter（结构化文档）
+    ↓
+Embedding（与 LLM 同 Provider 或本地 bge-m3 / nomic-embed）
+    ↓
+向量库（FAISS / Chroma / LanceDB）
+    ├─ 增量 upsert
+    ├─ 版本标记（支持回滚）
+    └─ TTL / 软删除
+    ↓
+检索策略
+    ├─ Vector + BM25 混合（RRF 融合）
+    ├─ MMR 多样性去重
+    ├─ Cross-Encoder 重排序（可选）
+    └─ top-k + 引用截断
+    ↓
+上下文注入（带来源引用）
+```
+
+**关键配置（`rag.yaml`）**
+
+```yaml
+chunking:
+  strategy: recursive
+  chunk_size: 800
+  chunk_overlap: 100
+  separators: ["\n\n", "\n", "。", "，", " "]
+
+embedding:
+  provider: local          # local | openai | anthropic
+  model: BAAI/bge-m3
+  dimension: 1024
+
+retrieval:
+  top_k: 6
+  mmr_lambda: 0.5
+  use_bm25: true
+  rerank: false            # Phase 3 开启
+
+index:
+  backend: faiss           # faiss | chroma | lancedb
+  persist_dir: data/vectorstore
+  versioned: true
+```
+
+**增量更新与删除**
+
+- 文档变更时计算 content hash，相同 hash 跳过
+- 删除时标记 `deleted_at`，检索时过滤
+- 支持按 `source` / `tag` 批量删除
+
+**引用格式（返回给 LLM）**
+
+```json
+{
+  "content": "...",
+  "source": "meeting-notes-2026-06-20.md",
+  "page": 3,
+  "score": 0.87
+}
 ```
 
 ---
@@ -799,9 +1084,10 @@ dependencies = [
 
 | 任务 | 产出 |
 |------|------|
-| Sidecar 打包 | PyInstaller → `src-tauri/binaries/` |
-| 桌面安装包 | `tauri build`（.msi / .dmg / .AppImage） |
-| CI 多平台 | 各 target-triple Sidecar 矩阵构建 |
+| Sidecar 打包 | PyInstaller spec + 版本协商 |
+| 桌面安装包 | `tauri build` + 代码签名 |
+| CI 多平台 | GitHub Actions 矩阵构建 6 个 target-triple |
+| 自动更新 | Tauri updater + Sidecar 版本协商 |
 | 异常恢复 | 网络超时重试、Provider 降级 |
 | 测试覆盖 | Agent 核心模块单元测试 |
 
@@ -865,6 +1151,54 @@ def invoke_with_fallback(prompt, providers):
 - **Provider 无关**：切换 LLM 不更换工具集，仅更换推理模型
 - **computer 跨层**：截图走 Rust Tauri Command，动作解析在 Sidecar
 
+### 8.6 部署与打包要点
+
+**PyInstaller spec（`agent/agent-api.spec`）**
+
+```python
+a = Analysis(['main.py'], binaries=[], datas=[('config/', 'config/')], ...)
+pyz = PYZ(a.pure)
+exe = EXE(pyz, a.scripts, a.binaries, a.datas, name='agent-api', ...)
+```
+
+**Tauri 配置片段（`src-tauri/tauri.conf.json`）**
+
+```json
+{
+  "bundle": {
+    "externalBin": ["binaries/agent-api"],
+    "resources": ["data/.sidecar_token"]
+  }
+}
+```
+
+**代码签名与公证**
+
+- Windows：EV 代码签名证书 + Azure Trusted Signing
+- macOS：Apple Developer ID + notarization + stapling
+- Linux：GPG 签名（可选）
+
+**自动更新流程**
+
+1. Tauri 检查 GitHub Releases
+2. 下载新版应用 + 新版 Sidecar
+3. Sidecar 启动时对比 `AGENT_API_VERSION` env
+4. 不一致则触发 Sidecar 替换（原子操作）
+
+**CI 矩阵示例（GitHub Actions）**
+
+```yaml
+strategy:
+  matrix:
+    include:
+      - os: ubuntu-latest
+        target: x86_64-unknown-linux-gnu
+      - os: macos-latest
+        target: aarch64-apple-darwin
+      - os: windows-latest
+        target: x86_64-pc-windows-msvc
+```
+
 ---
 
 ## 九、风险与应对
@@ -900,3 +1234,38 @@ MVP（对话 + 本地 web_search + 待办/日程 + WebSocket UI）
 ```
 
 每个阶段均有明确验收标准，确保持续可交付。
+
+---
+
+## 附录 A：术语表（Glossary）
+
+| 术语 | 定义 |
+|------|------|
+| **Capability Tool** | 复刻云端 Agent 通用能力的本地工具（web_search、code_execution、text_editor 等） |
+| **Business Tool** | 个人助理专有业务逻辑工具（todo、calendar、email 等） |
+| **云端能力本地化** | 不调用厂商 Server Tool API，而在 Sidecar 本地实现同等能力 |
+| **HITL** | Human-in-the-Loop，人工介入确认机制 |
+| **MCP** | Model Context Protocol，外部工具生态协议 |
+| **Sidecar** | 与主应用分离的后台进程（本项目为 Python FastAPI） |
+| **ToolNode** | LangGraph 中执行工具调用的节点 |
+| **ToolRegistry** | 统一管理所有工具的注册与解析中心 |
+
+## 附录 B：关键依赖版本约束（最低）
+
+| 组件 | 最低版本 | 备注 |
+|------|----------|------|
+| Python | 3.11 | Sidecar 运行时 |
+| Node.js | 20 LTS | 前端构建 |
+| Rust | 1.80 | Tauri 2 要求 |
+| Tauri | 2.0 | 桌面壳 |
+| LangChain | 0.3 | 工具与模型集成 |
+| LangGraph | 0.3 | Agent 编排 |
+| Vue | 3.4 | 前端框架 |
+| PyInstaller | 6.0 | Sidecar 打包 |
+
+## 附录 C：参考资料
+
+- [Claude Tool Reference](https://platform.claude.com/docs/en/agents-and-tools/tool-use/tool-reference) — 工具 schema 参考
+- [Tauri Sidecar 文档](https://tauri.app/develop/sidecar/) — Sidecar 打包指南
+- [LangGraph 官方文档](https://langchain-ai.github.io/langgraph/) — Agent 编排
+- [MCP 规范](https://modelcontextprotocol.io/) — 外部工具协议

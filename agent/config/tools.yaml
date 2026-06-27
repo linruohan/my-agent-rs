@@ -1,0 +1,52 @@
+defaults:
+  requires_confirmation_risk: medium
+
+capability:
+  web_search:
+    enabled: true
+    risk: low
+    backend: duckduckgo
+    max_results: 5
+    allowed_domains: []
+  web_fetch:
+    enabled: true
+    risk: low
+    max_chars: 50000
+    timeout_sec: 30
+  code_execution:
+    enabled: true
+    risk: high
+    requires_confirmation: true
+    timeout_sec: 90
+    network: false
+    sandbox: subprocess
+    mem_limit_mb: 256
+    cpu_time_sec: 30
+  text_editor:
+    enabled: true
+    risk: medium
+    workspace: ~/AssistantWorkspace
+
+business:
+  create_todo:
+    enabled: true
+    risk: low
+  list_todos:
+    enabled: true
+    risk: low
+  read_calendar:
+    enabled: true
+    risk: low
+  create_calendar_event:
+    enabled: true
+    risk: medium
+    requires_confirmation: true
+  read_file:
+    enabled: true
+    risk: low
+  write_file:
+    enabled: true
+    risk: high
+    requires_confirmation: true
+
+mcp_servers: {}

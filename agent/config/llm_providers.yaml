@@ -1,0 +1,42 @@
+default_provider: deepseek
+
+providers:
+  deepseek:
+    type: openai_compatible
+    base_url: https://api.deepseek.com/v1
+    model: deepseek-chat
+    api_key_env: DEEPSEEK_API_KEY
+    supports_tool_call: true
+
+  openai:
+    type: openai_compatible
+    base_url: https://api.openai.com/v1
+    model: gpt-4o
+    api_key_env: OPENAI_API_KEY
+    supports_tool_call: true
+
+  anthropic:
+    type: anthropic
+    model: claude-sonnet-4-20250514
+    api_key_env: ANTHROPIC_API_KEY
+    supports_tool_call: true
+
+  qwen:
+    type: openai_compatible
+    base_url: https://dashscope.aliyuncs.com/compatible-mode/v1
+    model: qwen-plus
+    api_key_env: DASHSCOPE_API_KEY
+    supports_tool_call: true
+
+  ollama:
+    type: ollama
+    base_url: http://localhost:11434
+    model: qwen2.5:7b
+    supports_tool_call: true
+
+  custom:
+    type: openai_compatible
+    base_url: https://your-gateway.com/v1
+    model: your-model-name
+    api_key_env: CUSTOM_API_KEY
+    supports_tool_call: true

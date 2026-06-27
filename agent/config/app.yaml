@@ -1,0 +1,7 @@
+host: 127.0.0.1
+port: 0
+data_dir: ../data
+hitl:
+  timeout_sec: 300
+  on_timeout: reject
+  notify_before_sec: 30

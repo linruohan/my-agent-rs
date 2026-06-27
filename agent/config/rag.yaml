@@ -1,0 +1,20 @@
+chunking:
+  strategy: recursive
+  chunk_size: 800
+  chunk_overlap: 100
+
+embedding:
+  provider: local
+  model: BAAI/bge-m3
+  dimension: 1024
+
+retrieval:
+  top_k: 6
+  mmr_lambda: 0.5
+  use_bm25: true
+  rerank: false
+
+index:
+  backend: faiss
+  persist_dir: data/vectorstore
+  versioned: true
