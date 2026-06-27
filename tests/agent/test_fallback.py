@@ -29,5 +29,5 @@ def test_create_llm_with_fallback_no_keys(monkeypatch):
     monkeypatch.setattr("llm.fallback._provider_available", lambda _name: False)
     from llm.fallback import create_llm_with_fallback
 
-    with pytest.raises(RuntimeError, match="unavailable"):
+    with pytest.raises(RuntimeError, match="未检测到 API Key"):
         create_llm_with_fallback()

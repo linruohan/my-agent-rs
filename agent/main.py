@@ -20,7 +20,7 @@ if getattr(sys, "frozen", False):
 import uvicorn
 from fastapi import FastAPI
 
-from agent.graph import create_agent_graph, get_checkpointer
+from agent.graph import create_agent_graph, create_sqlite_checkpointer
 from agent.runner import AgentRunner
 from api.config_route import router as config_router
 from api.health import router as health_router
@@ -34,17 +34,30 @@ from infra.session_store import SessionStore
 from tools.registry import build_registry
 
 
+def _uvicorn_log_config() -> dict:
+    """Send uvicorn logs to stderr so stdout stays clean for READY port= (Tauri pipe)."""
+    import copy
+
+    from uvicorn.config import LOGGING_CONFIG
+
+    cfg = copy.deepcopy(LOGGING_CONFIG)
+    for handler in ("default", "access"):
+        cfg["handlers"][handler]["stream"] = "ext://sys.stderr"
+    return cfg
+
+
 def build_app(port: int = 8765) -> FastAPI:
     tools_cfg = load_tools_config()
     registry = build_registry(tools_cfg)
-    checkpointer = get_checkpointer()
-    graph = create_agent_graph(registry, checkpointer)
-    runner = AgentRunner(graph, registry)
+    runner = AgentRunner(None, registry)
     session_store = SessionStore()
 
     @asynccontextmanager
     async def lifespan(app: FastAPI):
         from loguru import logger
+
+        checkpointer, conn = await create_sqlite_checkpointer()
+        runner.graph = create_agent_graph(registry, checkpointer)
 
         get_scheduler()
         mcp_cfg = tools_cfg.get("mcp_servers", {})
@@ -52,8 +65,11 @@ def build_app(port: int = 8765) -> FastAPI:
             tools = await registry.resolve_all(include_mcp=True)
             runner.graph = create_agent_graph(registry, checkpointer)
             logger.info("MCP enabled; {} tools available", len(tools))
-        yield
-        shutdown_scheduler()
+        try:
+            yield
+        finally:
+            shutdown_scheduler()
+            await conn.close()
 
     app = FastAPI(title="Personal Assistant Agent", version=VERSION, lifespan=lifespan)
     app.include_router(health_router)
@@ -86,7 +102,13 @@ def main():
 
     app = build_app(port=requested_port if requested_port else 8765)
 
-    config = uvicorn.Config(app, host=host, port=requested_port, log_level="info")
+    config = uvicorn.Config(
+        app,
+        host=host,
+        port=requested_port,
+        log_level="info",
+        log_config=_uvicorn_log_config(),
+    )
     server = uvicorn.Server(config)
 
     original_startup = server.startup

@@ -1,4 +1,5 @@
 use std::io::{BufRead, BufReader};
+use std::path::PathBuf;
 use std::process::{Child, Command, Stdio};
 use std::time::Duration;
 
@@ -36,7 +37,7 @@ impl SidecarManager {
 
     pub async fn start(&mut self, app: &AppHandle) -> Result<u16, String> {
         if self.status != SidecarStatus::Stopped {
-            let _ = self.stop();
+            self.stop_async().await?;
         }
         let result = if cfg!(debug_assertions) {
             self.start_dev_mode(app).await
@@ -54,14 +55,7 @@ impl SidecarManager {
         self.status = SidecarStatus::Starting;
         let _ = app.emit("sidecar-status", &self.status);
 
-        let agent_dir = std::env::current_dir()
-            .map_err(|e| e.to_string())?
-            .join("agent");
-        let config_dir = agent_dir.join("config");
-        let data_dir = agent_dir
-            .parent()
-            .map(|p| p.join("data"))
-            .unwrap_or_else(|| agent_dir.join("data"));
+        let (agent_dir, config_dir, data_dir) = Self::dev_agent_paths(app)?;
 
         let python = if cfg!(windows) { "python" } else { "python3" };
 
@@ -71,15 +65,15 @@ impl SidecarManager {
         child.env("AGENT_CONFIG_DIR", &config_dir);
         child.env("AGENT_DATA_DIR", &data_dir);
         child.stdout(Stdio::piped());
-        child.stderr(Stdio::piped());
+        child.stderr(Stdio::inherit());
 
-        crate::keyring::inject_api_keys(&mut child);
+        crate::keyring::inject_api_keys(&mut child, &data_dir);
 
         let mut child = child
             .spawn()
             .map_err(|e| format!("Failed to start sidecar: {e}"))?;
 
-        let port = Self::wait_for_ready_stdout(&mut child)?;
+        let port = Self::wait_for_ready_stdout(&mut child, Duration::from_secs(60))?;
         self.child = Some(child);
         self.port = Some(port);
         self.status = SidecarStatus::Running;
@@ -157,10 +151,27 @@ impl SidecarManager {
         Ok(port)
     }
 
-    fn wait_for_ready_stdout(child: &mut Child) -> Result<u16, String> {
+    fn dev_agent_paths(app: &AppHandle) -> Result<(PathBuf, PathBuf, PathBuf), String> {
+        // `tauri dev` runs with cwd=src-tauri; agent lives at repo_root/agent
+        let agent_dir = PathBuf::from(env!("CARGO_MANIFEST_DIR"))
+            .join("..")
+            .join("agent");
+        if !agent_dir.join("main.py").is_file() {
+            return Err(format!(
+                "Agent sidecar not found at {} (expected repo agent/main.py)",
+                agent_dir.display()
+            ));
+        }
+        let config_dir = agent_dir.join("config");
+        let data_dir = app.path().app_data_dir().map_err(|e| e.to_string())?;
+        std::fs::create_dir_all(&data_dir).map_err(|e| e.to_string())?;
+        Ok((agent_dir, config_dir, data_dir))
+    }
+
+    fn wait_for_ready_stdout(child: &mut Child, timeout: Duration) -> Result<u16, String> {
         let stdout = child.stdout.take().ok_or("No stdout from sidecar")?;
         let reader = BufReader::new(stdout);
-        let deadline = std::time::Instant::now() + Duration::from_secs(30);
+        let deadline = std::time::Instant::now() + timeout;
         for line in reader.lines() {
             if std::time::Instant::now() > deadline {
                 return Err("Sidecar startup timeout".to_string());
@@ -213,15 +224,12 @@ impl SidecarManager {
         Err("Sidecar health check failed".to_string())
     }
 
-    pub fn stop(&mut self) -> Result<(), String> {
+    pub async fn stop_async(&mut self) -> Result<(), String> {
         if let Some(port) = self.port {
-            let rt = tokio::runtime::Runtime::new().map_err(|e| e.to_string())?;
-            let _ = rt.block_on(async {
-                Client::new()
-                    .post(format!("http://127.0.0.1:{port}/shutdown"))
-                    .send()
-                    .await
-            });
+            let _ = Client::new()
+                .post(format!("http://127.0.0.1:{port}/shutdown"))
+                .send()
+                .await;
         }
 
         if let Some(mut child) = self.child.take() {
@@ -251,7 +259,7 @@ pub async fn start_sidecar(
 #[tauri::command]
 pub async fn stop_sidecar(state: State<'_, Mutex<SidecarManager>>) -> Result<(), String> {
     let mut manager = state.lock().await;
-    manager.stop()
+    manager.stop_async().await
 }
 
 #[tauri::command]

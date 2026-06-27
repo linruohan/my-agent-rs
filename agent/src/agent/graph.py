@@ -20,14 +20,23 @@ from memory.store import get_user_preferences
 from tools.registry import ToolRegistry
 
 
-def get_checkpointer():
-    from langgraph.checkpoint.sqlite import SqliteSaver
+async def create_sqlite_checkpointer():
+    """Create AsyncSqliteSaver on the running event loop (required for astream_events)."""
+    import aiosqlite
+    from langgraph.checkpoint.sqlite.aio import AsyncSqliteSaver
 
     checkpoint_dir = get_data_dir() / "checkpoints"
     checkpoint_dir.mkdir(parents=True, exist_ok=True)
     db_path = checkpoint_dir / "checkpoints.db"
-    conn = __import__("sqlite3").connect(str(db_path), check_same_thread=False)
-    return SqliteSaver(conn)
+    conn = await aiosqlite.connect(str(db_path))
+    return AsyncSqliteSaver(conn), conn
+
+
+def get_checkpointer():
+    """In-memory checkpointer for unit tests only."""
+    from langgraph.checkpoint.memory import MemorySaver
+
+    return MemorySaver()
 
 
 _rag_store: RagStore | None = None

@@ -17,12 +17,24 @@ def get_fallback_chain() -> list[str]:
     from infra.config import load_llm_providers_config
 
     cfg = load_llm_providers_config()
+    default = cfg.get("default_provider", get_default_provider())
     chain = cfg.get("fallback_chain")
     if isinstance(chain, list) and chain:
-        return chain
-    default = cfg.get("default_provider", get_default_provider())
-    rest = [p for p in DEFAULT_FALLBACK_CHAIN if p != default]
-    return [default, *rest]
+        rest = [p for p in chain if p != default]
+    else:
+        rest = [p for p in DEFAULT_FALLBACK_CHAIN if p != default]
+    ordered = [default, *rest]
+    # Do not silently fall back to local Ollama unless user chose it.
+    if default != "ollama":
+        ordered = [p for p in ordered if p != "ollama"]
+    return ordered
+
+
+def _missing_key_message(name: str) -> str:
+    return (
+        f"Provider «{name}» 不可用：未检测到 API Key。"
+        "请在「设置」页填写 API Key 并保存；保存后 Sidecar 会自动重启以加载密钥。"
+    )
 
 
 def _provider_available(name: str) -> bool:
@@ -44,15 +56,19 @@ def create_llm_with_fallback(
     **kwargs: Any,
 ) -> tuple[BaseChatModel, str]:
     """Create LLM trying primary then fallback chain. Returns (llm, provider_name)."""
+    explicit = primary or get_default_provider()
     chain = get_fallback_chain()
     if primary and primary not in chain:
-        chain = [primary, *chain]
+        chain = [primary, *[p for p in chain if p != primary]]
     elif primary:
-        chain = [primary] + [p for p in chain if p != primary]
+        chain = [primary, *[p for p in chain if p != primary]]
 
     last_error: Exception | None = None
+    missing_key_providers: list[str] = []
     for name in chain:
         if not _provider_available(name):
+            if name == explicit:
+                missing_key_providers.append(name)
             logger.debug("Skipping provider {} (no API key or unknown)", name)
             continue
         try:
@@ -63,6 +79,13 @@ def create_llm_with_fallback(
         except Exception as e:
             last_error = e
             logger.warning("Provider {} init failed: {}", name, e)
+            if name == explicit:
+                raise RuntimeError(
+                    f"Provider «{explicit}» 初始化失败: {e}"
+                ) from e
+
+    if explicit in missing_key_providers:
+        raise RuntimeError(_missing_key_message(explicit))
 
     if last_error:
         raise RuntimeError(f"All LLM providers unavailable: {last_error}") from last_error

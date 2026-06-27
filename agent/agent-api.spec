@@ -27,6 +27,8 @@ a = Analysis(
         "uvicorn.lifespan.on",
         "langgraph",
         "langgraph.checkpoint.sqlite",
+        "langgraph.checkpoint.sqlite.aio",
+        "aiosqlite",
         "langchain_ollama",
         "apscheduler.schedulers.background",
     ],

@@ -8,6 +8,7 @@ const storedProviders = ref<string[]>([]);
 const saveMessage = ref('');
 const updateMessage = ref('');
 const sidecarVersion = ref('');
+const sidecarKeyReady = ref<boolean | null>(null);
 const toolStats = ref({ count: 0, enabled_count: 0 });
 const mcpStatus = ref<{
   any_enabled: boolean;
@@ -17,6 +18,11 @@ const mcpStatus = ref<{
 const providers = ['deepseek', 'openai', 'anthropic', 'qwen', 'ollama', 'custom'];
 
 const isCustom = computed(() => settings.provider === 'custom');
+const keyProvider = computed(() => (settings.provider === 'custom' ? 'custom' : settings.provider));
+const hasStoredKey = computed(() => storedProviders.value.includes(keyProvider.value));
+const needsApiKey = computed(
+  () => settings.provider !== 'ollama' && !hasStoredKey.value && !apiKey.value.trim()
+);
 
 async function loadStoredProviders() {
   try {
@@ -58,6 +64,8 @@ async function loadSidecarInfo() {
       fetch(`${base}/mcp/status`).then((r) => r.json()),
     ]);
     sidecarVersion.value = health.version ?? '';
+    sidecarKeyReady.value =
+      typeof health.llm_key_configured === 'boolean' ? health.llm_key_configured : null;
     toolStats.value = {
       count: tools.count ?? tools.tools?.length ?? 0,
       enabled_count: tools.enabled_count ?? 0,
@@ -65,6 +73,7 @@ async function loadSidecarInfo() {
     mcpStatus.value = mcp;
   } catch {
     sidecarVersion.value = '';
+    sidecarKeyReady.value = null;
     toolStats.value = { count: 0, enabled_count: 0 };
     mcpStatus.value = null;
   }
@@ -110,36 +119,65 @@ async function saveLlmConfig() {
 async function saveApiKey() {
   saveMessage.value = '';
   try {
+    const keyProviderName = keyProvider.value;
+    const hasKey =
+      apiKey.value.trim().length > 0 || storedProviders.value.includes(keyProviderName);
+    if (settings.provider !== 'ollama' && !hasKey) {
+      throw new Error('请填写 API Key');
+    }
+
     await saveLlmConfig();
 
-    if (apiKey.value.trim()) {
+    const keyWasUpdated = apiKey.value.trim().length > 0;
+    if (keyWasUpdated) {
       const { invoke } = await import('@tauri-apps/api/core');
-      const keyProvider = settings.provider === 'custom' ? 'custom' : settings.provider;
       await invoke('store_api_key', {
-        provider: keyProvider,
+        provider: keyProviderName,
         apiKey: apiKey.value.trim(),
       });
       apiKey.value = '';
       await loadStoredProviders();
+      if (!storedProviders.value.includes(keyProviderName)) {
+        throw new Error('API Key 保存失败，请重试或检查磁盘/密钥链权限');
+      }
     }
 
-    saveMessage.value = '配置已保存，请点击「重启 Sidecar」使 LLM 设置生效';
+    await restartSidecar();
+
+    const base = `http://127.0.0.1:${settings.sidecarPort}`;
+    const health = await fetch(`${base}/health`).then((r) => r.json());
+    sidecarKeyReady.value = health.llm_key_configured ?? null;
+    if (settings.provider !== 'ollama' && health.llm_key_configured === false) {
+      throw new Error(
+        'Sidecar 仍未加载 API Key。请在 API Key 输入框粘贴密钥后再次保存'
+      );
+    }
+
+    saveMessage.value = keyWasUpdated
+      ? '配置与 API Key 已保存，Sidecar 已自动重启'
+      : '配置已保存，Sidecar 已重启';
   } catch (e) {
+    settings.setSidecarStatus('error');
     const detail = e instanceof Error ? e.message : String(e);
     saveMessage.value = `保存失败: ${detail}`;
   }
 }
 
-async function restartSidecar() {
+async function restartSidecar(): Promise<number> {
+  const { invoke } = await import('@tauri-apps/api/core');
+  await invoke('stop_sidecar');
+  const port = await invoke<number>('start_sidecar');
+  settings.setSidecarPort(port);
+  settings.setSidecarStatus('running');
+  await loadSidecarInfo();
+  return port;
+}
+
+async function restartSidecarFromUi() {
   saveMessage.value = '';
   try {
-    const { invoke } = await import('@tauri-apps/api/core');
-    await invoke('stop_sidecar');
-    const port = await invoke<number>('start_sidecar');
-    settings.setSidecarPort(port);
-    settings.setSidecarStatus('running');
+    const port = await restartSidecar();
     saveMessage.value = `Sidecar 已重启，端口 ${port}`;
-    await loadSidecarInfo();
   } catch (e) {
     settings.setSidecarStatus('error');
     const detail = e instanceof Error ? e.message : String(e);
@@ -200,17 +238,27 @@ onMounted(async () => {
       <input v-model="settings.customModel" type="text" placeholder="your-model-name" />
     </section>
 
+    <section v-if="isCustom && !hasStoredKey" class="warn-box">
+      <strong>尚未保存 API Key</strong>
+      <p>Provider / URL / 模型名已保存不等于 Key 已配置。请在下方输入框粘贴 NVIDIA API Key，再点「保存配置」。</p>
+    </section>
+
     <section>
       <label>温度 ({{ settings.temperature }})</label>
       <input v-model.number="settings.temperature" type="range" min="0" max="1" step="0.1" />
     </section>
 
     <section>
-      <label>API Key（存入系统密钥链）</label>
+      <label>API Key（保存到系统密钥链，不会写入配置文件）</label>
       <input v-model="apiKey" type="password" placeholder="sk-..." />
+      <p v-if="hasStoredKey" class="info-inline">{{ keyProvider }} 的 Key 已保存在本地（密钥链/加密文件）</p>
+      <p v-if="sidecarKeyReady === true" class="info-inline">Sidecar 已加载当前 Provider 的 API Key</p>
+      <p v-else-if="sidecarKeyReady === false" class="warn">Sidecar 未加载 API Key，聊天会失败</p>
       <div class="btn-row">
-        <button @click="saveApiKey">保存配置</button>
-        <button class="btn-secondary" @click="restartSidecar">重启 Sidecar</button>
+        <button @click="saveApiKey" :disabled="needsApiKey && settings.provider !== 'ollama'">
+          保存配置
+        </button>
+        <button class="btn-secondary" @click="restartSidecarFromUi">重启 Sidecar</button>
       </div>
       <p v-if="saveMessage" class="msg" :class="{ 'msg-error': settings.sidecarStatus === 'error' }">{{ saveMessage }}</p>
     </section>
@@ -321,7 +369,30 @@ button {
   color: #71717a;
 }
 
+.warn-box {
+  background: #451a03;
+  border: 1px solid #92400e;
+  border-radius: 8px;
+  padding: 12px;
+  font-size: 13px;
+  color: #fcd34d;
+}
+
+.warn-box p {
+  margin: 6px 0 0;
+  color: #fde68a;
+}
+
+.warn-box strong {
+  color: #fbbf24;
+}
+
 .warn {
   color: #f59e0b;
+}
+
+.info-inline {
+  font-size: 12px;
+  color: #71717a;
 }
 </style>
