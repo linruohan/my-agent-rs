@@ -28,6 +28,16 @@ class ConnectionManager:
     def disconnect(self, ws: WebSocket):
         self._connections.discard(ws)
 
+    async def broadcast(self, msg: dict[str, Any]) -> None:
+        dead: list[WebSocket] = []
+        for ws in self._connections:
+            try:
+                await ws.send_json(msg)
+            except Exception:
+                dead.append(ws)
+        for ws in dead:
+            self._connections.discard(ws)
+
 
 manager = ConnectionManager()
 
@@ -52,6 +62,17 @@ def create_ws_router(
             await runner.resume(thread_id, decision, edited_args, emitter)
 
         hitl_timeout_manager.set_resume_callback(auto_hitl_resume)
+
+        async def hitl_notify(thread_id: str, seconds_left: int):
+            await emit(
+                {
+                    "type": "interrupt_timeout_warning",
+                    "thread_id": thread_id,
+                    "seconds_left": seconds_left,
+                }
+            )
+
+        hitl_timeout_manager.set_notify_callback(hitl_notify)
 
         try:
             while True:
@@ -78,6 +99,27 @@ def create_ws_router(
                     ok = session_store.delete(thread_id)
                     await ws.send_json(
                         {"type": "session.deleted", "thread_id": thread_id, "ok": ok}
+                    )
+                    continue
+
+                if msg_type == "session.history":
+                    thread_id = data.get("thread_id", "")
+                    if not thread_id:
+                        await ws.send_json(
+                            {
+                                "type": "error",
+                                "message": "thread_id required",
+                                "code": "INVALID_REQUEST",
+                            }
+                        )
+                        continue
+                    messages = await runner.get_history(thread_id)
+                    await ws.send_json(
+                        {
+                            "type": "session.history",
+                            "thread_id": thread_id,
+                            "messages": messages,
+                        }
                     )
                     continue
 
@@ -159,8 +201,22 @@ def create_ws_router(
                         result = rag.ingest_file(path)
                     elif content:
                         source = data.get("source", "inline")
-                        count = rag.ingest_text(content, source=source)
-                        result = f"Ingested {count} chunks from {source}"
+                        if content.startswith("__pdf_b64__:"):
+                            import base64
+                            import io
+
+                            from pypdf import PdfReader
+
+                            raw = base64.b64decode(content[len("__pdf_b64__:") :])
+                            reader = PdfReader(io.BytesIO(raw))
+                            text = "\n".join(
+                                p.extract_text() or "" for p in reader.pages
+                            )
+                            count = rag.ingest_text(text, source=source)
+                            result = f"Ingested {count} chunks from PDF {source}"
+                        else:
+                            count = rag.ingest_text(content, source=source)
+                            result = f"Ingested {count} chunks from {source}"
                     else:
                         result = "path or content required"
                     await ws.send_json({"type": "rag.ingest", "result": result})

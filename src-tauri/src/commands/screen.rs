@@ -2,8 +2,7 @@ use base64::{engine::general_purpose::STANDARD, Engine as _};
 use screenshots::Screen;
 use tauri::command;
 
-#[command]
-pub async fn capture_screen() -> Result<String, String> {
+pub async fn capture_screen_b64() -> Result<String, String> {
     tokio::task::spawn_blocking(|| {
         let screens = Screen::all().map_err(|e| e.to_string())?;
         let screen = screens
@@ -28,4 +27,9 @@ pub async fn capture_screen() -> Result<String, String> {
     })
     .await
     .map_err(|e| e.to_string())?
+}
+
+#[command]
+pub async fn capture_screen() -> Result<String, String> {
+    capture_screen_b64().await
 }

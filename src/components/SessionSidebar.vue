@@ -3,10 +3,11 @@ import { useSessionStore } from '@/stores/session';
 import { useAgentWs } from '@/composables/useAgentWs';
 
 const sessionStore = useSessionStore();
-const { createSession, deleteSession, connectionError, isConnected } = useAgentWs();
+const { createSession, deleteSession, loadSessionHistory, connectionError, isConnected } = useAgentWs();
 
 function selectSession(threadId: string) {
   sessionStore.setCurrentThread(threadId);
+  loadSessionHistory(threadId);
 }
 
 function handleNewSession() {

@@ -23,6 +23,9 @@ pub struct SidecarManager {
     pub port: Option<u16>,
     child: Option<Child>,
     sidecar_child: Option<tauri_plugin_shell::process::CommandChild>,
+    auth_token: Option<String>,
+    native_bridge_port: Option<u16>,
+    _native_bridge: Option<crate::native_bridge::NativeBridge>,
 }
 
 impl SidecarManager {
@@ -32,7 +35,47 @@ impl SidecarManager {
             port: None,
             child: None,
             sidecar_child: None,
+            auth_token: None,
+            native_bridge_port: None,
+            _native_bridge: None,
         }
+    }
+
+    pub fn set_native_env(
+        &mut self,
+        token: String,
+        bridge_port: u16,
+        bridge: crate::native_bridge::NativeBridge,
+    ) {
+        self.auth_token = Some(token);
+        self.native_bridge_port = Some(bridge_port);
+        self._native_bridge = Some(bridge);
+    }
+
+    fn apply_native_env(&self, cmd: &mut Command) {
+        if let Some(ref token) = self.auth_token {
+            cmd.env("SIDECAR_AUTH_TOKEN", token);
+        }
+        if let Some(port) = self.native_bridge_port {
+            cmd.env(
+                "NATIVE_BRIDGE_URL",
+                format!("http://127.0.0.1:{port}"),
+            );
+        }
+    }
+
+    fn apply_native_env_sidecar(
+        &self,
+        sidecar: tauri_plugin_shell::process::Command,
+    ) -> tauri_plugin_shell::process::Command {
+        let mut cmd = sidecar;
+        if let Some(ref token) = self.auth_token {
+            cmd = cmd.env("SIDECAR_AUTH_TOKEN", token);
+        }
+        if let Some(port) = self.native_bridge_port {
+            cmd = cmd.env("NATIVE_BRIDGE_URL", format!("http://127.0.0.1:{port}"));
+        }
+        cmd
     }
 
     pub async fn start(&mut self, app: &AppHandle) -> Result<u16, String> {
@@ -64,6 +107,7 @@ impl SidecarManager {
         child.current_dir(&agent_dir);
         child.env("AGENT_CONFIG_DIR", &config_dir);
         child.env("AGENT_DATA_DIR", &data_dir);
+        self.apply_native_env(&mut child);
         child.stdout(Stdio::piped());
         child.stderr(Stdio::inherit());
 
@@ -102,6 +146,7 @@ impl SidecarManager {
             .args(["--host", "127.0.0.1", "--port", "0"]);
 
         let sidecar = crate::keyring::apply_sidecar_env(sidecar, &data_dir);
+        let sidecar = self.apply_native_env_sidecar(sidecar);
 
         let (mut rx, child) = sidecar.spawn().map_err(|e| format!("Spawn failed: {e}"))?;
 

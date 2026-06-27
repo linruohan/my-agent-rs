@@ -79,7 +79,24 @@ def create_todo_tools():
     def create_todo(title: str, due_date: str = "", priority: str = "normal") -> str:
         """创建一条待办事项。"""
         record = create_todo_record(title, due_date, priority)
-        return f"已创建待办 #{record['id']}: {record['title']} (优先级: {priority}, 截止: {due_date or '无'})"
+        reminder_note = ""
+        if due_date:
+            try:
+                from datetime import datetime, timezone
+                from infra.scheduler import schedule_reminder
+
+                parsed = datetime.fromisoformat(due_date.replace("Z", "+00:00"))
+                if parsed.tzinfo is None:
+                    parsed = parsed.replace(tzinfo=timezone.utc)
+                job_id = f"todo-{record['id']}"
+                schedule_reminder(job_id, f"待办提醒", f"待办 #{record['id']}: {title}", parsed)
+                reminder_note = f"，已设置 {due_date} 提醒"
+            except (ValueError, TypeError):
+                reminder_note = "（截止日格式无效，未设置提醒；请用 ISO 8601 如 2026-06-28T09:00:00）"
+        return (
+            f"已创建待办 #{record['id']}: {record['title']} "
+            f"(优先级: {priority}, 截止: {due_date or '无'}){reminder_note}"
+        )
 
     @tool
     def list_todos(include_completed: bool = False) -> str:

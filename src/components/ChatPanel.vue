@@ -49,6 +49,7 @@ const runningTools = () =>
               :name="msg.toolName || ''"
               :category="msg.category"
               :content="msg.content"
+              :citations="msg.citations"
             />
           </div>
           <div v-else class="bubble">{{ msg.content }}</div>

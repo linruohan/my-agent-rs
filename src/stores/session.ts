@@ -32,15 +32,51 @@ export const useSessionStore = defineStore('session', () => {
     pendingToolCalls.value.set(tc.id, tc);
   }
 
-  function resolveToolCall(name: string, result: string) {
+  function resolveToolCall(
+    name: string,
+    result: string,
+    toolCallId?: string,
+    citations?: Array<{ title: string; url: string }>
+  ) {
     for (const [id, tc] of pendingToolCalls.value) {
-      if (tc.name === name && tc.status === 'running') {
+      const idMatch = toolCallId && (id === toolCallId || tc.id === toolCallId);
+      const nameMatch = tc.name === name && tc.status === 'running';
+      if (idMatch || (!toolCallId && nameMatch)) {
         tc.status = 'done';
         tc.result = result;
+        if (citations?.length) tc.citations = citations;
         pendingToolCalls.value.set(id, tc);
+        const msg = messages.value.find((m) => m.id === id || m.id === tc.id);
+        if (msg) {
+          msg.content = result;
+          if (citations?.length) msg.citations = citations;
+        }
         break;
       }
     }
+  }
+
+  function loadHistory(
+    historyMessages: Array<{
+      role: string;
+      content: string;
+      tool_name?: string;
+      citations?: Array<{ title: string; url: string }>;
+    }>
+  ) {
+    messages.value = historyMessages.map((m) => ({
+      id: crypto.randomUUID(),
+      role: m.role as Message['role'],
+      content: m.content,
+      toolName: m.tool_name,
+      citations: m.citations,
+    }));
+    pendingToolCalls.value.clear();
+  }
+
+  function setCurrentThread(threadId: string | null) {
+    currentThreadId.value = threadId;
+    clearMessages();
   }
 
   function resolveInterrupt(decision: 'approve' | 'reject' | 'edit', editedArgs?: Record<string, unknown>) {
@@ -53,11 +89,6 @@ export const useSessionStore = defineStore('session', () => {
   function clearMessages() {
     messages.value = [];
     pendingToolCalls.value.clear();
-  }
-
-  function setCurrentThread(threadId: string | null) {
-    currentThreadId.value = threadId;
-    clearMessages();
   }
 
   return {
@@ -73,6 +104,7 @@ export const useSessionStore = defineStore('session', () => {
     resolveToolCall,
     resolveInterrupt,
     clearMessages,
+    loadHistory,
     setCurrentThread,
   };
 });

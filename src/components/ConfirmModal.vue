@@ -1,10 +1,21 @@
 <script setup lang="ts">
-import { computed } from 'vue';
+import { computed, ref, watch } from 'vue';
 import { useSessionStore } from '@/stores/session';
 
 const sessionStore = useSessionStore();
 
 const currentInterrupt = computed(() => sessionStore.interruptQueue[0]);
+const editMode = ref(false);
+const editedArgsJson = ref('');
+
+watch(currentInterrupt, (intr) => {
+  editMode.value = false;
+  if (intr?.args) {
+    editedArgsJson.value = JSON.stringify(intr.args, null, 2);
+  } else {
+    editedArgsJson.value = '{}';
+  }
+});
 
 function approve() {
   sessionStore.resolveInterrupt('approve');
@@ -13,6 +24,16 @@ function approve() {
 function reject() {
   sessionStore.resolveInterrupt('reject');
 }
+
+function submitEdit() {
+  try {
+    const parsed = JSON.parse(editedArgsJson.value) as Record<string, unknown>;
+    sessionStore.resolveInterrupt('edit', parsed);
+    editMode.value = false;
+  } catch {
+    alert('JSON 格式无效，请检查后重试');
+  }
+}
 </script>
 
 <template>
@@ -20,11 +41,20 @@ function reject() {
     <div class="modal">
       <h3>确认操作</h3>
       <p class="preview">{{ currentInterrupt.preview }}</p>
-      <pre v-if="currentInterrupt.args && Object.keys(currentInterrupt.args).length" class="args">{{ JSON.stringify(currentInterrupt.args, null, 2) }}</pre>
+      <template v-if="editMode">
+        <label class="edit-label">编辑参数 (JSON)</label>
+        <textarea v-model="editedArgsJson" class="edit-area" rows="8" />
+      </template>
+      <pre
+        v-else-if="currentInterrupt.args && Object.keys(currentInterrupt.args).length"
+        class="args"
+      >{{ JSON.stringify(currentInterrupt.args, null, 2) }}</pre>
       <p class="action">操作: {{ currentInterrupt.action }}</p>
       <div class="buttons">
         <button class="btn-reject" @click="reject">拒绝</button>
-        <button class="btn-approve" @click="approve">批准</button>
+        <button v-if="!editMode" class="btn-edit" @click="editMode = true">编辑</button>
+        <button v-if="editMode" class="btn-edit" @click="submitEdit">提交编辑</button>
+        <button v-if="!editMode" class="btn-approve" @click="approve">批准</button>
       </div>
     </div>
   </div>
@@ -77,6 +107,26 @@ function reject() {
   overflow-x: auto;
 }
 
+.edit-label {
+  display: block;
+  font-size: 12px;
+  color: #71717a;
+  margin-bottom: 6px;
+}
+
+.edit-area {
+  width: 100%;
+  background: #0f1117;
+  border: 1px solid #2a2d35;
+  border-radius: 6px;
+  color: #e4e4e7;
+  padding: 10px;
+  font-size: 12px;
+  font-family: monospace;
+  margin-bottom: 16px;
+  resize: vertical;
+}
+
 .buttons {
   display: flex;
   justify-content: flex-end;
@@ -85,6 +135,15 @@ function reject() {
 
 .btn-reject {
   background: #374151;
+  color: #e4e4e7;
+  border: none;
+  padding: 8px 16px;
+  border-radius: 6px;
+  cursor: pointer;
+}
+
+.btn-edit {
+  background: #4b5563;
   color: #e4e4e7;
   border: none;
   padding: 8px 16px;

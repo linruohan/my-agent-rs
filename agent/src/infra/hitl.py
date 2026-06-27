@@ -14,17 +14,31 @@ class HitlTimeoutManager:
         cfg = load_app_config().get("hitl", {})
         self.timeout_sec = int(cfg.get("timeout_sec", 300))
         self.on_timeout = cfg.get("on_timeout", "reject")
+        self.notify_before_sec = int(cfg.get("notify_before_sec", 0))
         self._tasks: dict[str, asyncio.Task] = {}
+        self._notify_callbacks: dict[str, Any] = {}
         self._resume_callback = None
 
     def set_resume_callback(self, cb):
         self._resume_callback = cb
 
+    def set_notify_callback(self, cb):
+        """Optional callback(thread_id) for timeout warning."""
+        self._notify_callbacks["default"] = cb
+
     def schedule(self, thread_id: str) -> None:
         self.cancel(thread_id)
 
         async def _wait():
-            await asyncio.sleep(self.timeout_sec)
+            if self.notify_before_sec > 0 and self.timeout_sec > self.notify_before_sec:
+                await asyncio.sleep(self.timeout_sec - self.notify_before_sec)
+                cb = self._notify_callbacks.get("default")
+                if cb and thread_id in self._tasks:
+                    await cb(thread_id, self.notify_before_sec)
+                await asyncio.sleep(self.notify_before_sec)
+            else:
+                await asyncio.sleep(self.timeout_sec)
+
             if self._resume_callback and self.on_timeout == "reject":
                 await self._resume_callback(thread_id, "reject", None)
 

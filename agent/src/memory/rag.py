@@ -11,7 +11,21 @@ from typing import Any
 from infra.config import get_data_dir, load_rag_config
 from memory.rag_vector import FaissVectorIndex, merge_search_results
 
-SUPPORTED_EXTENSIONS = {".md", ".txt", ".markdown"}
+SUPPORTED_EXTENSIONS = {".md", ".txt", ".markdown", ".pdf"}
+
+
+def _extract_file_text(target: Path) -> str:
+    suffix = target.suffix.lower()
+    if suffix == ".pdf":
+        try:
+            from pypdf import PdfReader
+
+            reader = PdfReader(str(target))
+            pages = [page.extract_text() or "" for page in reader.pages]
+            return "\n".join(pages)
+        except ImportError:
+            raise RuntimeError("PDF support requires: pip install pypdf")
+    return target.read_text(encoding="utf-8", errors="replace")
 
 
 class RagStore:
@@ -132,7 +146,7 @@ class RagStore:
             return f"File not found: {path}"
         if target.suffix.lower() not in SUPPORTED_EXTENSIONS:
             return f"Unsupported file type: {target.suffix}. Supported: {SUPPORTED_EXTENSIONS}"
-        content = target.read_text(encoding="utf-8", errors="replace")
+        content = _extract_file_text(target)
         count = self.ingest_text(content, source=path)
         if count == 0:
             return f"Skipped {path} (content unchanged)"

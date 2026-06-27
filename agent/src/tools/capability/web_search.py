@@ -63,13 +63,89 @@ class MockSearchBackend:
         ][:max_results]
 
 
+class TavilyBackend:
+    """Tavily search API backend (requires TAVILY_API_KEY)."""
+
+    def search(
+        self,
+        query: str,
+        max_results: int = 5,
+        allowed_domains: list[str] | None = None,
+    ) -> list[SearchResult]:
+        import os
+
+        api_key = os.environ.get("TAVILY_API_KEY", "")
+        if not api_key:
+            raise RuntimeError("TAVILY_API_KEY not configured")
+
+        from tavily import TavilyClient
+
+        client = TavilyClient(api_key=api_key)
+        kwargs: dict[str, Any] = {"query": query, "max_results": max_results}
+        if allowed_domains:
+            kwargs["include_domains"] = allowed_domains
+        response = client.search(**kwargs)
+        results: list[SearchResult] = []
+        for item in response.get("results", []):
+            results.append(
+                SearchResult(
+                    title=item.get("title", ""),
+                    url=item.get("url", ""),
+                    snippet=item.get("content", item.get("snippet", "")),
+                )
+            )
+        return results
+
+
+class SearXNGBackend:
+    """Self-hosted SearXNG instance backend."""
+
+    def __init__(self, base_url: str = "http://127.0.0.1:8080"):
+        self.base_url = base_url.rstrip("/")
+
+    def search(
+        self,
+        query: str,
+        max_results: int = 5,
+        allowed_domains: list[str] | None = None,
+    ) -> list[SearchResult]:
+        import httpx
+
+        params = {"q": query, "format": "json", "categories": "general"}
+        resp = httpx.get(f"{self.base_url}/search", params=params, timeout=15)
+        resp.raise_for_status()
+        data = resp.json()
+        results: list[SearchResult] = []
+        for item in data.get("results", [])[:max_results]:
+            url = item.get("url", "")
+            if allowed_domains and not any(d in url for d in allowed_domains):
+                continue
+            results.append(
+                SearchResult(
+                    title=item.get("title", ""),
+                    url=url,
+                    snippet=item.get("content", item.get("snippet", "")),
+                )
+            )
+        return results
+
+
 _backends: dict[str, SearchBackend] = {
     "duckduckgo": DuckDuckGoBackend(),
     "mock": MockSearchBackend(),
 }
 
 
-def get_search_backend(name: str) -> SearchBackend:
+def register_search_backend(name: str, backend: SearchBackend) -> None:
+    _backends[name] = backend
+
+
+def get_search_backend(name: str, config: dict[str, Any] | None = None) -> SearchBackend:
+    if name == "tavily":
+        return TavilyBackend()
+    if name == "searxng":
+        cfg = config or {}
+        return SearXNGBackend(cfg.get("searxng_url", "http://127.0.0.1:8080"))
     if name not in _backends:
         raise ValueError(f"Unknown search backend: {name}")
     return _backends[name]
@@ -97,7 +173,7 @@ def create_web_search_tool(config: dict[str, Any]):
     @tool
     def web_search(query: str, max_results_override: int = 0) -> str:
         """Search the web for current information. Returns summarized results with source URLs."""
-        backend = get_search_backend(backend_name)
+        backend = get_search_backend(backend_name, config)
         limit = max_results_override or max_results
         results = backend.search(query, max_results=limit, allowed_domains=allowed_domains)
         text, _ = format_results_with_citations(results)

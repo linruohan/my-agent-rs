@@ -60,6 +60,21 @@ def build_app(port: int = 8765) -> FastAPI:
         runner.graph = create_agent_graph(registry, checkpointer)
 
         get_scheduler()
+
+        async def _scheduler_notify(title: str, message: str) -> None:
+            await manager.broadcast(
+                {
+                    "type": "scheduler.reminder",
+                    "title": title,
+                    "message": message,
+                }
+            )
+
+        from infra.scheduler import set_notify_callback
+
+        set_notify_callback(
+            lambda title, message: asyncio.create_task(_scheduler_notify(title, message))
+        )
         mcp_cfg = tools_cfg.get("mcp_servers", {})
         if any(v.get("enabled") for v in mcp_cfg.values()):
             tools = await registry.resolve_all(include_mcp=True)

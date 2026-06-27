@@ -49,4 +49,18 @@ def create_tools_router(registry: ToolRegistry) -> APIRouter:
             "tools": mcp_tools,
         }
 
+    @tools_router.post("/tools/reload")
+    async def reload_tools():
+        from infra.config import load_tools_config
+
+        cfg = load_tools_config()
+        registry.reload(cfg)
+        tools = registry.list_all()
+        enabled = [t for t in tools if t.get("enabled")]
+        return {
+            "ok": True,
+            "count": len(tools),
+            "enabled_count": len(enabled),
+        }
+
     return tools_router

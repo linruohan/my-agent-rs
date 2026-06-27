@@ -5,17 +5,46 @@ import { useKnowledgeStore } from '@/stores/knowledge';
 import type { ToolCall } from '@/types';
 
 const RECONNECT_DELAYS = [1000, 2000, 4000, 8000, 16000];
+const TOKEN_FLUSH_MS = 50;
+const BC_CHANNEL = 'personal-assistant-agent';
 
 let ws: WebSocket | null = null;
 let reconnectAttempt = 0;
 let reconnectTimer: ReturnType<typeof setTimeout> | null = null;
 let pendingCreateTitle: string | undefined;
+let tokenBuffer = '';
+let tokenFlushTimer: ReturnType<typeof setTimeout> | null = null;
+let bc: BroadcastChannel | null = null;
+
+function initBroadcastChannel(sessionStore: ReturnType<typeof useSessionStore>) {
+  if (typeof BroadcastChannel === 'undefined') return;
+  bc = new BroadcastChannel(BC_CHANNEL);
+  bc.onmessage = (e: MessageEvent) => {
+    const data = e.data as { type?: string; threadId?: string };
+    if (data.type === 'streaming.start' && data.threadId !== sessionStore.currentThreadId) {
+      sessionStore.isStreaming = true;
+    }
+    if (data.type === 'streaming.end') {
+      sessionStore.isStreaming = false;
+    }
+  };
+}
+
+function flushTokenBuffer(sessionStore: ReturnType<typeof useSessionStore>) {
+  if (tokenBuffer) {
+    sessionStore.appendToLastAssistant(tokenBuffer);
+    tokenBuffer = '';
+  }
+  tokenFlushTimer = null;
+}
 
 export function useAgentWs() {
   const sessionStore = useSessionStore();
   const settingsStore = useSettingsStore();
   const knowledgeStore = useKnowledgeStore();
   const connectionError = ref('');
+
+  if (!bc) initBroadcastChannel(sessionStore);
 
   function wsUrl() {
     return `ws://127.0.0.1:${settingsStore.sidecarPort}/ws`;
@@ -41,12 +70,19 @@ export function useAgentWs() {
         break;
 
       case 'token':
-        sessionStore.appendToLastAssistant(msg.content as string);
+        tokenBuffer += (msg.content as string) || '';
+        if (!tokenFlushTimer) {
+          tokenFlushTimer = setTimeout(
+            () => flushTokenBuffer(sessionStore),
+            TOKEN_FLUSH_MS
+          );
+        }
         break;
 
       case 'tool_start': {
+        const toolCallId = (msg.tool_call_id as string) || crypto.randomUUID();
         const tc: ToolCall = {
-          id: crypto.randomUUID(),
+          id: toolCallId,
           name: msg.name as string,
           args: (msg.args as Record<string, unknown>) || {},
           category: msg.category as string,
@@ -54,7 +90,7 @@ export function useAgentWs() {
         };
         sessionStore.addPendingToolCall(tc);
         sessionStore.addMessage({
-          id: tc.id,
+          id: toolCallId,
           role: 'tool',
           content: `调用工具: ${tc.name}`,
           toolName: tc.name,
@@ -64,7 +100,12 @@ export function useAgentWs() {
       }
 
       case 'tool_end':
-        sessionStore.resolveToolCall(msg.name as string, msg.result as string);
+        sessionStore.resolveToolCall(
+          msg.name as string,
+          msg.result as string,
+          msg.tool_call_id as string | undefined,
+          msg.citations as Array<{ title: string; url: string }> | undefined
+        );
         break;
 
       case 'interrupt':
@@ -76,9 +117,40 @@ export function useAgentWs() {
         });
         break;
 
-      case 'done':
-        sessionStore.isStreaming = false;
+      case 'interrupt_timeout_warning':
+        sessionStore.addMessage({
+          id: crypto.randomUUID(),
+          role: 'assistant',
+          content: `⚠️ 操作确认将在 ${msg.seconds_left} 秒后自动拒绝，请尽快确认。`,
+        });
         break;
+
+      case 'done':
+        flushTokenBuffer(sessionStore);
+        sessionStore.isStreaming = false;
+        bc?.postMessage({ type: 'streaming.end' });
+        break;
+
+      case 'scheduler.reminder': {
+        const title = (msg.title as string) || '提醒';
+        const body = (msg.message as string) || '';
+        sessionStore.addMessage({
+          id: crypto.randomUUID(),
+          role: 'assistant',
+          content: `🔔 ${title}: ${body}`,
+        });
+        import('@tauri-apps/plugin-notification')
+          .then(({ sendNotification, isPermissionGranted, requestPermission }) => {
+            isPermissionGranted().then((granted) => {
+              if (!granted) requestPermission();
+              sendNotification({ title, body });
+            });
+          })
+          .catch(() => {
+            /* web-only mode */
+          });
+        break;
+      }
 
       case 'error':
         sessionStore.isStreaming = false;
@@ -108,6 +180,18 @@ export function useAgentWs() {
         sessionStore.sessions = sessionStore.sessions.filter(
           (s) => s.thread_id !== msg.thread_id
         );
+        break;
+
+      case 'session.history':
+        if (msg.thread_id === sessionStore.currentThreadId) {
+          sessionStore.loadHistory(
+            (msg.messages as Array<{
+              role: string;
+              content: string;
+              tool_name?: string;
+            }>) || []
+          );
+        }
         break;
 
       case 'pong':
@@ -202,6 +286,7 @@ export function useAgentWs() {
 
   function send(content: string, threadId: string) {
     sessionStore.isStreaming = true;
+    bc?.postMessage({ type: 'streaming.start', threadId });
     sessionStore.addMessage({
       id: crypto.randomUUID(),
       role: 'user',
@@ -245,6 +330,10 @@ export function useAgentWs() {
     sendRaw({ type: 'session.delete', thread_id: threadId });
   }
 
+  function loadSessionHistory(threadId: string) {
+    sendRaw({ type: 'session.history', thread_id: threadId });
+  }
+
   function ping() {
     sendRaw({ type: 'ping' });
   }
@@ -279,6 +368,7 @@ export function useAgentWs() {
     listSessions,
     createSession,
     deleteSession,
+    loadSessionHistory,
     ping,
     listRagSources,
     ingestRagContent,

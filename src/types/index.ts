@@ -14,6 +14,7 @@ export interface ToolCall {
   category?: string;
   result?: string;
   status: 'running' | 'done' | 'error';
+  citations?: Array<{ title: string; url: string }>;
 }
 
 export interface InterruptEvent {

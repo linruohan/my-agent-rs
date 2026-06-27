@@ -83,6 +83,15 @@ class ToolRegistry:
     def list_all(self) -> list[dict[str, Any]]:
         return [self._tool_entry(name, tool) for name, tool in self._tools.items()]
 
+    def reload(self, config: dict[str, Any] | None = None) -> None:
+        """Hot-reload tools from config (capability + business, not MCP)."""
+        if config is not None:
+            self.config = config
+        self._tools.clear()
+        self._meta.clear()
+        _register_capability(self, self.config)
+        _register_business(self, self.config)
+
 
 def _register_capability(registry: ToolRegistry, config: dict[str, Any]) -> None:
     cap = config.get("capability", {})

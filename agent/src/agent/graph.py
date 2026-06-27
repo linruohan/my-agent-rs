@@ -8,13 +8,13 @@ from langchain_core.messages import HumanMessage, ToolMessage
 from langgraph.checkpoint.base import BaseCheckpointSaver
 from langgraph.graph import END, START, StateGraph
 from langgraph.prebuilt import tools_condition
-from langgraph.types import interrupt
+from langgraph.types import interrupt, RunnableConfig
 
 from agent.planner import format_plan_for_prompt, generate_task_plan, needs_planning
 from agent.state import AgentState
 from infra.config import get_data_dir
 from llm.factory import get_default_provider
-from llm.fallback import create_llm_with_fallback
+from llm.fallback import create_llm_with_fallback, invoke_with_fallback
 from memory.rag import RagStore, is_knowledge_query
 from memory.store import get_user_preferences
 from tools.registry import ToolRegistry
@@ -102,7 +102,8 @@ def create_preprocess_node(
 
 
 def create_hitl_tools_node(registry: ToolRegistry):
-    def hitl_tools(state: AgentState) -> dict[str, Any]:
+    async def hitl_tools(state: AgentState, config: RunnableConfig) -> dict[str, Any]:
+        emit = config.get("configurable", {}).get("_emit")
         messages = state["messages"]
         last = messages[-1]
         if not hasattr(last, "tool_calls") or not last.tool_calls:
@@ -114,6 +115,19 @@ def create_hitl_tools_node(registry: ToolRegistry):
             name = tc["name"]
             args = tc.get("args") or {}
             tool_id = tc.get("id") or name
+            meta = registry.get_meta(name)
+
+            if emit:
+                await emit(
+                    {
+                        "type": "tool_start",
+                        "thread_id": config.get("configurable", {}).get("thread_id", ""),
+                        "tool_call_id": tool_id,
+                        "name": name,
+                        "args": args,
+                        "category": meta.get("category", "capability"),
+                    }
+                )
 
             if registry.requires_confirmation(name):
                 response = interrupt(
@@ -135,30 +149,101 @@ def create_hitl_tools_node(registry: ToolRegistry):
                                 tool_call_id=tool_id,
                             )
                         )
+                        if emit:
+                            await emit(
+                                {
+                                    "type": "tool_end",
+                                    "thread_id": config.get("configurable", {}).get(
+                                        "thread_id", ""
+                                    ),
+                                    "tool_call_id": tool_id,
+                                    "name": name,
+                                    "result": f"用户拒绝了工具 `{name}` 的执行。",
+                                    "category": meta.get("category", "capability"),
+                                    "citations": [],
+                                }
+                            )
                         continue
                     if decision == "edit" and response.get("edited_args"):
                         args = response["edited_args"]
 
             tool = registry.get_tool(name)
             if not tool:
+                err = f"Tool not found: {name}"
                 result_messages.append(
-                    ToolMessage(content=f"Tool not found: {name}", tool_call_id=tool_id)
+                    ToolMessage(content=err, tool_call_id=tool_id)
                 )
+                if emit:
+                    await emit(
+                        {
+                            "type": "tool_end",
+                            "thread_id": config.get("configurable", {}).get(
+                                "thread_id", ""
+                            ),
+                            "tool_call_id": tool_id,
+                            "name": name,
+                            "result": err,
+                            "category": meta.get("category", "capability"),
+                            "citations": [],
+                        }
+                    )
                 continue
 
             try:
                 output = tool.invoke(args)
+                output_str = str(output)
+                citations = _extract_tool_citations(name, output_str)
                 result_messages.append(
-                    ToolMessage(content=str(output), tool_call_id=tool_id)
+                    ToolMessage(content=output_str, tool_call_id=tool_id)
                 )
+                if emit:
+                    await emit(
+                        {
+                            "type": "tool_end",
+                            "thread_id": config.get("configurable", {}).get(
+                                "thread_id", ""
+                            ),
+                            "tool_call_id": tool_id,
+                            "name": name,
+                            "result": output_str[:2000],
+                            "category": meta.get("category", "capability"),
+                            "citations": citations,
+                        }
+                    )
             except Exception as e:
+                err = f"Error executing {name}: {e}"
                 result_messages.append(
-                    ToolMessage(content=f"Error executing {name}: {e}", tool_call_id=tool_id)
+                    ToolMessage(content=err, tool_call_id=tool_id)
                 )
+                if emit:
+                    await emit(
+                        {
+                            "type": "tool_end",
+                            "thread_id": config.get("configurable", {}).get(
+                                "thread_id", ""
+                            ),
+                            "tool_call_id": tool_id,
+                            "name": name,
+                            "result": err,
+                            "category": meta.get("category", "capability"),
+                            "citations": [],
+                        }
+                    )
 
         return {"messages": result_messages}
 
     return hitl_tools
+
+
+def _extract_tool_citations(tool_name: str, output: str) -> list[dict[str, str]]:
+    if tool_name != "web_search":
+        return []
+    citations = []
+    for line in output.split("\n"):
+        if line.strip().startswith("Source:"):
+            url = line.split("Source:", 1)[1].strip()
+            citations.append({"url": url, "title": url})
+    return citations
 
 
 def create_reflect_node():
@@ -231,7 +316,17 @@ def create_agent_graph(
             messages = [SystemMessage(content=system_content)] + messages
         else:
             messages[0] = SystemMessage(content=system_content)
-        response = lazy_llm.with_tools().invoke(messages)
+
+        tools = registry.get_enabled_tools()
+
+        def invoke(llm: BaseChatModel):
+            bound = llm.bind_tools(tools) if tools else llm
+            return bound.invoke(messages)
+
+        response, provider_name = invoke_with_fallback(
+            invoke, primary=lazy_llm._primary
+        )
+        lazy_llm._provider_name = provider_name
         return {"messages": [response]}
 
     workflow = StateGraph(AgentState)

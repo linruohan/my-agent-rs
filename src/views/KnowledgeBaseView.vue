@@ -8,7 +8,7 @@ const { listRagSources, ingestRagContent, searchRag, deleteRagSource } = useAgen
 
 const searchQuery = ref('');
 const dragOver = ref(false);
-const SUPPORTED = ['.md', '.txt', '.markdown'];
+const SUPPORTED = ['.md', '.txt', '.markdown', '.pdf'];
 
 onMounted(() => {
   listRagSources();
@@ -22,6 +22,12 @@ function isSupported(name: string) {
 async function processFiles(files: FileList | File[]) {
   for (const file of Array.from(files)) {
     if (!isSupported(file.name)) continue;
+    if (file.name.toLowerCase().endsWith('.pdf')) {
+      const buf = await file.arrayBuffer();
+      const b64 = btoa(String.fromCharCode(...new Uint8Array(buf)));
+      ingestRagContent(file.name, `__pdf_b64__:${b64}`);
+      continue;
+    }
     const content = await file.text();
     ingestRagContent(file.name, content);
   }
@@ -58,7 +64,7 @@ function handleDelete(source: string) {
   <div class="knowledge-view">
     <header>
       <h2>知识库</h2>
-      <p class="hint">支持拖拽或选择 .md / .txt 文件导入（FAISS 混合检索）</p>
+      <p class="hint">支持拖拽或选择 .md / .txt / .pdf 文件导入（FAISS 混合检索）</p>
     </header>
 
     <div
@@ -71,7 +77,7 @@ function handleDelete(source: string) {
       <p>将文档拖到此处</p>
       <label class="file-btn">
         选择文件
-        <input type="file" accept=".md,.txt,.markdown" multiple hidden @change="onFileInput" />
+        <input type="file" accept=".md,.txt,.markdown,.pdf" multiple hidden @change="onFileInput" />
       </label>
     </div>
 

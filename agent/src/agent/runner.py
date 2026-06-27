@@ -27,7 +27,7 @@ class AgentRunner:
         content: str,
         emit: EventCallback,
     ) -> None:
-        config = {"configurable": {"thread_id": thread_id}}
+        config = self._make_config(thread_id, emit)
         start = time.monotonic()
 
         task = asyncio.current_task()
@@ -43,29 +43,10 @@ class AgentRunner:
             ):
                 await self._handle_event(event, thread_id, emit)
 
-            # Check for pending interrupts after stream
-            state = await self.graph.aget_state(config)
-            if state.interrupts:
-                for intr in state.interrupts:
-                    value = intr.value if hasattr(intr, "value") else intr
-                    if isinstance(value, dict):
-                        await emit(
-                            {
-                                "type": "interrupt",
-                                "thread_id": thread_id,
-                                "action": value.get("action", ""),
-                                "preview": value.get("preview", ""),
-                                "args": value.get("args", {}),
-                            }
-                        )
-                        from infra.hitl import hitl_timeout_manager
-
-                        hitl_timeout_manager.schedule(thread_id)
+            if await self._emit_pending_interrupts(thread_id, config, emit):
+                return
 
             metadata["duration_ms"] = int((time.monotonic() - start) * 1000)
-            from infra.hitl import hitl_timeout_manager
-
-            hitl_timeout_manager.cancel(thread_id)
             await emit({"type": "done", "thread_id": thread_id, "metadata": metadata})
 
         except asyncio.CancelledError:
@@ -175,7 +156,7 @@ class AgentRunner:
         edited_args: dict | None,
         emit: EventCallback,
     ) -> None:
-        config = {"configurable": {"thread_id": thread_id}}
+        config = self._make_config(thread_id, emit)
         resume_value: dict[str, Any] = {"decision": decision}
         if edited_args:
             resume_value["edited_args"] = edited_args
@@ -190,23 +171,7 @@ class AgentRunner:
             ):
                 await self._handle_event(event, thread_id, emit)
 
-            state = await self.graph.aget_state(config)
-            if state.interrupts:
-                for intr in state.interrupts:
-                    value = intr.value if hasattr(intr, "value") else intr
-                    if isinstance(value, dict):
-                        await emit(
-                            {
-                                "type": "interrupt",
-                                "thread_id": thread_id,
-                                "action": value.get("action", ""),
-                                "preview": value.get("preview", ""),
-                                "args": value.get("args", {}),
-                            }
-                        )
-                        from infra.hitl import hitl_timeout_manager
-
-                        hitl_timeout_manager.schedule(thread_id)
+            if await self._emit_pending_interrupts(thread_id, config, emit):
                 return
 
             metadata = {"duration_ms": int((time.monotonic() - start) * 1000)}
@@ -220,6 +185,77 @@ class AgentRunner:
                     "code": "PROVIDER_ERROR",
                 }
             )
+
+
+    def _make_config(self, thread_id: str, emit: EventCallback) -> dict[str, Any]:
+        async def _emit(msg: dict[str, Any]) -> None:
+            await emit(msg)
+
+        return {"configurable": {"thread_id": thread_id, "_emit": _emit}}
+
+    async def _emit_pending_interrupts(
+        self, thread_id: str, config: dict[str, Any], emit: EventCallback
+    ) -> bool:
+        """Emit interrupt events and schedule HITL timeout. Returns True if waiting for user."""
+        state = await self.graph.aget_state(config)
+        if not state.interrupts:
+            return False
+
+        from infra.hitl import hitl_timeout_manager
+
+        for intr in state.interrupts:
+            value = intr.value if hasattr(intr, "value") else intr
+            if isinstance(value, dict):
+                await emit(
+                    {
+                        "type": "interrupt",
+                        "thread_id": thread_id,
+                        "action": value.get("action", ""),
+                        "preview": value.get("preview", ""),
+                        "args": value.get("args", {}),
+                    }
+                )
+        hitl_timeout_manager.schedule(thread_id)
+        return True
+
+    async def get_history(self, thread_id: str) -> list[dict[str, Any]]:
+        """Load conversation messages from LangGraph checkpoint."""
+        from langchain_core.messages import AIMessage, HumanMessage, ToolMessage
+
+        config = {"configurable": {"thread_id": thread_id}}
+        state = await self.graph.aget_state(config)
+        if not state or not state.values:
+            return []
+
+        result: list[dict[str, Any]] = []
+        for msg in state.values.get("messages", []):
+            if isinstance(msg, HumanMessage):
+                content = msg.content
+                if isinstance(content, list):
+                    content = "".join(
+                        block.get("text", "") if isinstance(block, dict) else str(block)
+                        for block in content
+                    )
+                if content:
+                    result.append({"role": "user", "content": str(content)})
+            elif isinstance(msg, AIMessage):
+                content = msg.content
+                if isinstance(content, list):
+                    content = "".join(
+                        block.get("text", "") if isinstance(block, dict) else str(block)
+                        for block in content
+                    )
+                if content:
+                    result.append({"role": "assistant", "content": str(content)})
+            elif isinstance(msg, ToolMessage):
+                result.append(
+                    {
+                        "role": "tool",
+                        "content": str(msg.content)[:2000],
+                        "tool_name": getattr(msg, "name", "") or "",
+                    }
+                )
+        return result
 
 
 def _extract_citations(text: str) -> list[dict[str, str]]:
