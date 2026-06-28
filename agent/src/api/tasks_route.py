@@ -91,6 +91,16 @@ class ProjectDocBody(BaseModel):
     auto_ingest: bool = True
 
 
+class LabelCreateBody(BaseModel):
+    name: str
+    color: str = "#93c5fd"
+
+
+class LabelPatchBody(BaseModel):
+    name: str | None = None
+    color: str | None = None
+
+
 def _enrich_project(project: dict[str, Any]) -> dict[str, Any]:
     from tools.business.project import list_project_docs
     from tools.business.todo import get_todo_stats_for_project
@@ -149,6 +159,8 @@ def tasks_snapshot_api(
     if project_id is not None:
         sections = [_enrich_section(s) for s in list_section_records(project_id)]
 
+    from tools.task.label_store import list_label_records
+
     return {
         "inbox": inbox,
         "projects": projects,
@@ -161,6 +173,7 @@ def tasks_snapshot_api(
             sort_by=sort_by,
         ),
         "reminders": list_entity_reminders(),
+        "labels": list_label_records(),
     }
 
 
@@ -415,6 +428,46 @@ def set_todo_reminder_api(todo_id: int, body: ReminderBody) -> dict[str, Any]:
     if not updated:
         raise HTTPException(status_code=404, detail="Todo not found")
     return {"ok": True, "todo": updated}
+
+
+@router.get("/labels")
+def list_labels_api() -> dict[str, Any]:
+    from tools.task.label_store import list_label_records
+
+    return {"labels": list_label_records()}
+
+
+@router.post("/labels")
+def create_label_api(body: LabelCreateBody) -> dict[str, Any]:
+    from tools.task.label_store import create_label_record
+
+    try:
+        record = create_label_record(body.name, body.color)
+    except ValueError as e:
+        raise HTTPException(status_code=400, detail=str(e)) from e
+    return {"ok": True, "label": record}
+
+
+@router.patch("/labels/{label_id}")
+def patch_label_api(label_id: int, body: LabelPatchBody) -> dict[str, Any]:
+    from tools.task.label_store import update_label_record
+
+    try:
+        updated = update_label_record(label_id, name=body.name, color=body.color)
+    except ValueError as e:
+        raise HTTPException(status_code=400, detail=str(e)) from e
+    if not updated:
+        raise HTTPException(status_code=404, detail="Label not found")
+    return {"ok": True, "label": updated}
+
+
+@router.delete("/labels/{label_id}")
+def delete_label_api(label_id: int) -> dict[str, Any]:
+    from tools.task.label_store import delete_label_record
+
+    if not delete_label_record(label_id):
+        raise HTTPException(status_code=404, detail="Label not found")
+    return {"ok": True, "deleted_id": label_id}
 
 
 @router.put("/projects/{project_id}/reminder")

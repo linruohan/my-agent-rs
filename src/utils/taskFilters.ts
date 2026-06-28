@@ -1,4 +1,4 @@
-import type { TodoItem } from '@/stores/tasks';
+import type { LabelItem, TodoItem } from '@/stores/tasks';
 
 export type TaskFilterId = 'inbox' | 'today' | 'scheduled' | 'pinned' | 'labels' | 'completed';
 
@@ -60,8 +60,14 @@ export function isTodayTask(t: TodoItem, now = new Date()): boolean {
   return isSameDay(due, now);
 }
 
-export function collectAllLabels(todos: TodoItem[]): Map<string, number> {
+export function collectAllLabels(
+  todos: TodoItem[],
+  registered: LabelItem[] = []
+): Map<string, number> {
   const map = new Map<string, number>();
+  for (const l of registered) {
+    if (!map.has(l.name)) map.set(l.name, 0);
+  }
   for (const t of todos) {
     for (const tag of t.tags ?? []) {
       map.set(tag, (map.get(tag) ?? 0) + 1);

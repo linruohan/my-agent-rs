@@ -69,6 +69,15 @@ export type TodoItem = {
   owner?: string;
   status?: string;
   tags?: string[];
+  attachments?: Array<{ type: string; value: string }>;
+};
+
+export type LabelItem = {
+  id: number;
+  name: string;
+  color: string;
+  created_at?: string;
+  updated_at?: string;
 };
 
 export type TaskViewMode = 'filter' | 'project';
@@ -102,6 +111,7 @@ export const useTasksStore = defineStore('tasks', () => {
   const lastDocMessage = ref('');
   const reminders = ref<ReminderItem[]>([]);
   const allTodos = ref<TodoItem[]>([]);
+  const labels = ref<LabelItem[]>([]);
   const viewMode = ref<TaskViewMode>('filter');
   const activeFilter = ref<TaskFilterId>('inbox');
   const activeLabel = ref<string | null>(null);
@@ -157,6 +167,7 @@ export const useTasksStore = defineStore('tasks', () => {
       projects.value = (data.projects ?? []).filter((p: ProjectItem) => !p.is_inbox);
       allTodos.value = data.todos ?? [];
       todos.value = allTodos.value;
+      labels.value = data.labels ?? [];
       reminders.value = data.reminders ?? [];
       bumpRevision();
 
@@ -554,11 +565,50 @@ export const useTasksStore = defineStore('tasks', () => {
     await refresh(port);
   }
 
+  async function createLabel(port: number, payload: { name: string; color: string }) {
+    const res = await fetch(`${sidecarBase(port)}/tasks/labels`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify(payload),
+    });
+    if (!res.ok) throw new Error(await res.text());
+    await refresh(port);
+    return (await res.json()).label as LabelItem;
+  }
+
+  async function updateLabel(
+    port: number,
+    labelId: number,
+    payload: { name?: string; color?: string }
+  ) {
+    const res = await fetch(`${sidecarBase(port)}/tasks/labels/${labelId}`, {
+      method: 'PATCH',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify(payload),
+    });
+    if (!res.ok) throw new Error(await res.text());
+    await refresh(port);
+    return (await res.json()).label as LabelItem;
+  }
+
+  async function deleteLabel(port: number, labelId: number) {
+    const res = await fetch(`${sidecarBase(port)}/tasks/labels/${labelId}`, { method: 'DELETE' });
+    if (!res.ok) throw new Error(await res.text());
+    if (activeLabel.value) {
+      const deleted = labels.value.find((l) => l.id === labelId);
+      if (deleted && activeLabel.value === deleted.name) {
+        activeLabel.value = null;
+      }
+    }
+    await refresh(port);
+  }
+
   return {
     projects,
     sections,
     todos,
     allTodos,
+    labels,
     inbox,
     projectDocs,
     sectionSummaries,
@@ -598,5 +648,8 @@ export const useTasksStore = defineStore('tasks', () => {
     setProjectReminder,
     addProjectDoc,
     deleteTodo,
+    createLabel,
+    updateLabel,
+    deleteLabel,
   };
 });

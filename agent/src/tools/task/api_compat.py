@@ -43,8 +43,9 @@ def task_to_todo(row: TaskRow, *, inbox_project_id: int | None = None) -> dict[s
         "description": row.content,
         "remind_at": row.remind_at or "",
         "status": row.status,
-        "owner": row.owner,
+        "owner": row.owner or "",
         "tags": _user_tags(row.tags),
+        "attachments": list(row.attachments or []),
     }
 
 

@@ -1,13 +1,12 @@
 <script setup lang="ts">
 import { computed, onMounted, ref, watch } from 'vue';
-import { useTasksStore, type ProjectItem, type SectionItem, type TodoItem } from '@/stores/tasks';
+import { useTasksStore, type LabelItem, type ProjectItem, type SectionItem, type TodoItem } from '@/stores/tasks';
 import { useSettingsStore } from '@/stores/settings';
 import {
   TASK_FILTERS,
   collectAllLabels,
   countForFilter,
   filterByTaskFilter,
-  formatDueShort,
   isScatteredTask,
   isScheduledTask,
   isTodayTask,
@@ -17,7 +16,10 @@ import {
 import TaskEditDialog, { type TaskFormPayload } from '@/components/TaskEditDialog.vue';
 import ProjectEditDialog, { type ProjectFormPayload } from '@/components/ProjectEditDialog.vue';
 import SectionEditDialog, { type SectionFormPayload } from '@/components/SectionEditDialog.vue';
+import LabelEditDialog, { type LabelFormPayload } from '@/components/LabelEditDialog.vue';
+import TaskListTable from '@/components/TaskListTable.vue';
 import AppDatePicker from '@/components/AppDatePicker.vue';
+import { labelColorMap, colorForLabel, labelChipStyle } from '@/utils/labelColors';
 
 const tasksStore = useTasksStore();
 const settings = useSettingsStore();
@@ -41,6 +43,10 @@ const sectionDialogOpen = ref(false);
 const sectionDialogMode = ref<'create' | 'edit'>('create');
 const editingSection = ref<SectionItem | null>(null);
 
+const labelDialogOpen = ref(false);
+const labelDialogMode = ref<'create' | 'edit'>('create');
+const editingLabel = ref<LabelItem | null>(null);
+
 const UNSECTIONED_SECTION = 0;
 
 const inboxProjectId = computed(() => tasksStore.inbox?.id ?? null);
@@ -55,7 +61,9 @@ const filterCounts = computed(() => {
   return counts;
 });
 
-const labelMap = computed(() => collectAllLabels(tasksStore.allTodos));
+const labelMap = computed(() => collectAllLabels(tasksStore.allTodos, tasksStore.labels));
+
+const labelColors = computed(() => labelColorMap(tasksStore.labels));
 
 const availableLabels = computed(() => [...labelMap.value.keys()]);
 
@@ -319,6 +327,56 @@ async function removeTodo(id: number) {
   }
 }
 
+function openCreateLabel() {
+  labelDialogMode.value = 'create';
+  editingLabel.value = null;
+  labelDialogOpen.value = true;
+}
+
+function openCreateLabelWithName(name: string, e?: Event) {
+  e?.stopPropagation();
+  labelDialogMode.value = 'create';
+  editingLabel.value = { id: 0, name, color: colorForLabel(name, labelColors.value) };
+  labelDialogOpen.value = true;
+}
+
+function openEditLabel(label: LabelItem, e?: Event) {
+  e?.stopPropagation();
+  labelDialogMode.value = 'edit';
+  editingLabel.value = label;
+  labelDialogOpen.value = true;
+}
+
+async function saveLabel(payload: LabelFormPayload) {
+  try {
+    if (labelDialogMode.value === 'edit' && editingLabel.value) {
+      await tasksStore.updateLabel(settings.sidecarPort, editingLabel.value.id, payload);
+      if (tasksStore.activeLabel === editingLabel.value.name && payload.name) {
+        tasksStore.activeLabel = payload.name;
+      }
+    } else {
+      await tasksStore.createLabel(settings.sidecarPort, payload);
+    }
+    labelDialogOpen.value = false;
+  } catch (e) {
+    tasksStore.error = e instanceof Error ? e.message : String(e);
+  }
+}
+
+async function removeLabel(label: LabelItem, e?: Event) {
+  e?.stopPropagation();
+  if (!confirm(`删除标签「${label.name}」？将从所有任务中移除该标签。`)) return;
+  try {
+    await tasksStore.deleteLabel(settings.sidecarPort, label.id);
+  } catch (e) {
+    tasksStore.error = e instanceof Error ? e.message : String(e);
+  }
+}
+
+function findRegisteredLabel(name: string): LabelItem | undefined {
+  return tasksStore.labels.find((l) => l.name === name);
+}
+
 async function saveSummary() {
   const sid = tasksStore.selectedSectionId;
   const date = summaryDate.value.trim();
@@ -426,11 +484,47 @@ watch(
       <!-- 筛选视图 -->
       <template v-if="tasksStore.viewMode === 'filter'">
         <div v-if="tasksStore.activeFilter === 'labels' && !tasksStore.activeLabel" class="labels-panel">
-          <h3>全部标签</h3>
+          <div class="labels-head">
+            <h3>全部标签</h3>
+            <button class="icon-btn" title="新建标签" @click="openCreateLabel">+</button>
+          </div>
           <ul class="label-list">
-            <li v-for="[tag, count] in labelMap" :key="tag" @click="pickLabel(tag)">
-              <span class="tag-chip">{{ tag }}</span>
-              <span class="tag-count">{{ count }}</span>
+            <li v-for="[tag, count] in labelMap" :key="tag">
+              <button type="button" class="label-main" @click="pickLabel(tag)">
+                <span
+                  class="tag-chip"
+                  :style="labelChipStyle(colorForLabel(tag, labelColors))"
+                >
+                  {{ tag }}
+                </span>
+                <span class="tag-count">{{ count }}</span>
+              </button>
+              <span class="label-actions">
+                <button
+                  v-if="findRegisteredLabel(tag)"
+                  class="btn-edit"
+                  title="编辑标签"
+                  @click="openEditLabel(findRegisteredLabel(tag)!, $event)"
+                >
+                  ✎
+                </button>
+                <button
+                  v-if="findRegisteredLabel(tag)"
+                  class="btn-del-label"
+                  title="删除标签"
+                  @click="removeLabel(findRegisteredLabel(tag)!, $event)"
+                >
+                  ×
+                </button>
+                <button
+                  v-else
+                  class="btn-edit"
+                  title="注册为标签"
+                  @click="openCreateLabelWithName(tag, $event)"
+                >
+                  +
+                </button>
+              </span>
             </li>
             <li v-if="!labelMap.size" class="empty">暂无标签</li>
           </ul>
@@ -448,29 +542,13 @@ watch(
             <button class="btn-detail" title="详细表单" @click="openCreateTask">⋯</button>
           </div>
 
-          <ul class="task-list">
-            <li
-              v-for="t in filteredTasks"
-              :key="t.id"
-              :class="{ done: t.completed }"
-              @click="openEditTask(t)"
-            >
-              <input type="checkbox" :checked="t.completed" @click.stop @change="toggleTodo(t)" />
-              <div class="task-body">
-                <div class="task-title">{{ t.title }}</div>
-                <div class="task-meta">
-                  <span class="due">{{ formatDueShort(t.due_date) }}</span>
-                  <span v-if="t.priority !== 'normal'" class="tag pri">{{ t.priority }}</span>
-                  <span v-for="tag in t.tags ?? []" :key="tag" class="tag">{{ tag }}</span>
-                  <span v-if="t.project_id && t.project_id !== inboxProjectId" class="tag proj">
-                    P#{{ t.project_id }}
-                  </span>
-                </div>
-              </div>
-              <button class="btn-del" @click.stop="removeTodo(t.id)">×</button>
-            </li>
-            <li v-if="!filteredTasks.length" class="empty">暂无任务</li>
-          </ul>
+          <TaskListTable
+            :todos="filteredTasks"
+            :label-colors="labelColors"
+            @toggle="toggleTodo"
+            @edit="openEditTask"
+            @remove="removeTodo"
+          />
         </template>
       </template>
 
@@ -542,25 +620,13 @@ watch(
 
             <template v-if="tasksStore.selectedSectionId === null">
               <h3 class="section-title">无section</h3>
-              <ul class="task-list">
-                <li
-                  v-for="t in projectTasksUnsectioned"
-                  :key="t.id"
-                  :class="{ done: t.completed }"
-                  @click="openEditTask(t)"
-                >
-                  <input type="checkbox" :checked="t.completed" @click.stop @change="toggleTodo(t)" />
-                  <div class="task-body">
-                    <div class="task-title">{{ t.title }}</div>
-                    <div class="task-meta">
-                      <span class="due">{{ formatDueShort(t.due_date) }}</span>
-                      <span v-for="tag in t.tags ?? []" :key="tag" class="tag">{{ tag }}</span>
-                    </div>
-                  </div>
-                  <button class="btn-del" @click.stop="removeTodo(t.id)">×</button>
-                </li>
-                <li v-if="!projectTasksUnsectioned.length" class="empty">暂无任务</li>
-              </ul>
+              <TaskListTable
+                :todos="projectTasksUnsectioned"
+                :label-colors="labelColors"
+                @toggle="toggleTodo"
+                @edit="openEditTask"
+                @remove="removeTodo"
+              />
               <div v-for="s in tasksStore.sections" :key="s.id" class="section-block">
                 <h3 class="section-title">
                   {{ s.name }}
@@ -571,49 +637,25 @@ watch(
                   <button class="btn-edit-inline" title="编辑 Section" @click.stop="openEditSection(s)">✎</button>
                 </h3>
                 <p v-if="s.goals" class="section-goals">{{ s.goals }}</p>
-                <ul class="task-list">
-                  <li
-                    v-for="t in tasksForSection(s.id)"
-                    :key="t.id"
-                    :class="{ done: t.completed }"
-                    @click="openEditTask(t)"
-                  >
-                    <input type="checkbox" :checked="t.completed" @click.stop @change="toggleTodo(t)" />
-                    <div class="task-body">
-                      <div class="task-title">{{ t.title }}</div>
-                      <div class="task-meta">
-                        <span class="due">{{ formatDueShort(t.due_date) }}</span>
-                        <span v-for="tag in t.tags ?? []" :key="tag" class="tag">{{ tag }}</span>
-                      </div>
-                    </div>
-                    <button class="btn-del" @click.stop="removeTodo(t.id)">×</button>
-                  </li>
-                  <li v-if="!tasksForSection(s.id).length" class="empty">暂无任务</li>
-                </ul>
+                <TaskListTable
+                  :todos="tasksForSection(s.id)"
+                  :label-colors="labelColors"
+                  @toggle="toggleTodo"
+                  @edit="openEditTask"
+                  @remove="removeTodo"
+                />
               </div>
             </template>
 
             <template v-else-if="tasksStore.selectedSectionId === UNSECTIONED_SECTION">
               <h3 class="section-title">无section</h3>
-              <ul class="task-list">
-                <li
-                  v-for="t in projectTasksUnsectioned"
-                  :key="t.id"
-                  :class="{ done: t.completed }"
-                  @click="openEditTask(t)"
-                >
-                  <input type="checkbox" :checked="t.completed" @click.stop @change="toggleTodo(t)" />
-                  <div class="task-body">
-                    <div class="task-title">{{ t.title }}</div>
-                    <div class="task-meta">
-                      <span class="due">{{ formatDueShort(t.due_date) }}</span>
-                      <span v-for="tag in t.tags ?? []" :key="tag" class="tag">{{ tag }}</span>
-                    </div>
-                  </div>
-                  <button class="btn-del" @click.stop="removeTodo(t.id)">×</button>
-                </li>
-                <li v-if="!projectTasksUnsectioned.length" class="empty">暂无任务</li>
-              </ul>
+              <TaskListTable
+                :todos="projectTasksUnsectioned"
+                :label-colors="labelColors"
+                @toggle="toggleTodo"
+                @edit="openEditTask"
+                @remove="removeTodo"
+              />
             </template>
 
             <template v-else-if="selectedSection">
@@ -622,25 +664,13 @@ watch(
                 <button class="btn-edit-head" @click="openEditSection(selectedSection)">编辑 Section</button>
               </div>
               <p v-if="selectedSection.goals" class="section-goals">{{ selectedSection.goals }}</p>
-              <ul class="task-list">
-                <li
-                  v-for="t in tasksForSection(selectedSection.id)"
-                  :key="t.id"
-                  :class="{ done: t.completed }"
-                  @click="openEditTask(t)"
-                >
-                  <input type="checkbox" :checked="t.completed" @click.stop @change="toggleTodo(t)" />
-                  <div class="task-body">
-                    <div class="task-title">{{ t.title }}</div>
-                    <div class="task-meta">
-                      <span class="due">{{ formatDueShort(t.due_date) }}</span>
-                      <span v-for="tag in t.tags ?? []" :key="tag" class="tag">{{ tag }}</span>
-                    </div>
-                  </div>
-                  <button class="btn-del" @click.stop="removeTodo(t.id)">×</button>
-                </li>
-                <li v-if="!tasksForSection(selectedSection.id).length" class="empty">暂无任务</li>
-              </ul>
+              <TaskListTable
+                :todos="tasksForSection(selectedSection.id)"
+                :label-colors="labelColors"
+                @toggle="toggleTodo"
+                @edit="openEditTask"
+                @remove="removeTodo"
+              />
               <div class="summary-block">
                 <h4>每日总结</h4>
                 <div class="summary-form">
@@ -662,6 +692,14 @@ watch(
         </div>
       </template>
     </main>
+
+    <LabelEditDialog
+      :open="labelDialogOpen"
+      :mode="labelDialogMode"
+      :label="editingLabel"
+      @save="saveLabel"
+      @cancel="labelDialogOpen = false"
+    />
 
     <TaskEditDialog
       :open="taskDialogOpen"

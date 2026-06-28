@@ -1,6 +1,6 @@
 import { marked } from 'marked';
 import { linkifyLocalPaths } from '@/utils/attachments';
-import { highlightCode } from '@/utils/codeHighlight';
+import { formatHighlightedCodeWithLineNumbers, highlightCode } from '@/utils/codeHighlight';
 import { highlightTermsInHtml } from '@/utils/highlightTerms';
 
 marked.setOptions({
@@ -25,8 +25,9 @@ marked.use({
     code({ text, lang }) {
       const trimmed = text.replace(/^\n+|\n+$/g, '');
       const highlighted = highlightCode(trimmed, lang || undefined);
+      const { html: numbered, lineDigits } = formatHighlightedCodeWithLineNumbers(highlighted);
       const langClass = lang ? ` class="language-${escapeHtml(lang)}"` : '';
-      return `<div class="md-code-block"><button type="button" class="md-copy-btn" data-copy-btn aria-label="复制代码">复制</button><pre class="md-code-pre"><code${langClass}>${highlighted}</code></pre></div>`;
+      return `<div class="md-code-block" style="--md-ln-digits:${lineDigits}"><button type="button" class="md-copy-btn" data-copy-btn aria-label="复制代码">复制</button><pre class="md-code-pre"><code${langClass}>${numbered}</code></pre></div>`;
     },
 
     link({ href, title, text }) {

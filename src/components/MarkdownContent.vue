@@ -29,8 +29,12 @@ async function onClick(e: MouseEvent) {
     e.preventDefault();
     e.stopPropagation();
     const block = btn.closest('.md-code-block');
+    const lineCells = block?.querySelectorAll('.md-code-lc');
     const code = block?.querySelector('.md-code-pre code');
-    const text = code?.textContent ?? '';
+    const text =
+      lineCells && lineCells.length
+        ? [...lineCells].map((el) => el.textContent ?? '').join('\n')
+        : (code?.textContent ?? '');
     if (!text) return;
     try {
       await navigator.clipboard.writeText(text);
@@ -220,10 +224,11 @@ async function onClick(e: MouseEvent) {
   position: relative;
   margin: 0.75em 0;
   max-width: 100%;
-  padding: 16px 20px;
+  padding: 12px 16px 12px 0;
   border: 1px solid color-mix(in srgb, var(--border) 80%, transparent);
   border-radius: 10px;
   background: color-mix(in srgb, var(--bg-elevated) 88%, var(--text-primary) 4%);
+  overflow: hidden;
 }
 
 .markdown-body :deep(.md-code-block:hover .md-copy-btn) {
@@ -280,8 +285,39 @@ async function onClick(e: MouseEvent) {
   font-size: inherit;
   font-family: inherit;
   color: inherit;
-  white-space: pre;
   line-height: inherit;
+}
+
+.markdown-body :deep(.md-code-line) {
+  display: flex;
+  align-items: stretch;
+  min-width: max-content;
+  line-height: 1.65;
+}
+
+.markdown-body :deep(.md-code-ln) {
+  flex: 0 0 calc(var(--md-ln-digits, 1) * 1ch + 20px);
+  min-width: calc(var(--md-ln-digits, 1) * 1ch + 20px);
+  padding: 0 10px;
+  display: flex;
+  align-items: center;
+  justify-content: flex-end;
+  text-align: right;
+  color: var(--text-muted);
+  user-select: none;
+  border-right: 1px solid color-mix(in srgb, var(--border) 75%, transparent);
+  background: color-mix(in srgb, var(--bg-panel) 55%, transparent);
+  font-family: inherit;
+  font-variant-numeric: tabular-nums;
+  white-space: pre;
+  box-sizing: border-box;
+}
+
+.markdown-body :deep(.md-code-lc) {
+  flex: 1;
+  padding: 0 12px 0 14px;
+  min-width: 0;
+  white-space: pre;
 }
 
 .markdown-body :deep(.md-code-block .tok-comment) {
