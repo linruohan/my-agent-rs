@@ -5,19 +5,28 @@ __pycache__/
 *.egg-info/
 .pytest_cache/
 .mypy_cache/
+.ruff_cache/
+.coverage
+htmlcov/
+coverage/
+
+# PyInstaller (agent sidecar)
+agent/build/
+agent/dist/
 
 # Node
 node_modules/
 dist/
+.npm/
 
 # Tauri
 src-tauri/target/
+src-tauri/gen/
 src-tauri/binaries/*
 !src-tauri/binaries/.gitkeep
 
-# Data
-data/checkpoints/
-data/workspace/
+# Data (runtime — checkpoints, RAG, tokens, user overrides)
+data/
 *.db
 
 # IDE
@@ -28,3 +37,10 @@ data/workspace/
 # Env
 .env
 .env.local
+
+# OS
+.DS_Store
+Thumbs.db
+
+# Logs
+*.log

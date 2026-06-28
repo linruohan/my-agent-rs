@@ -49,6 +49,12 @@ const input = ref('');
 const textareaRef = ref<HTMLTextAreaElement | null>(null);
 const pendingAttachments = ref<ChatAttachment[]>([]);
 
+const INPUT_HISTORY_MAX = 100;
+const inputHistoryByThread: Record<string, string[]> = {};
+const historyIndex = ref(-1);
+const draftBeforeHistory = ref('');
+let historyNavigating = false;
+
 const showAttachMenu = ref(false);
 const showModelMenu = ref(false);
 const showSlashMenu = ref(false);
@@ -85,7 +91,21 @@ const canSend = computed(
     !sessionStore.isStreaming
 );
 
+watch(
+  () => sessionStore.currentThreadId,
+  () => {
+    historyIndex.value = -1;
+    draftBeforeHistory.value = '';
+  }
+);
+
 watch(input, (val) => {
+  if (historyNavigating) return;
+  if (historyIndex.value !== -1) {
+    historyIndex.value = -1;
+    draftBeforeHistory.value = '';
+  }
+
   const atMatch = val.match(/(?:^|\s)@(\S*)$/);
   const slashMatch = val.match(/(?:^|\s)\/(\S*)$/);
   if (atMatch) {
@@ -161,6 +181,81 @@ function autoResize() {
   el.style.height = `${Math.min(el.scrollHeight, 160)}px`;
 }
 
+function getInputHistory(): string[] {
+  const tid = sessionStore.currentThreadId;
+  if (!tid) return [];
+  return inputHistoryByThread[tid] ?? [];
+}
+
+function pushInputHistory(text: string) {
+  const tid = sessionStore.currentThreadId;
+  if (!tid || !text) return;
+  const list = inputHistoryByThread[tid] ?? (inputHistoryByThread[tid] = []);
+  if (list[0] === text) return;
+  list.unshift(text);
+  if (list.length > INPUT_HISTORY_MAX) list.pop();
+}
+
+function resetHistoryNav() {
+  historyIndex.value = -1;
+  draftBeforeHistory.value = '';
+}
+
+function isOnFirstLine() {
+  const el = textareaRef.value;
+  if (!el) return true;
+  return !input.value.slice(0, el.selectionStart).includes('\n');
+}
+
+function isOnLastLine() {
+  const el = textareaRef.value;
+  if (!el) return true;
+  return !input.value.slice(el.selectionEnd).includes('\n');
+}
+
+function navigateInputHistory(direction: 'up' | 'down'): boolean {
+  const history = getInputHistory();
+  if (!history.length) return false;
+
+  historyNavigating = true;
+
+  if (direction === 'up') {
+    if (historyIndex.value === -1) {
+      draftBeforeHistory.value = input.value;
+      historyIndex.value = 0;
+    } else if (historyIndex.value < history.length - 1) {
+      historyIndex.value += 1;
+    } else {
+      historyNavigating = false;
+      return false;
+    }
+    input.value = history[historyIndex.value];
+  } else {
+    if (historyIndex.value === -1) {
+      historyNavigating = false;
+      return false;
+    }
+    if (historyIndex.value === 0) {
+      resetHistoryNav();
+      input.value = draftBeforeHistory.value;
+    } else {
+      historyIndex.value -= 1;
+      input.value = history[historyIndex.value];
+    }
+  }
+
+  nextTick(() => {
+    autoResize();
+    const el = textareaRef.value;
+    if (el) {
+      const len = input.value.length;
+      el.setSelectionRange(len, len);
+    }
+    historyNavigating = false;
+  });
+  return true;
+}
+
 function stripSlashToken(text: string) {
   return text.replace(/(?:^|\s)(?:\/|@)\S*$/, '').trimEnd();
 }
@@ -204,6 +299,7 @@ function executeCommand(id: string) {
     case 'clear':
       input.value = '';
       pendingAttachments.value = [];
+      resetHistoryNav();
       break;
     case 'stop':
       if (sessionStore.currentThreadId) stop(sessionStore.currentThreadId);
@@ -416,6 +512,8 @@ function handleSend() {
   if ((!text && pendingAttachments.value.length === 0) || !sessionStore.currentThreadId) return;
   const attachments =
     pendingAttachments.value.length > 0 ? [...pendingAttachments.value] : undefined;
+  if (text) pushInputHistory(text);
+  resetHistoryNav();
   emit('send', text, attachments);
   input.value = '';
   pendingAttachments.value = [];
@@ -471,6 +569,24 @@ function handleKeydown(e: KeyboardEvent) {
     if (e.key === 'Escape') {
       showModelMenu.value = false;
       return;
+    }
+  }
+
+  if (e.key === 'ArrowUp' && !e.shiftKey && !e.ctrlKey && !e.metaKey && !e.altKey) {
+    if (historyIndex.value !== -1 || isOnFirstLine()) {
+      if (navigateInputHistory('up')) {
+        e.preventDefault();
+        return;
+      }
+    }
+  }
+
+  if (e.key === 'ArrowDown' && !e.shiftKey && !e.ctrlKey && !e.metaKey && !e.altKey) {
+    if (historyIndex.value !== -1) {
+      if (navigateInputHistory('down')) {
+        e.preventDefault();
+        return;
+      }
     }
   }
 
