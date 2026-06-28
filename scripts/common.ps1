@@ -86,7 +86,7 @@ function Clear-StaleAgentApiProcesses {
 
     Get-CimInstance Win32_Process -ErrorAction SilentlyContinue |
         Where-Object {
-            ($_.Name -in @("python.exe", "python3.exe")) -and
+            ($_.Name -eq "python.exe") -and
             ($_.CommandLine -match 'main\.py') -and
             ($_.CommandLine -match "--port\s+$Port\b")
         } |

@@ -19,11 +19,11 @@ fn cleanup_stale_agent_api(port: Option<u16>) {
                  Get-NetTCPConnection -LocalPort {p} -State Listen -ErrorAction SilentlyContinue | \
                  ForEach-Object {{ if ($_.OwningProcess -gt 0) {{ Stop-Process -Id $_.OwningProcess -Force -ErrorAction SilentlyContinue }} }}; \
                  Get-CimInstance Win32_Process -ErrorAction SilentlyContinue | \
-                 Where-Object {{ ($_.Name -in @('python.exe','python3.exe')) -and ($_.CommandLine -match 'main\\.py') -and ($_.CommandLine -match '--port\\s+{p}\\b') }} | \
+                 Where-Object {{ ($_.Name -eq 'python.exe') -and ($_.CommandLine -match 'main\\.py') -and ($_.CommandLine -match '--port\\s+{p}\\b') }} | \
                  ForEach-Object {{ Stop-Process -Id $_.ProcessId -Force -ErrorAction SilentlyContinue }}"
             ),
             None => "Get-CimInstance Win32_Process -ErrorAction SilentlyContinue | \
-                 Where-Object { ($_.Name -in @('python.exe','python3.exe')) -and ($_.CommandLine -match 'main\\.py') } | \
+                 Where-Object { ($_.Name -eq 'python.exe') -and ($_.CommandLine -match 'main\\.py') } | \
                  ForEach-Object { Stop-Process -Id $_.ProcessId -Force -ErrorAction SilentlyContinue }"
                 .to_string(),
         };
@@ -171,7 +171,7 @@ impl SidecarManager {
 
         let (agent_dir, config_dir, data_dir) = Self::dev_agent_paths(app)?;
 
-        let python = if cfg!(windows) { "python" } else { "python3" };
+        let python = "python";
 
         let mut child = Command::new(python);
         child.args(["main.py", "--host", "127.0.0.1", "--port", "0"]);

@@ -15,7 +15,7 @@ if [[ -z "${TAURI_UPDATER_PUBKEY:-}" && -z "${TAURI_UPDATER_ENDPOINT:-}" && -z "
   exit 0
 fi
 
-python3 - "$CONF" <<'PY'
+python - "$CONF" <<'PY'
 import json
 import os
 import sys

@@ -21,14 +21,14 @@ init_agent_env() {
 }
 
 assert_python() {
-  if ! command -v python3 &>/dev/null && ! command -v python &>/dev/null; then
+  if ! command -v python &>/dev/null; then
     echo "Python 3.11+ required" >&2
     exit 1
   fi
 }
 
 python_cmd() {
-  if command -v python3 &>/dev/null; then echo python3; else echo python; fi
+  echo python
 }
 
 wait_sidecar_health() {

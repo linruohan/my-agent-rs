@@ -1,7 +1,7 @@
 # 跨平台快捷命令（Linux/macOS 优先；Windows 可用 npm scripts）
 .PHONY: setup dev dev-web dev-desktop dev-sidecar test build build-web build-all sidecar clean
 
-PYTHON ?= python3
+PYTHON ?= python
 NPM ?= npm
 
 setup:

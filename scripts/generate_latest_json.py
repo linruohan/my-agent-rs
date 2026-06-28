@@ -1,4 +1,4 @@
-#!/usr/bin/env python3
+#!/usr/bin/env python
 """Generate Tauri updater latest.json for GitHub Releases."""
 
 from __future__ import annotations

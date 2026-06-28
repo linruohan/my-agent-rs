@@ -1,4 +1,4 @@
-#!/usr/bin/env python3
+#!/usr/bin/env python
 """Build agent-api sidecar binary with PyInstaller in an isolated venv."""
 from __future__ import annotations
 

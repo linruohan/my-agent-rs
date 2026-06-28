@@ -1,4 +1,4 @@
-#!/usr/bin/env python3
+#!/usr/bin/env python
 """Generate minimal Tauri placeholder icons."""
 import struct
 import zlib

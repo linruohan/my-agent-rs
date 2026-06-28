@@ -1,4 +1,4 @@
-#!/usr/bin/env python3
+#!/usr/bin/env python
 """Ensure Tauri externalBin sidecar placeholder exists for dev/cargo check."""
 from __future__ import annotations
 
