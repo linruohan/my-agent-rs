@@ -10,6 +10,8 @@ init_agent_env "$ROOT"
 LOG="$AGENT_DATA_DIR/sidecar.log"
 echo "==> Starting Personal Assistant Agent (Web Dev)"
 
+cleanup_stale_agent_api "$SIDECAR_PORT"
+
 cd "$ROOT/agent"
 $PY main.py --host 127.0.0.1 --port "$SIDECAR_PORT" >"$LOG" 2>&1 &
 SIDECAR_PID=$!

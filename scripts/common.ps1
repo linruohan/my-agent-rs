@@ -54,6 +54,55 @@ function Wait-SidecarHealth {
     return $false
 }
 
+function Stop-ProcessOnPort {
+    param([int]$Port)
+    try {
+        Get-NetTCPConnection -LocalPort $Port -State Listen -ErrorAction Stop |
+            ForEach-Object {
+                if ($_.OwningProcess -gt 0) {
+                    Stop-Process -Id $_.OwningProcess -Force -ErrorAction SilentlyContinue
+                }
+            }
+        return
+    } catch {}
+
+    $pattern = ":$Port\s"
+    netstat -ano | Select-String -Pattern $pattern | ForEach-Object {
+        $parts = ($_.Line -split '\s+') | Where-Object { $_ -ne '' }
+        $procId = [int]$parts[-1]
+        if ($procId -gt 0) {
+            Stop-Process -Id $procId -Force -ErrorAction SilentlyContinue
+        }
+    }
+}
+
+function Clear-StaleAgentApiProcesses {
+    param([int]$Port = 8765)
+
+    foreach ($name in @("agent-api")) {
+        Get-Process -Name $name -ErrorAction SilentlyContinue |
+            Stop-Process -Force -ErrorAction SilentlyContinue
+    }
+
+    Get-CimInstance Win32_Process -ErrorAction SilentlyContinue |
+        Where-Object {
+            ($_.Name -in @("python.exe", "python3.exe")) -and
+            ($_.CommandLine -match 'main\.py') -and
+            ($_.CommandLine -match "--port\s+$Port\b")
+        } |
+        ForEach-Object {
+            Stop-Process -Id $_.ProcessId -Force -ErrorAction SilentlyContinue
+        }
+
+    try {
+        Invoke-WebRequest -Uri "http://127.0.0.1:$Port/shutdown" -Method POST -UseBasicParsing -TimeoutSec 1 -ErrorAction SilentlyContinue | Out-Null
+    } catch {}
+    Start-Sleep -Milliseconds 300
+
+    Stop-ProcessOnPort -Port $Port
+    Start-Sleep -Milliseconds 200
+}
+
 function Stop-SidecarProcess {
     param(
         [System.Diagnostics.Process]$Process,

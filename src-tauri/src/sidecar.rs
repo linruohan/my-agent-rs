@@ -9,6 +9,73 @@ use tauri::{AppHandle, Emitter, Manager, State};
 use tauri_plugin_shell::ShellExt;
 use tokio::sync::Mutex;
 
+fn cleanup_stale_agent_api(port: Option<u16>) {
+    #[cfg(windows)]
+    {
+        let port_clause = match port {
+            Some(p) => format!(
+                "try {{ Invoke-WebRequest -Uri \"http://127.0.0.1:{p}/shutdown\" -Method POST -TimeoutSec 1 -ErrorAction SilentlyContinue | Out-Null }} catch {{}}; \
+                 Start-Sleep -Milliseconds 300; \
+                 Get-NetTCPConnection -LocalPort {p} -State Listen -ErrorAction SilentlyContinue | \
+                 ForEach-Object {{ if ($_.OwningProcess -gt 0) {{ Stop-Process -Id $_.OwningProcess -Force -ErrorAction SilentlyContinue }} }}; \
+                 Get-CimInstance Win32_Process -ErrorAction SilentlyContinue | \
+                 Where-Object {{ ($_.Name -in @('python.exe','python3.exe')) -and ($_.CommandLine -match 'main\\.py') -and ($_.CommandLine -match '--port\\s+{p}\\b') }} | \
+                 ForEach-Object {{ Stop-Process -Id $_.ProcessId -Force -ErrorAction SilentlyContinue }}"
+            ),
+            None => "Get-CimInstance Win32_Process -ErrorAction SilentlyContinue | \
+                 Where-Object { ($_.Name -in @('python.exe','python3.exe')) -and ($_.CommandLine -match 'main\\.py') } | \
+                 ForEach-Object { Stop-Process -Id $_.ProcessId -Force -ErrorAction SilentlyContinue }"
+                .to_string(),
+        };
+        let script = format!(
+            "Get-Process -Name agent-api -ErrorAction SilentlyContinue | Stop-Process -Force -ErrorAction SilentlyContinue; \
+             {port_clause}"
+        );
+        let _ = Command::new("powershell")
+            .args(["-NoProfile", "-NonInteractive", "-Command", &script])
+            .stdout(Stdio::null())
+            .stderr(Stdio::null())
+            .status();
+    }
+
+    #[cfg(not(windows))]
+    {
+        let _ = Command::new("pkill")
+            .args(["-f", "[/]agent-api"])
+            .stdout(Stdio::null())
+            .stderr(Stdio::null())
+            .status();
+
+        let _ = Command::new("pkill")
+            .args(["-f", "[/]main.py"])
+            .stdout(Stdio::null())
+            .stderr(Stdio::null())
+            .status();
+
+        if let Some(port) = port {
+            let _ = Command::new("curl")
+                .args([
+                    "-sf",
+                    "-X",
+                    "POST",
+                    &format!("http://127.0.0.1:{port}/shutdown"),
+                ])
+                .stdout(Stdio::null())
+                .stderr(Stdio::null())
+                .status();
+
+            let _ = Command::new("sh")
+                .args([
+                    "-c",
+                    &format!("kill -9 $(lsof -ti:{port}) 2>/dev/null || true"),
+                ])
+                .stdout(Stdio::null())
+                .stderr(Stdio::null())
+                .status();
+        }
+    }
+}
+
 #[derive(Debug, Clone, Serialize, PartialEq)]
 #[serde(rename_all = "lowercase")]
 pub enum SidecarStatus {
@@ -85,6 +152,7 @@ impl SidecarManager {
         if self.status != SidecarStatus::Stopped {
             self.stop_async().await?;
         }
+        cleanup_stale_agent_api(None);
         let result = if cfg!(debug_assertions) {
             self.start_dev_mode(app, boot_start).await
         } else {
@@ -393,7 +461,7 @@ pub async fn stop_sidecar(state: State<'_, Mutex<SidecarManager>>) -> Result<(),
 }
 
 #[tauri::command]
-pub async fn restart_sidecar(
+    pub async fn restart_sidecar(
     state: State<'_, Mutex<SidecarManager>>,
     app: AppHandle,
 ) -> Result<u16, String> {

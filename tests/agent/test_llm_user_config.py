@@ -74,6 +74,33 @@ def test_user_llm_config_merge(config_env, tmp_path):
     assert cfg["providers"]["custom"]["api_key_env"] == "CUSTOM_API_KEY"
 
 
+def test_stale_custom_default_provider(config_env, tmp_path):
+    user_file = tmp_path / "llm_user.yaml"
+    user_file.write_text(
+        yaml.safe_dump(
+            {
+                "default_provider": "custom",
+                "custom_providers": [
+                    {
+                        "id": "custom_gateway_xhe5",
+                        "name": "NVIDIA",
+                        "base_url": "https://integrate.api.nvidia.com/v1",
+                        "model": "qwen/qwen3-next-80b-a3b-instruct",
+                    },
+                ],
+            }
+        ),
+        encoding="utf-8",
+    )
+
+    from infra.config import load_llm_providers_config
+
+    cfg = load_llm_providers_config()
+    assert cfg["default_provider"] == "custom_gateway_xhe5"
+    assert "custom" not in cfg["providers"]
+    assert cfg["providers"]["custom_gateway_xhe5"]["base_url"] == "https://integrate.api.nvidia.com/v1"
+
+
 def test_save_and_load_user_llm_config(config_env):
     from infra.config import load_user_llm_config, save_user_llm_config
 

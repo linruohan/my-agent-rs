@@ -11,5 +11,7 @@ init_agent_env "$ROOT"
 echo "==> Starting Sidecar on ${HOST}:${PORT}..."
 echo "    AGENT_DATA_DIR=$AGENT_DATA_DIR"
 
+cleanup_stale_agent_api "$PORT"
+
 cd "$ROOT/agent"
 exec $PY main.py --host "$HOST" --port "$PORT"

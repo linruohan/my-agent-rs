@@ -37,6 +37,13 @@ def _missing_key_message(name: str) -> str:
     )
 
 
+def _unknown_provider_message(name: str) -> str:
+    return (
+        f"Provider «{name}» 不存在或已被删除。"
+        "请在「设置 → 集成 → 提供方」中重新选择有效的提供方。"
+    )
+
+
 def _provider_available(name: str) -> bool:
     try:
         cfg = load_provider(name)
@@ -85,7 +92,16 @@ def create_llm_with_fallback(
                 ) from e
 
     if explicit in missing_key_providers:
+        try:
+            load_provider(explicit)
+        except ValueError:
+            raise RuntimeError(_unknown_provider_message(explicit)) from None
         raise RuntimeError(_missing_key_message(explicit))
+
+    try:
+        load_provider(explicit)
+    except ValueError:
+        raise RuntimeError(_unknown_provider_message(explicit)) from None
 
     if last_error:
         raise RuntimeError(f"All LLM providers unavailable: {last_error}") from last_error
@@ -128,7 +144,22 @@ def invoke_with_fallback(
                 continue
             raise
 
+    explicit = primary or get_default_provider()
+    try:
+        load_provider(explicit)
+    except ValueError:
+        raise RuntimeError(_unknown_provider_message(explicit)) from None
+
+    if not _provider_available(explicit):
+        raise RuntimeError(_missing_key_message(explicit))
+
     hint = ""
-    if primary == "custom" or (chain and chain[0] == "custom"):
+    if explicit == "custom" or is_user_custom_provider(explicit):
         hint = " 请检查设置中的自定义 API 网关地址、模型名与密钥是否正确。"
-    raise RuntimeError(f"All LLM providers unavailable: {last_error}.{hint}")
+    if last_error:
+        raise RuntimeError(f"All LLM providers unavailable: {last_error}.{hint}") from last_error
+    raise RuntimeError(f"All LLM providers unavailable (no API keys configured).{hint}")
+
+
+def is_user_custom_provider(provider_id: str) -> bool:
+    return provider_id == "custom" or provider_id.startswith("custom_")

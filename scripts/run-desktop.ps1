@@ -11,6 +11,7 @@ if (-not (Test-CommandExists "cargo")) {
 }
 
 Write-Host "==> Starting Tauri desktop dev..." -ForegroundColor Cyan
+Clear-StaleAgentApiProcesses
 Set-Location $Root
 
 # Avoid stale local proxy breaking crate index fetch (127.0.0.1:31180/31181)

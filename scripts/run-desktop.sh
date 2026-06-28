@@ -10,5 +10,6 @@ if ! command -v cargo &>/dev/null; then
 fi
 
 echo "==> Starting Tauri desktop dev..."
+cleanup_stale_agent_api 8765
 cd "$ROOT"
 npm run tauri dev

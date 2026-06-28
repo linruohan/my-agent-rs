@@ -12,5 +12,7 @@ $paths = Initialize-AgentEnv -Root $Root
 Write-Host "==> Starting Sidecar on ${BindHost}:${Port}..." -ForegroundColor Cyan
 Write-Host "    AGENT_DATA_DIR=$($env:AGENT_DATA_DIR)"
 
+Clear-StaleAgentApiProcesses -Port $Port
+
 Set-Location $paths.AgentDir
 python main.py --host $BindHost --port $Port

@@ -266,6 +266,14 @@ export const useSettingsStore = defineStore('settings', () => {
     if (cfg.provider_models) {
       providerModels.value = { ...providerModels.value, ...cfg.provider_models };
     }
+    reconcileStaleCustomProvider();
+  }
+
+  function reconcileStaleCustomProvider() {
+    if (provider.value !== 'custom') return;
+    if (customProviders.value.some((e) => e.id === 'custom')) return;
+    const first = customProviders.value[0];
+    if (first?.id) provider.value = first.id;
   }
 
   return {

@@ -10,6 +10,8 @@ $paths = Initialize-AgentEnv -Root $Root
 
 Write-Host "==> Starting Personal Assistant Agent (Web Dev)" -ForegroundColor Cyan
 
+Clear-StaleAgentApiProcesses -Port $SidecarPort
+
 $logFile = Join-Path $paths.DataDir "sidecar.log"
 $sidecarProc = Start-Process python `
     -ArgumentList @("main.py", "--host", "127.0.0.1", "--port", "$SidecarPort") `

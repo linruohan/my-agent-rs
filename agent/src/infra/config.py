@@ -307,12 +307,23 @@ def _merge_custom_providers(cfg: dict[str, Any], user: dict[str, Any]) -> list[s
     return custom_ids
 
 
+def _resolve_default_provider(cfg: dict[str, Any], custom_ids: list[str]) -> None:
+    """Map stale default_provider (e.g. legacy ``custom``) to an existing entry."""
+    default = str(cfg.get("default_provider", "deepseek"))
+    providers = cfg.get("providers", {})
+    if not isinstance(providers, dict) or default in providers:
+        return
+    if custom_ids:
+        cfg["default_provider"] = custom_ids[0]
+
+
 def load_llm_providers_config() -> dict[str, Any]:
     cfg = load_yaml("llm_providers.yaml")
     user = load_user_llm_config()
     if user.get("default_provider"):
         cfg["default_provider"] = user["default_provider"]
-    _merge_custom_providers(cfg, user)
+    custom_ids = _merge_custom_providers(cfg, user)
+    _resolve_default_provider(cfg, custom_ids)
     provider_models = user.get("provider_models")
     if isinstance(provider_models, dict):
         providers = cfg.setdefault("providers", {})

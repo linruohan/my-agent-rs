@@ -53,3 +53,21 @@ stop_sidecar() {
     kill "$pid" 2>/dev/null || kill -9 "$pid" 2>/dev/null || true
   fi
 }
+
+cleanup_stale_agent_api() {
+  local port="${1:-8765}"
+  pkill -f '[/]agent-api' 2>/dev/null || true
+  pkill -f "main.py.*--port[ =]${port}" 2>/dev/null || true
+  curl -sf -X POST "http://127.0.0.1:${port}/shutdown" >/dev/null 2>&1 || true
+  sleep 0.3
+  if command -v lsof &>/dev/null; then
+    local pids
+    pids="$(lsof -ti:"${port}" 2>/dev/null || true)"
+    if [[ -n "$pids" ]]; then
+      kill -9 $pids 2>/dev/null || true
+    fi
+  elif command -v fuser &>/dev/null; then
+    fuser -k "${port}/tcp" 2>/dev/null || true
+  fi
+  sleep 0.2
+}
