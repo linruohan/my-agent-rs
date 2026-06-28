@@ -29,12 +29,8 @@ async function onClick(e: MouseEvent) {
     e.preventDefault();
     e.stopPropagation();
     const block = btn.closest('.md-code-block');
-    const lineCells = block?.querySelectorAll('.md-code-lc');
-    const code = block?.querySelector('code');
-    const text =
-      lineCells && lineCells.length
-        ? [...lineCells].map((el) => el.textContent ?? '').join('\n')
-        : (code?.textContent ?? '');
+    const code = block?.querySelector('.md-code-pre code');
+    const text = code?.textContent ?? '';
     if (!text) return;
     try {
       await navigator.clipboard.writeText(text);
@@ -197,16 +193,16 @@ async function onClick(e: MouseEvent) {
 }
 
 .markdown-body :deep(:not(pre) > code) {
-  background: var(--bg-code, var(--bg-input));
-  border: 1px solid color-mix(in srgb, var(--border) 80%, transparent);
-  border-radius: 4px;
-  padding: 0.1em 0.35em;
-  font-size: 0.9em;
-  font-family: ui-monospace, 'Cascadia Code', monospace;
-  color: var(--syntax-string, var(--success));
+  background: color-mix(in srgb, var(--text-primary) 7%, var(--bg-elevated));
+  border: 1px solid color-mix(in srgb, var(--border) 70%, transparent);
+  border-radius: 5px;
+  padding: 0.12em 0.4em;
+  font-size: 0.88em;
+  font-family: ui-monospace, 'Cascadia Code', 'SF Mono', Menlo, monospace;
+  color: var(--text-primary);
   max-width: 100%;
   overflow-wrap: anywhere;
-  word-break: break-all;
+  word-break: break-word;
 }
 
 .markdown-user :deep(:not(pre) > code) {
@@ -216,44 +212,40 @@ async function onClick(e: MouseEvent) {
 }
 
 .markdown-assistant :deep(:not(pre) > code) {
-  background: var(--bg-code, var(--bg-input));
+  background: color-mix(in srgb, var(--text-primary) 7%, var(--bg-elevated));
+  color: var(--text-primary);
 }
 
 .markdown-body :deep(.md-code-block) {
-  margin: 0.35em 0;
+  position: relative;
+  margin: 0.75em 0;
   max-width: 100%;
-  border: 1px solid var(--border);
-  border-radius: 8px;
-  overflow: hidden;
-  background: var(--bg-input);
+  padding: 16px 20px;
+  border: 1px solid color-mix(in srgb, var(--border) 80%, transparent);
+  border-radius: 10px;
+  background: color-mix(in srgb, var(--bg-elevated) 88%, var(--text-primary) 4%);
 }
 
-.markdown-body :deep(.md-code-header) {
-  display: flex;
-  align-items: center;
-  justify-content: space-between;
-  padding: 6px 10px;
-  background: var(--bg-panel);
-  border-bottom: 1px solid var(--border);
-}
-
-.markdown-body :deep(.md-code-lang) {
-  font-size: 11px;
-  color: var(--text-muted);
-  text-transform: lowercase;
-  font-family: ui-monospace, monospace;
+.markdown-body :deep(.md-code-block:hover .md-copy-btn) {
+  opacity: 1;
 }
 
 .markdown-body :deep(.md-copy-btn) {
-  background: none;
-  border: 1px solid var(--btn-secondary-bg);
-  border-radius: 4px;
+  position: absolute;
+  top: 10px;
+  right: 10px;
+  z-index: 1;
+  opacity: 0;
+  background: color-mix(in srgb, var(--bg-panel) 85%, transparent);
+  border: 1px solid color-mix(in srgb, var(--border) 80%, transparent);
+  border-radius: 6px;
   color: var(--text-secondary);
   font-size: 11px;
-  padding: 2px 8px;
+  padding: 3px 8px;
   cursor: pointer;
   font-family: inherit;
   line-height: 1.4;
+  transition: opacity 0.15s ease, background 0.15s ease, color 0.15s ease;
 }
 
 .markdown-body :deep(.md-copy-btn:hover) {
@@ -262,85 +254,70 @@ async function onClick(e: MouseEvent) {
 }
 
 .markdown-body :deep(.md-copy-btn.copied) {
+  opacity: 1;
   color: var(--success);
-  border-color: rgba(16, 185, 129, 0.35);
+  border-color: color-mix(in srgb, var(--success) 35%, var(--border));
 }
 
-.markdown-body :deep(.md-code-block pre) {
+.markdown-body :deep(.md-code-pre) {
   margin: 0;
   padding: 0;
   max-width: 100%;
   overflow-x: auto;
   background: transparent;
+  font-size: 13px;
+  line-height: 1.65;
+  font-family: ui-monospace, 'Cascadia Code', 'SF Mono', Menlo, monospace;
+  color: var(--text-primary);
+  -webkit-overflow-scrolling: touch;
 }
 
-.markdown-body :deep(.md-code-block pre code) {
+.markdown-body :deep(.md-code-pre code) {
   display: block;
   background: none;
-  padding: 0;
-  font-size: 0.85em;
-  font-family: ui-monospace, 'Cascadia Code', monospace;
-  color: var(--text-primary);
-  white-space: normal;
   border: none;
-  line-height: 1.2;
-}
-
-.markdown-body :deep(.md-code-line) {
-  display: flex;
-  min-width: max-content;
-  line-height: 1.2;
-}
-
-.markdown-body :deep(.md-code-ln) {
-  flex: 0 0 calc(var(--md-ln-digits, 1) * 1em + 16px);
-  min-width: calc(var(--md-ln-digits, 1) * 1em + 16px);
-  padding: 0 8px;
-  text-align: right;
-  color: var(--text-muted);
-  user-select: none;
-  border-right: 1px solid var(--border);
-  background: color-mix(in srgb, var(--bg-panel) 70%, transparent);
-  font-family: ui-monospace, 'Cascadia Code', monospace;
-  font-variant-numeric: tabular-nums;
+  padding: 0;
+  font-size: inherit;
+  font-family: inherit;
+  color: inherit;
   white-space: pre;
-  box-sizing: border-box;
+  line-height: inherit;
 }
 
-.markdown-body :deep(.md-code-lc) {
-  flex: 1;
-  padding: 0 12px;
-  min-width: 0;
-}
-
-.markdown-body :deep(.tok-keyword) {
-  color: var(--syntax-keyword, var(--danger));
-  font-weight: 600;
-}
-
-.markdown-body :deep(.tok-string) {
-  color: var(--syntax-string, var(--success));
-}
-
-.markdown-body :deep(.tok-comment) {
-  color: var(--syntax-comment, var(--text-muted));
+.markdown-body :deep(.md-code-block .tok-comment) {
+  color: var(--text-muted);
   font-style: italic;
 }
 
-.markdown-body :deep(.tok-number) {
-  color: var(--syntax-number, var(--warning));
+.markdown-body :deep(.md-code-block .tok-string) {
+  color: color-mix(in srgb, var(--accent) 50%, #7c6fe0);
 }
 
-.markdown-body :deep(.tok-function) {
-  color: var(--syntax-function, var(--accent));
+.markdown-body :deep(.md-code-block .tok-keyword) {
+  color: var(--text-primary);
+  font-weight: 600;
 }
 
-.markdown-body :deep(.tok-type) {
-  color: var(--syntax-type, var(--accent));
+.markdown-body :deep(.md-code-block .tok-number) {
+  color: color-mix(in srgb, var(--warning) 70%, var(--text-primary));
 }
 
-.markdown-body :deep(.tok-boolean) {
-  color: var(--syntax-boolean, var(--warning));
+.markdown-body :deep(.md-code-block .tok-function) {
+  color: color-mix(in srgb, var(--accent) 35%, var(--text-primary));
+}
+
+.markdown-body :deep(.md-code-block .tok-type) {
+  color: color-mix(in srgb, var(--accent) 45%, var(--text-primary));
+}
+
+:global(html[data-color-mode='dark']) .markdown-body :deep(.md-code-block) {
+  background: color-mix(in srgb, var(--bg-elevated) 92%, var(--text-primary) 3%);
+  border-color: color-mix(in srgb, var(--border) 75%, var(--text-muted) 15%);
+}
+
+:global(html[data-color-mode='light']) .markdown-body :deep(.md-code-block) {
+  background: color-mix(in srgb, var(--bg-elevated) 55%, #ffffff);
+  border-color: color-mix(in srgb, var(--border) 70%, #d4d4d8);
 }
 
 .markdown-body :deep(strong) {

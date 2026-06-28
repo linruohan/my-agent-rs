@@ -458,15 +458,25 @@ export const useTasksStore = defineStore('tasks', () => {
   async function createSection(
     port: number,
     projectId: number,
-    payload: { name: string; start_at?: string; end_at?: string; owner?: string; goals?: string }
+    payload: {
+      name: string;
+      start_at?: string;
+      end_at?: string;
+      owner?: string;
+      goals?: string;
+      status?: string;
+    }
   ) {
     const res = await fetch(`${sidecarBase(port)}/tasks/projects/${projectId}/sections`, {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({
-        ...payload,
-        start_at: payload.start_at ? toIsoDatetime(payload.start_at) : '',
-        end_at: payload.end_at ? toIsoDatetime(payload.end_at) : '',
+        name: payload.name,
+        goals: payload.goals ?? '',
+        owner: payload.owner ?? '',
+        status: payload.status ?? 'active',
+        start_at: payload.start_at ? toIsoDate(payload.start_at) : '',
+        end_at: payload.end_at ? toIsoDate(payload.end_at) : '',
       }),
     });
     if (!res.ok) throw new Error(await res.text());

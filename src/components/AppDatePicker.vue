@@ -3,6 +3,10 @@ import { computed } from 'vue';
 import { VueDatePicker } from '@vuepic/vue-datepicker';
 import { zhCN } from 'date-fns/locale';
 import { parseIso, toIsoFromDate } from '@/utils/dateTime';
+import { useSettingsStore } from '@/stores/settings';
+import { resolveColorMode } from '@/utils/themes';
+
+const settings = useSettingsStore();
 
 const props = withDefaults(
   defineProps<{
@@ -32,12 +36,15 @@ const inner = computed({
     emit('update:modelValue', toIsoFromDate(v, props.mode === 'datetime'));
   },
 });
+
+const isDark = computed(() => resolveColorMode(settings.appearance.colorMode));
 </script>
 
 <template>
   <VueDatePicker
     v-model="inner"
     class="app-date-picker"
+    :dark="isDark"
     :locale="zhCN"
     :enable-time-picker="mode === 'datetime'"
     :placeholder="placeholder"
@@ -53,25 +60,5 @@ const inner = computed({
 <style scoped>
 .app-date-picker {
   width: 100%;
-}
-
-.app-date-picker :deep(.dp__input) {
-  background: var(--bg-input, var(--bg-code));
-  border: 1px solid var(--border);
-  border-radius: 8px;
-  color: var(--text-primary);
-  font-size: 13px;
-  font-family: inherit;
-  padding: 8px 12px;
-  min-height: 36px;
-}
-
-.app-date-picker :deep(.dp__input::placeholder) {
-  color: var(--text-muted);
-}
-
-.app-date-picker :deep(.dp__input:focus) {
-  outline: none;
-  border-color: var(--accent);
 }
 </style>

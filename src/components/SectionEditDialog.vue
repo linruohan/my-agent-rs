@@ -1,47 +1,37 @@
 <script setup lang="ts">
 import { computed, ref, watch } from 'vue';
-import type { ProjectItem } from '@/stores/tasks';
+import type { SectionItem } from '@/stores/tasks';
 import AppDatePicker from '@/components/AppDatePicker.vue';
 
-export type ProjectFormPayload = {
+export type SectionFormPayload = {
   name: string;
-  description: string;
+  goals: string;
   status: string;
   start_at: string;
   end_at: string;
   owner: string;
-  remind_at: string;
 };
-
-const PROJECT_COLORS = [
-  '#fca5a5', '#fdba74', '#fde047', '#bef264', '#86efac', '#5eead4',
-  '#67e8f9', '#93c5fd', '#a5b4fc', '#c4b5fd', '#f0abfc', '#fda4af',
-  '#e5e7eb', '#d1d5db', '#9ca3af', '#78716c', '#57534e', '#44403c',
-  '#fecdd3', '#fed7aa', '#fef08a',
-];
 
 const props = defineProps<{
   open: boolean;
   mode: 'create' | 'edit';
-  project?: ProjectItem | null;
+  section?: SectionItem | null;
 }>();
 
 const emit = defineEmits<{
-  save: [payload: ProjectFormPayload];
+  save: [payload: SectionFormPayload];
   cancel: [];
 }>();
 
 const name = ref('');
-const description = ref('');
+const goals = ref('');
 const status = ref('active');
 const startAt = ref('');
 const endAt = ref('');
 const owner = ref('');
-const remindAt = ref('');
-const accentColor = ref(PROJECT_COLORS[7]);
 const dialogError = ref('');
 
-const dialogTitle = computed(() => (props.mode === 'create' ? 'New Project' : 'Edit Project'));
+const dialogTitle = computed(() => (props.mode === 'create' ? 'New Section' : 'Edit Section'));
 const submitLabel = computed(() => (props.mode === 'create' ? 'Add' : 'Save'));
 
 watch(
@@ -49,24 +39,21 @@ watch(
   (isOpen) => {
     if (!isOpen) return;
     dialogError.value = '';
-    if (props.mode === 'edit' && props.project) {
-      const p = props.project;
-      name.value = p.name;
-      description.value = p.description ?? '';
-      status.value = p.status || 'active';
-      startAt.value = p.start_at ?? '';
-      endAt.value = p.end_at ?? p.due_date ?? '';
-      owner.value = p.owner ?? '';
-      remindAt.value = p.remind_at ?? '';
+    if (props.mode === 'edit' && props.section) {
+      const s = props.section;
+      name.value = s.name;
+      goals.value = s.goals ?? '';
+      status.value = s.status || 'active';
+      startAt.value = s.start_at ?? '';
+      endAt.value = s.end_at ?? '';
+      owner.value = s.owner ?? '';
     } else {
       name.value = '';
-      description.value = '';
+      goals.value = '';
       status.value = 'active';
       startAt.value = '';
       endAt.value = '';
       owner.value = '';
-      remindAt.value = '';
-      accentColor.value = PROJECT_COLORS[7];
     }
   }
 );
@@ -74,17 +61,16 @@ watch(
 function submit() {
   dialogError.value = '';
   if (!name.value.trim()) {
-    dialogError.value = '请填写项目名称';
+    dialogError.value = '请填写 Section 名称';
     return;
   }
   emit('save', {
     name: name.value.trim(),
-    description: description.value.trim(),
+    goals: goals.value.trim(),
     status: status.value,
     start_at: startAt.value,
     end_at: endAt.value,
     owner: owner.value.trim(),
-    remind_at: remindAt.value,
   });
 }
 
@@ -104,11 +90,11 @@ function onKeydown(e: KeyboardEvent) {
 
         <div class="dialog-body">
           <div class="field">
-            <input v-model="name" type="text" placeholder="Project Name" />
+            <input v-model="name" type="text" placeholder="Section Name" />
           </div>
 
           <div class="field">
-            <textarea v-model="description" placeholder="项目描述（可选）" rows="2" />
+            <textarea v-model="goals" placeholder="目标 / 说明（可选）" rows="2" />
           </div>
 
           <div v-if="mode === 'edit'" class="field">
@@ -122,22 +108,6 @@ function onKeydown(e: KeyboardEvent) {
             </select>
           </div>
 
-          <div class="color-section">
-            <div class="color-preview" :style="{ background: accentColor }" />
-            <div class="color-grid">
-              <button
-                v-for="c in PROJECT_COLORS"
-                :key="c"
-                type="button"
-                class="color-swatch"
-                :class="{ active: c === accentColor }"
-                :style="{ background: c }"
-                :aria-label="c"
-                @click="accentColor = c"
-              />
-            </div>
-          </div>
-
           <div class="field">
             <label>开始日期</label>
             <AppDatePicker v-model="startAt" mode="date" placeholder="开始日期" />
@@ -146,11 +116,6 @@ function onKeydown(e: KeyboardEvent) {
           <div class="field">
             <label>截止日期</label>
             <AppDatePicker v-model="endAt" mode="date" placeholder="截止日期" />
-          </div>
-
-          <div class="field">
-            <label>提醒</label>
-            <AppDatePicker v-model="remindAt" mode="datetime" placeholder="提醒时间" />
           </div>
 
           <div class="field">
@@ -245,44 +210,6 @@ function onKeydown(e: KeyboardEvent) {
   padding: 8px 12px;
   font-size: 13px;
   font-family: inherit;
-}
-
-.color-section {
-  display: flex;
-  gap: 12px;
-  padding: 12px;
-  margin-bottom: 14px;
-  background: var(--bg-panel);
-  border: 1px solid var(--border);
-  border-radius: 10px;
-}
-
-.color-preview {
-  width: 36px;
-  height: 36px;
-  border-radius: 8px;
-  flex-shrink: 0;
-}
-
-.color-grid {
-  display: grid;
-  grid-template-columns: repeat(10, 1fr);
-  gap: 6px;
-  flex: 1;
-}
-
-.color-swatch {
-  width: 22px;
-  height: 22px;
-  border-radius: 50%;
-  border: 2px solid transparent;
-  cursor: pointer;
-  padding: 0;
-}
-
-.color-swatch.active {
-  border-color: var(--text-primary);
-  box-shadow: 0 0 0 2px var(--bg-popover);
 }
 
 .error {

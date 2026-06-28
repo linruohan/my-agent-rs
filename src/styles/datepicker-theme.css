@@ -1,0 +1,74 @@
+/* @vuepic/vue-datepicker — 映射到应用全局主题变量（弹层 teleport 到 body，需全局样式） */
+
+.dp--theme-dark,
+.dp--theme-light {
+  --dp-background-color: var(--bg-elevated);
+  --dp-text-color: var(--text-primary);
+  --dp-hover-color: var(--bg-hover);
+  --dp-hover-text-color: var(--text-primary);
+  --dp-hover-icon-color: var(--text-secondary);
+  --dp-primary-color: var(--accent);
+  --dp-primary-disabled-color: color-mix(in srgb, var(--accent) 45%, var(--bg-panel));
+  --dp-primary-text-color: var(--text-on-accent);
+  --dp-secondary-color: var(--text-muted);
+  --dp-border-color: var(--border);
+  --dp-menu-border-color: var(--border);
+  --dp-border-color-hover: color-mix(in srgb, var(--accent) 55%, var(--border));
+  --dp-border-color-focus: var(--accent);
+  --dp-disabled-color: var(--bg-input);
+  --dp-disabled-color-text: var(--text-muted);
+  --dp-scroll-bar-background: var(--bg-panel);
+  --dp-scroll-bar-color: var(--text-muted);
+  --dp-icon-color: var(--text-secondary);
+  --dp-danger-color: var(--danger);
+  --dp-marker-color: var(--danger);
+  --dp-tooltip-color: var(--bg-elevated);
+  --dp-highlight-color: color-mix(in srgb, var(--accent) 18%, transparent);
+  --dp-loader: 5px solid var(--accent);
+  --dp-font-family: inherit;
+  --dp-border-radius: 8px;
+  --dp-cell-border-radius: 6px;
+}
+
+html[data-color-mode='dark'] .dp--theme-dark {
+  color-scheme: dark;
+}
+
+html[data-color-mode='light'] .dp--theme-light {
+  color-scheme: light;
+}
+
+.app-date-picker .dp--input {
+  background: var(--bg-input);
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  color: var(--text-primary);
+  font-size: 13px;
+  font-family: inherit;
+  min-height: 36px;
+  padding: 8px 12px;
+}
+
+.app-date-picker .dp--input::placeholder {
+  color: var(--text-muted);
+  opacity: 1;
+}
+
+.app-date-picker .dp--input:hover:not(.dp--input-focus) {
+  border-color: color-mix(in srgb, var(--accent) 40%, var(--border));
+}
+
+.app-date-picker .dp--input-focus {
+  border-color: var(--accent);
+  outline: none;
+}
+
+.app-date-picker .dp--input-icon,
+.app-date-picker .dp--clear-btn {
+  color: var(--text-muted);
+}
+
+.app-date-picker .dp--menu {
+  border-radius: 10px;
+  box-shadow: 0 8px 24px var(--shadow-color);
+}

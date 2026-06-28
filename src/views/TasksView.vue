@@ -1,6 +1,6 @@
 <script setup lang="ts">
 import { computed, onMounted, ref, watch } from 'vue';
-import { useTasksStore, type ProjectItem, type TodoItem } from '@/stores/tasks';
+import { useTasksStore, type ProjectItem, type SectionItem, type TodoItem } from '@/stores/tasks';
 import { useSettingsStore } from '@/stores/settings';
 import {
   TASK_FILTERS,
@@ -16,6 +16,7 @@ import {
 } from '@/utils/taskFilters';
 import TaskEditDialog, { type TaskFormPayload } from '@/components/TaskEditDialog.vue';
 import ProjectEditDialog, { type ProjectFormPayload } from '@/components/ProjectEditDialog.vue';
+import SectionEditDialog, { type SectionFormPayload } from '@/components/SectionEditDialog.vue';
 import AppDatePicker from '@/components/AppDatePicker.vue';
 
 const tasksStore = useTasksStore();
@@ -23,8 +24,6 @@ const settings = useSettingsStore();
 
 const newTodoTitle = ref('');
 const newTodoDue = ref('');
-const newSectionName = ref('');
-const newSectionGoals = ref('');
 const summaryDate = ref('');
 const summaryProgress = ref('');
 const summaryRisks = ref('');
@@ -37,6 +36,10 @@ const editingTodo = ref<TodoItem | null>(null);
 const projectDialogOpen = ref(false);
 const projectDialogMode = ref<'create' | 'edit'>('create');
 const editingProject = ref<ProjectItem | null>(null);
+
+const sectionDialogOpen = ref(false);
+const sectionDialogMode = ref<'create' | 'edit'>('create');
+const editingSection = ref<SectionItem | null>(null);
 
 const UNSECTIONED_SECTION = 0;
 
@@ -271,6 +274,34 @@ async function saveProject(payload: ProjectFormPayload) {
   }
 }
 
+function openCreateSection() {
+  sectionDialogMode.value = 'create';
+  editingSection.value = null;
+  sectionDialogOpen.value = true;
+}
+
+function openEditSection(section: SectionItem, e?: Event) {
+  e?.stopPropagation();
+  sectionDialogMode.value = 'edit';
+  editingSection.value = section;
+  sectionDialogOpen.value = true;
+}
+
+async function saveSection(payload: SectionFormPayload) {
+  const pid = tasksStore.selectedProjectId;
+  if (pid == null) return;
+  try {
+    if (sectionDialogMode.value === 'edit' && editingSection.value) {
+      await tasksStore.updateSection(settings.sidecarPort, editingSection.value.id, payload);
+    } else {
+      await tasksStore.createSection(settings.sidecarPort, pid, payload);
+    }
+    sectionDialogOpen.value = false;
+  } catch (e) {
+    tasksStore.error = e instanceof Error ? e.message : String(e);
+  }
+}
+
 async function toggleTodo(todo: TodoItem) {
   try {
     await tasksStore.toggleTodoComplete(settings.sidecarPort, todo);
@@ -288,26 +319,10 @@ async function removeTodo(id: number) {
   }
 }
 
-async function addSection() {
-  const pid = tasksStore.selectedProjectId;
-  const name = newSectionName.value.trim();
-  if (pid == null || !name) return;
-  try {
-    await tasksStore.createSection(settings.sidecarPort, pid, {
-      name,
-      goals: newSectionGoals.value.trim(),
-    });
-    newSectionName.value = '';
-    newSectionGoals.value = '';
-  } catch (e) {
-    tasksStore.error = e instanceof Error ? e.message : String(e);
-  }
-}
-
 async function saveSummary() {
   const sid = tasksStore.selectedSectionId;
   const date = summaryDate.value.trim();
-  if (sid == null || !date) return;
+  if (sid == null || sid === UNSECTIONED_SECTION || !date) return;
   try {
     await tasksStore.saveSectionSummary(settings.sidecarPort, sid, {
       summary_date: date,
@@ -485,6 +500,10 @@ watch(
 
         <div class="project-layout">
           <aside class="section-nav">
+            <div class="section-nav-head">
+              <span>Sections</span>
+              <button class="icon-btn" title="新建 Section" @click="openCreateSection">+</button>
+            </div>
             <button
               :class="{ active: tasksStore.selectedSectionId === null }"
               @click="pickSection(null)"
@@ -498,19 +517,18 @@ watch(
               无section
               <small>{{ projectTasksUnsectioned.length }}</small>
             </button>
-            <button
+            <div
               v-for="s in tasksStore.sections"
               :key="s.id"
+              class="section-nav-item"
               :class="{ active: s.id === tasksStore.selectedSectionId }"
               @click="pickSection(s.id)"
             >
-              {{ s.name }}
-              <small>{{ s.stats?.completed ?? 0 }}/{{ s.stats?.total ?? 0 }}</small>
-            </button>
-            <div class="section-add">
-              <input v-model="newSectionName" placeholder="Section 名" @keydown.enter="addSection" />
-              <input v-model="newSectionGoals" placeholder="目标" />
-              <button @click="addSection">+ Section</button>
+              <span class="section-nav-name">{{ s.name }}</span>
+              <span class="section-nav-meta">
+                <small>{{ s.stats?.completed ?? 0 }}/{{ s.stats?.total ?? 0 }}</small>
+                <button class="btn-edit" title="编辑 Section" @click="openEditSection(s, $event)">✎</button>
+              </span>
             </div>
           </aside>
 
@@ -550,6 +568,7 @@ watch(
                   <span class="section-stat">
                     {{ s.stats?.completed ?? 0 }}/{{ s.stats?.total ?? 0 }}
                   </span>
+                  <button class="btn-edit-inline" title="编辑 Section" @click.stop="openEditSection(s)">✎</button>
                 </h3>
                 <p v-if="s.goals" class="section-goals">{{ s.goals }}</p>
                 <ul class="task-list">
@@ -598,7 +617,11 @@ watch(
             </template>
 
             <template v-else-if="selectedSection">
-              <h3 class="section-title">{{ selectedSection.name }}</h3>
+              <div class="section-head">
+                <h3 class="section-title">{{ selectedSection.name }}</h3>
+                <button class="btn-edit-head" @click="openEditSection(selectedSection)">编辑 Section</button>
+              </div>
+              <p v-if="selectedSection.goals" class="section-goals">{{ selectedSection.goals }}</p>
               <ul class="task-list">
                 <li
                   v-for="t in tasksForSection(selectedSection.id)"
@@ -664,6 +687,14 @@ watch(
       @save="saveProject"
       @cancel="projectDialogOpen = false"
     />
+
+    <SectionEditDialog
+      :open="sectionDialogOpen"
+      :mode="sectionDialogMode"
+      :section="editingSection"
+      @save="saveSection"
+      @cancel="sectionDialogOpen = false"
+    />
   </div>
 </template>
 
@@ -673,13 +704,14 @@ watch(
   flex: 1;
   min-height: 0;
   overflow: hidden;
+  background: var(--bg-app);
 }
 
 .sidebar {
   width: 240px;
   flex-shrink: 0;
   border-right: 1px solid var(--border);
-  background: var(--bg-panel);
+  background: var(--bg-sidebar, var(--bg-panel));
   padding: 12px;
   overflow-y: auto;
   display: flex;
@@ -700,12 +732,17 @@ watch(
   align-items: flex-start;
   gap: 4px;
   padding: 10px;
-  border: none;
+  border: 1px solid transparent;
   border-radius: 10px;
   cursor: pointer;
-  color: #fff;
+  color: var(--text-on-accent);
   text-align: left;
   min-height: 72px;
+  transition: outline-color 0.15s ease, transform 0.15s ease;
+}
+
+.filter-card:hover {
+  transform: translateY(-1px);
 }
 
 .filter-card.active {
@@ -713,12 +750,45 @@ watch(
   outline-offset: 2px;
 }
 
-.filter-inbox { background: linear-gradient(135deg, #3b82f6, #2563eb); }
-.filter-today { background: linear-gradient(135deg, #22c55e, #16a34a); }
-.filter-scheduled { background: linear-gradient(135deg, #a855f7, #7c3aed); }
-.filter-pinned { background: linear-gradient(135deg, #ef4444, #dc2626); }
-.filter-labels { background: linear-gradient(135deg, #d97706, #b45309); }
-.filter-completed { background: linear-gradient(135deg, #f97316, #ea580c); }
+.filter-inbox {
+  background: linear-gradient(135deg, var(--accent), var(--accent-hover));
+}
+
+.filter-today {
+  background: linear-gradient(
+    135deg,
+    var(--success),
+    color-mix(in srgb, var(--success) 62%, var(--bg-app))
+  );
+}
+
+.filter-scheduled {
+  background: linear-gradient(
+    135deg,
+    var(--tool-mcp),
+    color-mix(in srgb, var(--tool-mcp) 58%, var(--accent-hover))
+  );
+}
+
+.filter-pinned {
+  background: linear-gradient(135deg, var(--danger), var(--danger-hover));
+}
+
+.filter-labels {
+  background: linear-gradient(
+    135deg,
+    var(--warning),
+    color-mix(in srgb, var(--warning) 62%, var(--bg-app))
+  );
+}
+
+.filter-completed {
+  background: linear-gradient(
+    135deg,
+    color-mix(in srgb, var(--warning) 50%, var(--success)),
+    var(--warning)
+  );
+}
 
 .filter-icon { font-size: 18px; }
 .filter-label { font-size: 13px; font-weight: 600; }
@@ -726,7 +796,7 @@ watch(
   position: absolute;
   top: 8px;
   right: 8px;
-  background: rgba(0, 0, 0, 0.25);
+  background: color-mix(in srgb, var(--bg-app) 42%, transparent);
   border-radius: 10px;
   padding: 1px 7px;
   font-size: 11px;
@@ -783,7 +853,10 @@ watch(
 }
 
 .project-list li:hover { background: var(--bg-hover); }
-.project-list li.active { background: var(--accent-subtle); }
+.project-list li.active {
+  background: var(--choice-active-bg);
+  box-shadow: inset 0 0 0 1px var(--choice-active-border);
+}
 .proj-actions {
   display: flex;
   align-items: center;
@@ -810,6 +883,7 @@ watch(
   overflow-y: auto;
   padding: 20px 24px;
   min-width: 0;
+  background: var(--bg-app);
 }
 
 .main-head {
@@ -874,6 +948,13 @@ watch(
   color: var(--text-primary);
 }
 
+.inline-add :deep(.app-date-picker input),
+.inline-add :deep(.dp__input) {
+  background: var(--bg-input);
+  border-color: var(--border);
+  color: var(--text-primary);
+}
+
 .inline-add button {
   background: var(--accent);
   color: var(--text-on-accent);
@@ -882,6 +963,10 @@ watch(
   padding: 0 16px;
   cursor: pointer;
   white-space: nowrap;
+}
+
+.inline-add button:hover {
+  background: var(--accent-hover);
 }
 
 .btn-detail {
@@ -900,9 +985,14 @@ watch(
   margin-bottom: 8px;
   background: var(--bg-panel);
   border: 1px solid var(--border);
-  border-left: 3px solid var(--danger);
+  border-left: 3px solid var(--accent);
   border-radius: 10px;
   cursor: pointer;
+}
+
+.task-list li:hover {
+  background: var(--bg-hover);
+  border-color: color-mix(in srgb, var(--accent) 35%, var(--border));
 }
 
 .task-list li.done {
@@ -922,12 +1012,16 @@ watch(
 .due { font-size: 11px; color: var(--text-muted); }
 .tag {
   font-size: 10px;
-  background: var(--border);
+  background: color-mix(in srgb, var(--border) 70%, var(--bg-panel));
   color: var(--text-secondary);
   padding: 2px 6px;
   border-radius: 4px;
 }
-.tag.pri { color: var(--text-highlight); }
+.tag.pri { color: var(--text-highlight); background: var(--warning-muted); }
+.tag.proj {
+  color: var(--accent);
+  background: var(--accent-muted);
+}
 
 .btn-del {
   background: none;
@@ -950,7 +1044,8 @@ watch(
 }
 .label-list li:hover { background: var(--bg-hover); }
 .tag-chip {
-  background: var(--accent-subtle);
+  background: var(--accent-muted);
+  color: var(--accent);
   padding: 4px 10px;
   border-radius: 6px;
   font-size: 13px;
@@ -995,7 +1090,18 @@ watch(
   gap: 4px;
 }
 
-.section-nav button {
+.section-nav-head {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  font-size: 11px;
+  color: var(--text-muted);
+  margin-bottom: 4px;
+  padding: 0 2px;
+}
+
+.section-nav button,
+.section-nav-item {
   text-align: left;
   background: var(--bg-panel);
   border: 1px solid var(--border);
@@ -1006,25 +1112,68 @@ watch(
   font-size: 12px;
 }
 
-.section-nav button.active {
-  background: var(--accent-subtle);
-  border-color: var(--user-bubble);
-}
-
-.section-add {
-  margin-top: 12px;
+.section-nav-item {
   display: flex;
-  flex-direction: column;
+  justify-content: space-between;
+  align-items: center;
   gap: 6px;
 }
 
-.section-add input {
-  background: var(--bg-code);
-  border: 1px solid var(--border);
-  border-radius: 6px;
-  padding: 6px 8px;
+.section-nav-item.active,
+.section-nav button.active {
+  background: var(--choice-active-bg);
+  border-color: var(--choice-active-border);
+}
+
+.section-nav-name {
+  flex: 1;
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.section-nav-meta {
+  display: flex;
+  align-items: center;
+  gap: 4px;
+  flex-shrink: 0;
+}
+
+.section-nav-meta .btn-edit {
+  background: none;
+  border: none;
+  color: var(--text-muted);
+  cursor: pointer;
   font-size: 11px;
-  color: var(--text-primary);
+  padding: 0 2px;
+  opacity: 0;
+}
+
+.section-nav-item:hover .btn-edit {
+  opacity: 1;
+}
+
+.section-head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+  margin: 16px 0 8px;
+}
+
+.section-head .section-title {
+  margin: 0;
+}
+
+.btn-edit-inline {
+  background: none;
+  border: none;
+  color: var(--text-muted);
+  cursor: pointer;
+  font-size: 12px;
+  margin-left: auto;
+  padding: 0 4px;
 }
 
 .section-title {
@@ -1036,7 +1185,7 @@ watch(
 }
 
 .section-goals { font-size: 12px; color: var(--text-secondary); margin-bottom: 8px; }
-.badge { font-size: 10px; color: var(--text-link); }
+.badge { font-size: 10px; color: var(--accent); }
 .section-stat { font-size: 11px; color: var(--text-muted); }
 .section-block { margin-bottom: 20px; }
 

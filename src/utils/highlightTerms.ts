@@ -48,7 +48,7 @@ export function highlightTermsInHtml(html: string, terms: string[]): string {
 
   const pattern = new RegExp(`(${filtered.map(escapeRegex).join('|')})`, 'gi');
   const segments = html.split(
-    /(<a[\s\S]*?<\/a>|<code[\s\S]*?<\/code>|<pre[\s\S]*?<\/pre>)/gi
+    /(<a[\s\S]*?<\/a>|<div class="md-code-block"[\s\S]*?<\/div>|<pre[\s\S]*?<\/pre>)/gi
   );
 
   return segments
