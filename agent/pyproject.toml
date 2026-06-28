@@ -38,6 +38,11 @@ build = [
 mcp = [
     "langchain-mcp-adapters>=0.1",
 ]
+otel = [
+    "opentelemetry-api>=1.28",
+    "opentelemetry-sdk>=1.28",
+    "opentelemetry-exporter-otlp-proto-http>=1.28",
+]
 computer = [
     "mss>=9.0",
     "pillow>=10.0",

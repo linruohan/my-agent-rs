@@ -11,6 +11,7 @@ from loguru import logger
 
 from agent.slash import dispatch_slash_command
 from infra.config import load_tools_config
+from infra.tracing import trace_span
 from memory.chat_recall import find_cached_answer, record_turn
 from memory.learner import learn_from_user_message
 from ocr.compose import compose_user_message, try_direct_ocr_reply
@@ -72,105 +73,10 @@ class AgentRunner:
             self._active[thread_id] = task
 
         try:
-            ocr_timeout = _ocr_timeout_sec()
-            self._turn_usage[thread_id] = {"prompt_tokens": 0, "completion_tokens": 0, "total_tokens": 0}
-            direct_ocr = await asyncio.to_thread(
-                try_direct_ocr_reply, content, attachments, timeout=ocr_timeout
-            )
-            if direct_ocr is not None:
-                user_text = (content or "").strip() or "[图片 OCR]"
-                await self._append_local_turn(config, user_text, direct_ocr)
-                await emit(
-                    {"type": "token", "thread_id": thread_id, "content": direct_ocr}
+            with trace_span("agent.run", thread_id=thread_id):
+                await self._run_turn(
+                    thread_id, content, emit, attachments, config, start
                 )
-                metadata = {
-                    "duration_ms": int((time.monotonic() - start) * 1000),
-                    "ocr": True,
-                }
-                await emit({"type": "done", "thread_id": thread_id, "metadata": metadata})
-                return
-
-            user_text = (content or "").strip()
-            slash_result = dispatch_slash_command(user_text)
-            if slash_result is not None:
-                await self._append_local_turn(config, user_text, slash_result)
-                await emit(
-                    {"type": "token", "thread_id": thread_id, "content": slash_result}
-                )
-                lowered = user_text.lower()
-                metadata = {
-                    "duration_ms": int((time.monotonic() - start) * 1000),
-                    "slash": True,
-                    "task_data_changed": lowered.startswith("/tsk")
-                    or lowered.startswith("/pro")
-                    or lowered.startswith("/sec"),
-                }
-                await emit({"type": "done", "thread_id": thread_id, "metadata": metadata})
-                return
-
-            message_content = await asyncio.to_thread(
-                compose_user_message,
-                content,
-                attachments,
-                timeout=ocr_timeout,
-            )
-            if not message_content.strip():
-                await emit(
-                    {
-                        "type": "error",
-                        "thread_id": thread_id,
-                        "message": "消息内容不能为空",
-                        "code": "INVALID_REQUEST",
-                    }
-                )
-                return
-
-            learn_from_user_message(user_text)
-
-            cached = await asyncio.to_thread(
-                find_cached_answer,
-                user_text,
-                thread_id,
-                has_attachments=bool(attachments),
-            )
-            if cached:
-                await self._emit_history_recall(
-                    thread_id,
-                    config,
-                    user_text,
-                    cached,
-                    emit,
-                    start,
-                )
-                return
-
-            input_state = {"messages": [HumanMessage(content=message_content)]}
-            metadata: dict[str, Any] = {"duration_ms": 0}
-
-            async for event in self.graph.astream_events(
-                input_state, config, version="v2"
-            ):
-                await self._handle_event(event, thread_id, emit)
-
-            if await self._emit_pending_interrupts(thread_id, config, emit):
-                return
-
-            metadata["duration_ms"] = int((time.monotonic() - start) * 1000)
-            usage = self._turn_usage.pop(thread_id, {})
-            if usage:
-                metadata["token_usage"] = usage
-            from infra.metrics import observe_turn_duration
-
-            observe_turn_duration(metadata["duration_ms"])
-            logger.info(
-                "agent.turn_done thread_id={} duration_ms={} tokens={}",
-                thread_id,
-                metadata["duration_ms"],
-                usage.get("total_tokens", 0),
-            )
-            await self._post_turn_index(thread_id, config, user_text)
-            await emit({"type": "done", "thread_id": thread_id, "metadata": metadata})
-
         except asyncio.CancelledError:
             await emit(
                 {
@@ -194,6 +100,114 @@ class AgentRunner:
             self._active.pop(thread_id, None)
             self._turn_usage.pop(thread_id, None)
             await self._release_thread(thread_id)
+
+    async def _run_turn(
+        self,
+        thread_id: str,
+        content: str,
+        emit: EventCallback,
+        attachments: list[dict[str, Any]] | None,
+        config: dict[str, Any],
+        start: float,
+    ) -> None:
+        ocr_timeout = _ocr_timeout_sec()
+        self._turn_usage[thread_id] = {
+            "prompt_tokens": 0,
+            "completion_tokens": 0,
+            "total_tokens": 0,
+        }
+        direct_ocr = await asyncio.to_thread(
+            try_direct_ocr_reply, content, attachments, timeout=ocr_timeout
+        )
+        if direct_ocr is not None:
+            user_text = (content or "").strip() or "[图片 OCR]"
+            await self._append_local_turn(config, user_text, direct_ocr)
+            await emit({"type": "token", "thread_id": thread_id, "content": direct_ocr})
+            metadata = {
+                "duration_ms": int((time.monotonic() - start) * 1000),
+                "ocr": True,
+            }
+            await emit({"type": "done", "thread_id": thread_id, "metadata": metadata})
+            return
+
+        user_text = (content or "").strip()
+        slash_result = dispatch_slash_command(user_text)
+        if slash_result is not None:
+            await self._append_local_turn(config, user_text, slash_result)
+            await emit({"type": "token", "thread_id": thread_id, "content": slash_result})
+            lowered = user_text.lower()
+            metadata = {
+                "duration_ms": int((time.monotonic() - start) * 1000),
+                "slash": True,
+                "task_data_changed": lowered.startswith("/tsk")
+                or lowered.startswith("/pro")
+                or lowered.startswith("/sec"),
+            }
+            await emit({"type": "done", "thread_id": thread_id, "metadata": metadata})
+            return
+
+        message_content = await asyncio.to_thread(
+            compose_user_message,
+            content,
+            attachments,
+            timeout=ocr_timeout,
+        )
+        if not message_content.strip():
+            await emit(
+                {
+                    "type": "error",
+                    "thread_id": thread_id,
+                    "message": "消息内容不能为空",
+                    "code": "INVALID_REQUEST",
+                }
+            )
+            return
+
+        learn_from_user_message(user_text)
+
+        cached = await asyncio.to_thread(
+            find_cached_answer,
+            user_text,
+            thread_id,
+            has_attachments=bool(attachments),
+        )
+        if cached:
+            await self._emit_history_recall(
+                thread_id,
+                config,
+                user_text,
+                cached,
+                emit,
+                start,
+            )
+            return
+
+        input_state = {"messages": [HumanMessage(content=message_content)]}
+        metadata: dict[str, Any] = {"duration_ms": 0}
+
+        async for event in self.graph.astream_events(
+            input_state, config, version="v2"
+        ):
+            await self._handle_event(event, thread_id, emit)
+
+        if await self._emit_pending_interrupts(thread_id, config, emit):
+            return
+
+        metadata["duration_ms"] = int((time.monotonic() - start) * 1000)
+        usage = self._turn_usage.pop(thread_id, {})
+        if usage:
+            metadata["token_usage"] = usage
+        from infra.metrics import observe_turn_duration
+
+        observe_turn_duration(metadata["duration_ms"])
+        logger.info(
+            "agent.turn_done thread_id={} duration_ms={} tokens={}",
+            thread_id,
+            metadata["duration_ms"],
+            usage.get("total_tokens", 0),
+        )
+        await self._post_turn_index(thread_id, config, user_text)
+        await emit({"type": "done", "thread_id": thread_id, "metadata": metadata})
 
     async def _handle_event(
         self, event: dict[str, Any], thread_id: str, emit: EventCallback
@@ -295,22 +309,23 @@ class AgentRunner:
 
         hitl_timeout_manager.cancel(thread_id)
         try:
-            async for event in self.graph.astream_events(
-                Command(resume=resume_value), config, version="v2"
-            ):
-                await self._handle_event(event, thread_id, emit)
+            with trace_span("agent.resume", thread_id=thread_id, decision=decision):
+                async for event in self.graph.astream_events(
+                    Command(resume=resume_value), config, version="v2"
+                ):
+                    await self._handle_event(event, thread_id, emit)
 
-            if await self._emit_pending_interrupts(thread_id, config, emit):
-                return
+                if await self._emit_pending_interrupts(thread_id, config, emit):
+                    return
 
-            metadata = {"duration_ms": int((time.monotonic() - start) * 1000)}
-            usage = self._turn_usage.pop(thread_id, {})
-            if usage:
-                metadata["token_usage"] = usage
-            user_text = await self._last_user_text(config)
-            if user_text:
-                await self._post_turn_index(thread_id, config, user_text)
-            await emit({"type": "done", "thread_id": thread_id, "metadata": metadata})
+                metadata = {"duration_ms": int((time.monotonic() - start) * 1000)}
+                usage = self._turn_usage.pop(thread_id, {})
+                if usage:
+                    metadata["token_usage"] = usage
+                user_text = await self._last_user_text(config)
+                if user_text:
+                    await self._post_turn_index(thread_id, config, user_text)
+                await emit({"type": "done", "thread_id": thread_id, "metadata": metadata})
         except Exception as e:
             await emit(
                 {

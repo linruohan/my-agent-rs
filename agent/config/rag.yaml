@@ -19,3 +19,7 @@ index:
   backend: faiss
   persist_dir: data/vectorstore
   versioned: true
+
+ingest:
+  max_inline_chars: 500000
+  max_pdf_b64_bytes: 10485760

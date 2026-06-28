@@ -1,7 +1,7 @@
 const LEADER_KEY = 'pa-ws-leader';
 const LEADER_STALE_MS = 5000;
 const HEARTBEAT_MS = 2000;
-const BC_CHANNEL = 'personal-assistant-agent';
+export const BC_CHANNEL = 'personal-assistant-agent';
 
 export const tabId = crypto.randomUUID();
 
@@ -14,10 +14,13 @@ type LeaderCallbacks = {
   onBecomeFollower: () => void;
 };
 
+type ChannelHandler = (data: Record<string, unknown>) => void;
+
 let role: WsLeaderRole = 'follower';
 let heartbeatTimer: ReturnType<typeof setInterval> | null = null;
 let callbacks: LeaderCallbacks | null = null;
 let bc: BroadcastChannel | null = null;
+let channelHandler: ChannelHandler | null = null;
 let initialized = false;
 
 function readLeader(): LeaderRecord | null {
@@ -49,8 +52,36 @@ function startHeartbeat() {
   heartbeatTimer = setInterval(() => {
     if (role !== 'leader') return;
     writeLeader();
-    bc?.postMessage({ type: 'leader.ping', tabId });
+    postChannelMessage({ type: 'leader.ping', tabId });
   }, HEARTBEAT_MS);
+}
+
+function ensureChannel() {
+  if (typeof BroadcastChannel === 'undefined') return;
+  if (bc) return;
+  bc = new BroadcastChannel(BC_CHANNEL);
+  bc.onmessage = (e: MessageEvent) => {
+    const data = e.data as Record<string, unknown>;
+    if (data.type === 'leader.claimed' && data.tabId !== tabId) {
+      setRole('follower');
+    }
+    if (data.type === 'leader.release') {
+      tryClaimLeader();
+    }
+    if (data.type === 'leader.ping' && data.tabId !== tabId) {
+      setRole('follower');
+    }
+    channelHandler?.(data);
+  };
+}
+
+export function postChannelMessage(data: Record<string, unknown>) {
+  ensureChannel();
+  bc?.postMessage(data);
+}
+
+export function registerChannelHandler(handler: ChannelHandler | null) {
+  channelHandler = handler;
 }
 
 function setRole(next: WsLeaderRole) {
@@ -82,7 +113,7 @@ export function tryClaimLeader(): boolean {
   }
   writeLeader();
   setRole('leader');
-  bc?.postMessage({ type: 'leader.claimed', tabId });
+  postChannelMessage({ type: 'leader.claimed', tabId });
   return true;
 }
 
@@ -94,7 +125,7 @@ export function releaseLeader() {
   }
   stopHeartbeat();
   role = 'follower';
-  bc?.postMessage({ type: 'leader.release', tabId });
+  postChannelMessage({ type: 'leader.release', tabId });
   callbacks?.onBecomeFollower();
 }
 
@@ -116,25 +147,14 @@ export function registerLeaderCallbacks(cb: LeaderCallbacks) {
   callbacks = cb;
 }
 
+export function requestSyncFromLeader() {
+  postChannelMessage({ type: 'sync.request', tabId });
+}
+
 export function initWsLeaderElection() {
   if (initialized) return;
   initialized = true;
-
-  if (typeof BroadcastChannel !== 'undefined') {
-    bc = new BroadcastChannel(BC_CHANNEL);
-    bc.onmessage = (e: MessageEvent) => {
-      const data = e.data as { type?: string; tabId?: string };
-      if (data.type === 'leader.claimed' && data.tabId !== tabId) {
-        setRole('follower');
-      }
-      if (data.type === 'leader.release') {
-        tryClaimLeader();
-      }
-      if (data.type === 'leader.ping' && data.tabId !== tabId) {
-        setRole('follower');
-      }
-    };
-  }
+  ensureChannel();
 
   window.addEventListener('storage', (e) => {
     if (e.key === LEADER_KEY) refreshRoleFromStorage();

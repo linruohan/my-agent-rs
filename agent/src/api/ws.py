@@ -305,7 +305,13 @@ def create_ws_router(
                     continue
 
                 if msg_type == "rag.ingest":
-                    from infra.rag_paths import validate_rag_ingest_path
+                    import io
+
+                    from infra.rag_paths import (
+                        validate_rag_ingest_path,
+                        validate_rag_inline_content,
+                        validate_rag_pdf_b64,
+                    )
                     from memory.rag import RagStore
 
                     rag = RagStore()
@@ -318,19 +324,18 @@ def create_ws_router(
                         elif content:
                             source = data.get("source", "inline")
                             if content.startswith("__pdf_b64__:"):
-                                import base64
-                                import io
-
                                 from pypdf import PdfReader
 
-                                raw = base64.b64decode(content[len("__pdf_b64__:") :])
+                                raw = validate_rag_pdf_b64(content)
                                 reader = PdfReader(io.BytesIO(raw))
                                 text = "\n".join(
                                     p.extract_text() or "" for p in reader.pages
                                 )
+                                validate_rag_inline_content(text, source=source)
                                 count = rag.ingest_text(text, source=source)
                                 result = f"Ingested {count} chunks from PDF {source}"
                             else:
+                                validate_rag_inline_content(content, source=source)
                                 count = rag.ingest_text(content, source=source)
                                 result = f"Ingested {count} chunks from {source}"
                         else:

@@ -359,7 +359,10 @@ def create_hitl_tools_node(registry: ToolRegistry):
                         }
                     )
                 tool_start = time.monotonic()
-                output = tool.invoke(args)
+                from infra.tracing import trace_span
+
+                with trace_span("tool.invoke", tool=name, thread_id=config.get("configurable", {}).get("thread_id", "")):
+                    output = tool.invoke(args)
                 tool_ms = int((time.monotonic() - tool_start) * 1000)
                 from infra.metrics import observe_tool_duration
 

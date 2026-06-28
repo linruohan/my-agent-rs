@@ -79,6 +79,12 @@ def build_app(port: int = 8765) -> FastAPI:
         import time
 
         lifespan_t0 = time.monotonic()
+        from infra.tracing import setup_tracing, shutdown_tracing
+
+        app_cfg = load_app_config()
+        otel_name = app_cfg.get("observability", {}).get("service_name")
+        setup_tracing(str(otel_name) if otel_name else None)
+
         checkpointer, conn = await create_sqlite_checkpointer()
         app.state.checkpointer = checkpointer
         app.state.conn = conn
@@ -160,6 +166,7 @@ def build_app(port: int = 8765) -> FastAPI:
             if hasattr(app.state, "task_reminder"):
                 app.state.task_reminder.stop()
             shutdown_scheduler()
+            shutdown_tracing()
             await conn.close()
 
     app = FastAPI(title="Personal Assistant Agent", version=VERSION, lifespan=lifespan)

@@ -48,6 +48,45 @@ def test_validate_rag_ingest_path(tmp_path, monkeypatch):
         validate_rag_ingest_path("run.exe")
 
 
+def test_validate_rag_inline_content(monkeypatch):
+    monkeypatch.setattr(
+        "infra.rag_paths.load_rag_config",
+        lambda: {"ingest": {"max_inline_chars": 100, "max_pdf_b64_bytes": 256}},
+    )
+    from infra.rag_paths import validate_rag_inline_content, validate_rag_pdf_b64
+
+    assert validate_rag_inline_content("hello") == "hello"
+    with pytest.raises(ValueError, match="too large"):
+        validate_rag_inline_content("x" * 101)
+
+    import base64
+
+    small_pdf = base64.b64encode(b"%PDF-small").decode()
+    assert validate_rag_pdf_b64(f"__pdf_b64__:{small_pdf}")
+    with pytest.raises(ValueError, match="too large"):
+        validate_rag_pdf_b64(f"__pdf_b64__:{base64.b64encode(b'x' * 300).decode()}")
+
+
+def test_prometheus_metrics(monkeypatch, tmp_path):
+    from infra.metrics import inc, observe_turn_duration, prometheus_text
+
+    inc("agent.turns", 0)
+    observe_turn_duration(120)
+    text = prometheus_text()
+    assert "agent_turns" in text
+    assert "turn_duration_ms_p95" in text
+
+
+def test_tracing_noop_without_env(monkeypatch):
+    monkeypatch.delenv("OTEL_EXPORTER_OTLP_ENDPOINT", raising=False)
+    from infra.tracing import setup_tracing, trace_span, tracing_enabled
+
+    assert setup_tracing() is False
+    assert tracing_enabled() is False
+    with trace_span("test.span"):
+        pass
+
+
 def test_metrics_endpoint(monkeypatch, tmp_path):
     from pathlib import Path
     from starlette.testclient import TestClient
@@ -70,3 +109,8 @@ def test_metrics_endpoint(monkeypatch, tmp_path):
         assert "counters" in data
         assert "tool_call_duration_ms" in data
         assert "turn_duration_ms" in data
+
+        prom = client.get("/metrics/prometheus")
+        assert prom.status_code == 200
+        assert "text/plain" in prom.headers.get("content-type", "")
+        assert "turn_duration_ms_p95" in prom.text

@@ -72,6 +72,14 @@ async def metrics():
     return snapshot()
 
 
+@router.get("/metrics/prometheus")
+async def metrics_prometheus():
+    from fastapi.responses import PlainTextResponse
+    from infra.metrics import prometheus_text
+
+    return PlainTextResponse(prometheus_text(), media_type="text/plain; version=0.0.4")
+
+
 @router.get("/auth/token")
 async def auth_token(request: Request):
     host = request.client.host if request.client else request.url.hostname or ""

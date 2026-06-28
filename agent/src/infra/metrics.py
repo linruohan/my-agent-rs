@@ -51,3 +51,28 @@ def snapshot() -> dict[str, Any]:
             "p95": _percentile(turn_durs, 0.95),
         },
     }
+
+
+def prometheus_text() -> str:
+    snap = snapshot()
+    lines: list[str] = []
+
+    def emit_counter(name: str, value: int) -> None:
+        metric = name.replace(".", "_")
+        lines.append(f"# TYPE {metric} counter")
+        lines.append(f"{metric} {value}")
+
+    for key, value in sorted(snap["counters"].items()):
+        emit_counter(key, int(value))
+
+    tool = snap["tool_call_duration_ms"]
+    turn = snap["turn_duration_ms"]
+    lines.append("# TYPE tool_call_duration_ms_p95 gauge")
+    lines.append(f"tool_call_duration_ms_p95 {tool['p95']}")
+    lines.append("# TYPE turn_duration_ms_p95 gauge")
+    lines.append(f"turn_duration_ms_p95 {turn['p95']}")
+    lines.append("# TYPE tool_call_samples gauge")
+    lines.append(f"tool_call_samples {tool['count']}")
+    lines.append("# TYPE turn_samples gauge")
+    lines.append(f"turn_samples {turn['count']}")
+    return "\n".join(lines) + "\n"

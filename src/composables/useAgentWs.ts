@@ -11,13 +11,15 @@ import { registerWsResumeHandler } from '@/utils/wsBridge';
 import {
   initWsLeaderElection,
   isWsLeader,
+  postChannelMessage,
+  registerChannelHandler,
   registerLeaderCallbacks,
+  requestSyncFromLeader,
   tryClaimLeader,
 } from '@/utils/wsLeader';
 
 const RECONNECT_DELAYS = [1000, 2000, 4000, 8000, 16000];
 const TOKEN_FLUSH_MS = 50;
-const BC_CHANNEL = 'personal-assistant-agent';
 
 const WRITE_MSG_TYPES = new Set([
   'chat.send',
@@ -39,16 +41,26 @@ let pendingCreateTitle: string | undefined;
 let initialSessionBootstrapped = false;
 let tokenBuffer = '';
 let tokenFlushTimer: ReturnType<typeof setTimeout> | null = null;
-let bc: BroadcastChannel | null = null;
 let dispatchWsMessage: ((msg: Record<string, unknown>) => void) | null = null;
 let leaderHooksReady = false;
+let channelHandlerReady = false;
 
-function initBroadcastChannel(sessionStore: ReturnType<typeof useSessionStore>) {
-  if (typeof BroadcastChannel === 'undefined') return;
-  if (bc) return;
-  bc = new BroadcastChannel(BC_CHANNEL);
-  bc.onmessage = (e: MessageEvent) => {
-    const data = e.data as { type?: string; threadId?: string; msg?: Record<string, unknown> };
+function scheduleFollowerSync(sessionStore: ReturnType<typeof useSessionStore>) {
+  requestSyncFromLeader();
+  window.setTimeout(() => {
+    const pinia = getActivePinia();
+    if (!pinia) return;
+    const settings = useSettingsStore(pinia);
+    if (settings.wsReadOnly && sessionStore.sessions.length === 0) {
+      requestSyncFromLeader();
+    }
+  }, 800);
+}
+
+function setupChannelHandler(sessionStore: ReturnType<typeof useSessionStore>) {
+  if (channelHandlerReady) return;
+  channelHandlerReady = true;
+  registerChannelHandler((data) => {
     if (data.type === 'streaming.start' && data.threadId !== sessionStore.currentThreadId) {
       sessionStore.isStreaming = true;
     }
@@ -60,10 +72,14 @@ function initBroadcastChannel(sessionStore: ReturnType<typeof useSessionStore>) 
       if (!pinia) return;
       const settings = useSettingsStore(pinia);
       if (settings.wsReadOnly) {
-        dispatchWsMessage(data.msg);
+        dispatchWsMessage(data.msg as Record<string, unknown>);
       }
     }
-  };
+    if (data.type === 'sync.request' && isWsLeader()) {
+      sendRaw({ type: 'session.list' });
+      sendRaw({ type: 'session.archived' });
+    }
+  });
 }
 
 let pendingHistoryLoads = new Map<string, number>();
@@ -133,12 +149,9 @@ export function useAgentWs() {
   const tasksStore = useTasksStore();
   const connectionError = ref('');
 
-  if (!bc) initBroadcastChannel(sessionStore);
-
-  dispatchWsMessage = handleMessage;
-
   if (!leaderHooksReady) {
     leaderHooksReady = true;
+    setupChannelHandler(sessionStore);
     registerLeaderCallbacks({
       onBecomeLeader: () => {
         settingsStore.setWsReadOnly(false);
@@ -150,6 +163,7 @@ export function useAgentWs() {
         settingsStore.setWsConnected(false);
         connectionError.value = '已在其他标签页打开，当前为只读模式';
         disconnectInternal();
+        scheduleFollowerSync(sessionStore);
       },
     });
     initWsLeaderElection();
@@ -254,7 +268,7 @@ export function useAgentWs() {
       case 'done': {
         flushTokenBuffer(sessionStore);
         sessionStore.isStreaming = false;
-        bc?.postMessage({ type: 'streaming.end' });
+        postChannelMessage({ type: 'streaming.end' });
         const metadata = msg.metadata as {
           duration_ms?: number;
           task_data_changed?: boolean;
@@ -404,10 +418,12 @@ export function useAgentWs() {
         break;
     }
 
-    if (isWsLeader() && bc && type !== 'pong') {
-      bc.postMessage({ type: 'ws.forward', msg });
+    if (isWsLeader() && type !== 'pong') {
+      postChannelMessage({ type: 'ws.forward', msg });
     }
   }
+
+  dispatchWsMessage = handleMessage;
 
   function connectInternal() {
     if (settingsStore.sidecarStatus === 'starting') {
@@ -460,6 +476,7 @@ export function useAgentWs() {
       settingsStore.setWsReadOnly(true);
       settingsStore.setWsConnected(false);
       connectionError.value = '已在其他标签页打开，当前为只读模式';
+      scheduleFollowerSync(sessionStore);
       return;
     }
     settingsStore.setWsReadOnly(false);
@@ -486,7 +503,7 @@ export function useAgentWs() {
 
   function send(content: string, threadId: string, attachments?: ChatAttachment[]) {
     sessionStore.isStreaming = true;
-    bc?.postMessage({ type: 'streaming.start', threadId });
+    postChannelMessage({ type: 'streaming.start', threadId });
     sessionStore.addMessage({
       id: crypto.randomUUID(),
       role: 'user',

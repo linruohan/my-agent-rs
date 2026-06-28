@@ -13,3 +13,7 @@ hitl:
 llm:
   default_provider: deepseek
   request_timeout_sec: 60
+
+observability:
+  # Set OTEL_EXPORTER_OTLP_ENDPOINT env to enable OTLP export (optional packages required)
+  service_name: personal-assistant-agent
