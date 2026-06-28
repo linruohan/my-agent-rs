@@ -28,14 +28,17 @@ def _user_tags(tags: list[str]) -> list[str]:
     return out
 
 
-def task_to_todo(row: TaskRow) -> dict[str, Any]:
+def task_to_todo(row: TaskRow, *, inbox_project_id: int | None = None) -> dict[str, Any]:
+    pid = row.project_id
+    if pid is None and inbox_project_id is not None:
+        pid = inbox_project_id
     return {
         "id": row.id,
         "title": row.title,
         "due_date": row.due_at or "",
         "priority": _parse_priority(row.tags),
         "completed": row.status == "done",
-        "project_id": row.project_id,
+        "project_id": pid,
         "section_id": row.section_id,
         "description": row.content,
         "remind_at": row.remind_at or "",
@@ -77,7 +80,10 @@ def create_todo_record(
 ) -> dict[str, Any]:
     pstore = ProjectStore()
     pid = _resolve_project_id(project_id, pstore)
-    if section_id is not None:
+    inbox_id = pstore.ensure_inbox().id
+    if pid == inbox_id:
+        section_id = None
+    elif section_id is not None:
         section = pstore.get_section(section_id)
         if not section:
             raise ValueError(f"Section #{section_id} not found")
@@ -95,7 +101,7 @@ def create_todo_record(
         project_id=pid,
         section_id=section_id,
     )
-    return task_to_todo(row)
+    return task_to_todo(row, inbox_project_id=inbox_id)
 
 
 def list_todo_records(
@@ -108,13 +114,15 @@ def list_todo_records(
     store: TaskStore | None = None,
 ) -> list[dict[str, Any]]:
     store = store or TaskStore()
+    pstore = ProjectStore()
+    inbox_id = pstore.ensure_inbox().id
     rows = store.list_filtered(
         include_done=include_completed,
         project_id=project_id,
         section_id=section_id,
         inbox_only=inbox_only,
     )
-    records = [task_to_todo(r) for r in rows]
+    records = [task_to_todo(r, inbox_project_id=inbox_id) for r in rows]
 
     priority_order = {"high": 0, "normal": 1, "low": 2}
     if sort_by == "due_date":
@@ -133,7 +141,7 @@ def list_todo_records(
 def get_todo_record(todo_id: int, *, store: TaskStore | None = None) -> dict[str, Any] | None:
     store = store or TaskStore()
     row = store.get(todo_id)
-    return task_to_todo(row) if row else None
+    return task_to_todo(row, inbox_project_id=ProjectStore().ensure_inbox().id) if row else None
 
 
 def update_todo_record(
@@ -178,7 +186,11 @@ def update_todo_record(
         kwargs["project_id"] = ProjectStore().ensure_inbox().id
         kwargs["clear_section"] = True
     elif project_id is not None:
-        kwargs["project_id"] = project_id
+        pstore = ProjectStore()
+        pid = _resolve_project_id(project_id, pstore)
+        kwargs["project_id"] = pid
+        if pid == pstore.ensure_inbox().id:
+            kwargs["clear_section"] = True
     if clear_section:
         kwargs["clear_section"] = True
     elif section_id is not None:
@@ -190,7 +202,8 @@ def update_todo_record(
 
     store.update(todo_id, **kwargs)
     updated = store.get(todo_id)
-    return task_to_todo(updated) if updated else None
+    inbox_id = ProjectStore().ensure_inbox().id
+    return task_to_todo(updated, inbox_project_id=inbox_id) if updated else None
 
 
 def delete_todo_record(todo_id: int, *, store: TaskStore | None = None) -> bool:

@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import { computed, ref } from 'vue';
+import { computed, nextTick, ref, watch } from 'vue';
 import { useSessionStore } from '@/stores/session';
 import { useAgentWs } from '@/composables/useAgentWs';
 import ProcessSteps from '@/components/ProcessSteps.vue';
@@ -18,10 +18,24 @@ const { send } = useAgentWs();
 
 const previewSrc = ref<string | null>(null);
 const previewAlt = ref('');
+const messagesEl = ref<HTMLElement | null>(null);
+
+function scrollToBottom(instant = false) {
+  nextTick(() => {
+    requestAnimationFrame(() => {
+      requestAnimationFrame(() => {
+        const el = messagesEl.value;
+        if (!el) return;
+        el.scrollTo({ top: el.scrollHeight, behavior: instant ? 'auto' : 'smooth' });
+      });
+    });
+  });
+}
 
 function handleSend(text: string, attachments?: ChatAttachment[]) {
   if (!sessionStore.currentThreadId) return;
   send(text, sessionStore.currentThreadId, attachments);
+  scrollToBottom();
 }
 
 function onPreviewImage(src: string, name: string) {
@@ -35,6 +49,34 @@ function closePreview() {
 }
 
 const messageBlocks = computed(() => buildMessageBlocks(sessionStore.messages));
+
+watch(
+  () => sessionStore.messages,
+  () => scrollToBottom(sessionStore.isStreaming),
+  { deep: true }
+);
+
+watch(messageBlocks, () => scrollToBottom(sessionStore.isStreaming), { deep: true });
+
+watch(
+  () => sessionStore.historyLoadedGeneration,
+  () => {
+    if (sessionStore.messages.length === 0 || sessionStore.isStreaming) return;
+    scrollToBottom(true);
+    setTimeout(() => scrollToBottom(true), 120);
+    setTimeout(() => scrollToBottom(true), 320);
+  }
+);
+
+watch(
+  () => sessionStore.isStreaming,
+  (streaming, wasStreaming) => {
+    if (wasStreaming && !streaming) {
+      scrollToBottom();
+      setTimeout(() => scrollToBottom(true), 120);
+    }
+  }
+);
 
 function isStreamingPlaceholder(assistant: Message | null, blockIndex: number) {
   if (!assistant) return false;
@@ -100,7 +142,7 @@ const showWelcome = computed(
 
 <template>
   <div class="chat-panel">
-    <div class="messages">
+    <div ref="messagesEl" class="messages">
       <div
         v-if="!sessionStore.currentThreadId || showWelcome"
         class="welcome"
@@ -275,6 +317,11 @@ const showWelcome = computed(
   border: 1px solid var(--border, var(--border));
   color: var(--text-primary, var(--text-primary));
   border-bottom-left-radius: 4px;
+}
+
+:global(html[data-color-mode='dark']) .message.assistant .bubble {
+  background: var(--bg-elevated);
+  border-color: color-mix(in srgb, var(--border) 80%, var(--text-muted) 20%);
 }
 
 .message.assistant .bubble-final {

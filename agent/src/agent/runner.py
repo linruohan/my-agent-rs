@@ -56,16 +56,18 @@ class AgentRunner:
                 await emit({"type": "done", "thread_id": thread_id, "metadata": metadata})
                 return
 
-            slash_result = dispatch_slash_command((content or "").strip())
+            user_text = (content or "").strip()
+            slash_result = dispatch_slash_command(user_text)
             if slash_result is not None:
-                user_text = (content or "").strip()
                 await self._append_local_turn(config, user_text, slash_result)
                 await emit(
                     {"type": "token", "thread_id": thread_id, "content": slash_result}
                 )
+                lowered = user_text.lower()
                 metadata = {
                     "duration_ms": int((time.monotonic() - start) * 1000),
                     "slash": True,
+                    "task_data_changed": lowered.startswith("/tsk") or lowered.startswith("/pro"),
                 }
                 await emit({"type": "done", "thread_id": thread_id, "metadata": metadata})
                 return

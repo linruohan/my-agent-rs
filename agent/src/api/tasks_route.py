@@ -140,7 +140,9 @@ def tasks_snapshot_api(
     from tools.business.project import ensure_inbox_project, list_project_records, list_section_records
     from tools.business.reminders import list_entity_reminders
     from tools.business.todo import list_todo_records
+    from tools.project.migrate import ensure_inbox_and_orphan_tasks
 
+    ensure_inbox_and_orphan_tasks()
     projects = [_enrich_project(p) for p in list_project_records(status, include_inbox=True)]
     inbox = ensure_inbox_project()
     sections: list[dict[str, Any]] = []

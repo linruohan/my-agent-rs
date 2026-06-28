@@ -41,6 +41,16 @@ export const useSessionStore = defineStore('session', () => {
   const sessions = ref<Array<{ thread_id: string; title: string; created_at: string }>>([]);
   const pinnedIds = ref<string[]>(loadPinned());
   const sessionPreviews = ref<Record<string, string>>(loadPreviews());
+  const inputFocusGeneration = ref(0);
+  const historyLoadedGeneration = ref(0);
+
+  function bumpInputFocus() {
+    inputFocusGeneration.value += 1;
+  }
+
+  function bumpHistoryLoaded() {
+    historyLoadedGeneration.value += 1;
+  }
 
   function addMessage(msg: Message) {
     messages.value.push(msg);
@@ -132,6 +142,7 @@ export const useSessionStore = defineStore('session', () => {
       citations: m.citations,
     }));
     pendingToolCalls.value.clear();
+    bumpHistoryLoaded();
   }
 
   function setCurrentThread(threadId: string | null) {
@@ -178,6 +189,10 @@ export const useSessionStore = defineStore('session', () => {
     sessions,
     pinnedIds,
     sessionPreviews,
+    inputFocusGeneration,
+    historyLoadedGeneration,
+    bumpInputFocus,
+    bumpHistoryLoaded,
     addMessage,
     appendToLastAssistant,
     setLastAssistantDuration,

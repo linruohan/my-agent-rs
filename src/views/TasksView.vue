@@ -8,6 +8,10 @@ import {
   countForFilter,
   filterByTaskFilter,
   formatDueShort,
+  isScatteredTask,
+  isScheduledTask,
+  isTodayTask,
+  isUnsectionedProjectTask,
   type TaskFilterId,
 } from '@/utils/taskFilters';
 import TaskEditDialog, { type TaskFormPayload } from '@/components/TaskEditDialog.vue';
@@ -33,6 +37,8 @@ const editingTodo = ref<TodoItem | null>(null);
 const projectDialogOpen = ref(false);
 const projectDialogMode = ref<'create' | 'edit'>('create');
 const editingProject = ref<ProjectItem | null>(null);
+
+const UNSECTIONED_SECTION = 0;
 
 const inboxProjectId = computed(() => tasksStore.inbox?.id ?? null);
 
@@ -75,9 +81,7 @@ const selectedSection = computed(() =>
 const projectTasksUnsectioned = computed(() => {
   const pid = tasksStore.selectedProjectId;
   if (pid == null) return [];
-  return tasksStore.allTodos.filter(
-    (t) => t.project_id === pid && (t.section_id == null || t.section_id === undefined)
-  );
+  return tasksStore.allTodos.filter((t) => isUnsectionedProjectTask(t, pid));
 });
 
 function tasksForSection(sectionId: number): TodoItem[] {
@@ -121,7 +125,7 @@ async function pickProject(id: number) {
 
 async function pickSection(id: number | null) {
   tasksStore.selectSection(id);
-  if (id != null) {
+  if (id != null && id !== UNSECTIONED_SECTION) {
     try {
       await tasksStore.fetchSectionDetail(settings.sidecarPort, id);
     } catch (e) {
@@ -129,6 +133,27 @@ async function pickSection(id: number | null) {
     }
   } else {
     tasksStore.sectionSummaries = [];
+  }
+}
+
+function ensureTodoVisible(todo: TodoItem) {
+  if (tasksStore.viewMode === 'project') return;
+  const inboxId = inboxProjectId.value;
+  const visible = filterByTaskFilter(
+    [todo],
+    tasksStore.activeFilter,
+    inboxId,
+    tasksStore.activeLabel
+  ).length > 0;
+  if (visible) return;
+  if (isScatteredTask(todo, inboxId)) {
+    tasksStore.selectFilter('inbox');
+  } else if (isTodayTask(todo)) {
+    tasksStore.selectFilter('today');
+  } else if (isScheduledTask(todo)) {
+    tasksStore.selectFilter('scheduled');
+  } else {
+    tasksStore.selectFilter('inbox');
   }
 }
 
@@ -145,9 +170,13 @@ async function addTodo() {
     };
     if (tasksStore.viewMode === 'project' && tasksStore.selectedProjectId != null) {
       payload.project_id = tasksStore.selectedProjectId;
-      if (tasksStore.selectedSectionId != null) payload.section_id = tasksStore.selectedSectionId;
+      const sid = tasksStore.selectedSectionId;
+      if (sid != null && sid !== UNSECTIONED_SECTION) payload.section_id = sid;
+    } else if (inboxProjectId.value != null) {
+      payload.project_id = inboxProjectId.value;
     }
-    await tasksStore.createTodo(settings.sidecarPort, payload);
+    const created = await tasksStore.createTodo(settings.sidecarPort, payload);
+    if (created) ensureTodoVisible(created);
     newTodoTitle.value = '';
     newTodoDue.value = '';
   } catch (e) {
@@ -178,6 +207,10 @@ async function onTaskDialogProjectChange(projectId: number | null) {
 
 async function saveTask(payload: TaskFormPayload) {
   try {
+    const inboxId = inboxProjectId.value;
+    const isInbox = payload.project_id == null || payload.project_id === inboxId;
+    const projectId = isInbox ? inboxId : payload.project_id;
+    const sectionId = isInbox ? null : payload.section_id;
     if (taskDialogMode.value === 'edit' && editingTodo.value) {
       await tasksStore.updateTodo(settings.sidecarPort, editingTodo.value.id, {
         title: payload.title,
@@ -185,22 +218,23 @@ async function saveTask(payload: TaskFormPayload) {
         due_date: payload.due_date,
         remind_at: payload.remind_at,
         priority: payload.priority,
-        project_id: payload.project_id,
-        section_id: payload.section_id,
+        project_id: projectId,
+        section_id: sectionId,
         tags: payload.tags,
         clear_reminder: !payload.remind_at,
       });
     } else {
-      await tasksStore.createTodo(settings.sidecarPort, {
+      const created = await tasksStore.createTodo(settings.sidecarPort, {
         title: payload.title,
         description: payload.description,
         due_date: payload.due_date,
         remind_at: payload.remind_at,
         priority: payload.priority,
         tags: payload.tags,
-        project_id: payload.project_id ?? undefined,
-        section_id: payload.section_id ?? undefined,
+        project_id: isInbox ? inboxId ?? undefined : projectId ?? undefined,
+        section_id: isInbox ? undefined : sectionId ?? undefined,
       });
+      if (created) ensureTodoVisible(created);
     }
     taskDialogOpen.value = false;
   } catch (e) {
@@ -226,7 +260,10 @@ async function saveProject(payload: ProjectFormPayload) {
     if (projectDialogMode.value === 'edit' && editingProject.value) {
       await tasksStore.updateProject(settings.sidecarPort, editingProject.value.id, payload);
     } else {
-      await tasksStore.createProject(settings.sidecarPort, payload);
+      const created = await tasksStore.createProject(settings.sidecarPort, payload);
+      if (created?.id != null) {
+        await tasksStore.selectProjectView(settings.sidecarPort, created.id);
+      }
     }
     projectDialogOpen.value = false;
   } catch (e) {
@@ -455,6 +492,13 @@ watch(
               全部
             </button>
             <button
+              :class="{ active: tasksStore.selectedSectionId === UNSECTIONED_SECTION }"
+              @click="pickSection(UNSECTIONED_SECTION)"
+            >
+              无section
+              <small>{{ projectTasksUnsectioned.length }}</small>
+            </button>
+            <button
               v-for="s in tasksStore.sections"
               :key="s.id"
               :class="{ active: s.id === tasksStore.selectedSectionId }"
@@ -479,7 +523,7 @@ watch(
             </div>
 
             <template v-if="tasksStore.selectedSectionId === null">
-              <h3 class="section-title">No Section</h3>
+              <h3 class="section-title">无section</h3>
               <ul class="task-list">
                 <li
                   v-for="t in projectTasksUnsectioned"
@@ -528,6 +572,29 @@ watch(
                   <li v-if="!tasksForSection(s.id).length" class="empty">暂无任务</li>
                 </ul>
               </div>
+            </template>
+
+            <template v-else-if="tasksStore.selectedSectionId === UNSECTIONED_SECTION">
+              <h3 class="section-title">无section</h3>
+              <ul class="task-list">
+                <li
+                  v-for="t in projectTasksUnsectioned"
+                  :key="t.id"
+                  :class="{ done: t.completed }"
+                  @click="openEditTask(t)"
+                >
+                  <input type="checkbox" :checked="t.completed" @click.stop @change="toggleTodo(t)" />
+                  <div class="task-body">
+                    <div class="task-title">{{ t.title }}</div>
+                    <div class="task-meta">
+                      <span class="due">{{ formatDueShort(t.due_date) }}</span>
+                      <span v-for="tag in t.tags ?? []" :key="tag" class="tag">{{ tag }}</span>
+                    </div>
+                  </div>
+                  <button class="btn-del" @click.stop="removeTodo(t.id)">×</button>
+                </li>
+                <li v-if="!projectTasksUnsectioned.length" class="empty">暂无任务</li>
+              </ul>
             </template>
 
             <template v-else-if="selectedSection">
@@ -582,7 +649,9 @@ watch(
       :inbox-project-id="inboxProjectId"
       :available-labels="availableLabels"
       :default-project-id="tasksStore.viewMode === 'project' ? tasksStore.selectedProjectId : inboxProjectId"
-      :default-section-id="tasksStore.selectedSectionId"
+      :default-section-id="
+        tasksStore.selectedSectionId === UNSECTIONED_SECTION ? null : tasksStore.selectedSectionId
+      "
       @project-change="onTaskDialogProjectChange"
       @save="saveTask"
       @cancel="taskDialogOpen = false"

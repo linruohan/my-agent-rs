@@ -8,7 +8,7 @@ export const TASK_FILTERS: Array<{
   icon: string;
   hint: string;
 }> = [
-  { id: 'inbox', label: 'Inbox', icon: '📥', hint: '未关联项目的零散任务' },
+  { id: 'inbox', label: 'Inbox', icon: '📥', hint: '未关联项目的任务（收件箱）' },
   { id: 'today', label: 'Today', icon: '⭐', hint: '今天到期的未完成任务' },
   { id: 'scheduled', label: 'Scheduled', icon: '📅', hint: '已计划、未到期的未完成任务' },
   { id: 'pinned', label: 'Pinned', icon: '📌', hint: '高优先级或重点标记的未完成任务' },
@@ -34,6 +34,10 @@ export function isScatteredTask(t: TodoItem, inboxProjectId: number | null): boo
   if (t.project_id == null) return true;
   if (inboxProjectId != null && t.project_id === inboxProjectId) return true;
   return false;
+}
+
+export function isUnsectionedProjectTask(t: TodoItem, projectId: number): boolean {
+  return t.project_id === projectId && (t.section_id == null || t.section_id === undefined);
 }
 
 export function isPinnedTask(t: TodoItem): boolean {

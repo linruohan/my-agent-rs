@@ -114,22 +114,17 @@ function onDocClick(e: MouseEvent) {
   if (!target.closest('.input-bar-root')) closeAllMenus();
 }
 
-let startupFocusPending = true;
-
 watch(
-  [
-    () => sessionStore.currentThreadId,
-    () => settings.wsConnected,
-    () => navigation.activeView,
-  ],
-  ([threadId, connected, view]) => {
-    if (!startupFocusPending) return;
-    if (threadId && connected && view === 'chat') {
-      startupFocusPending = false;
+  () => sessionStore.inputFocusGeneration,
+  () => {
+    if (
+      sessionStore.currentThreadId &&
+      settings.wsConnected &&
+      navigation.activeView === 'chat'
+    ) {
       nextTick(() => textareaRef.value?.focus());
     }
-  },
-  { immediate: true }
+  }
 );
 
 onMounted(async () => {

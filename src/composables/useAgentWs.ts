@@ -3,6 +3,7 @@ import type { ChatAttachment } from '@/utils/attachments';
 import { useSessionStore } from '@/stores/session';
 import { useSettingsStore } from '@/stores/settings';
 import { useKnowledgeStore } from '@/stores/knowledge';
+import { useTasksStore } from '@/stores/tasks';
 import type { ToolCall } from '@/types';
 import { logStartupMilestone } from '@/utils/startupTiming';
 
@@ -70,6 +71,7 @@ export function useAgentWs() {
   const sessionStore = useSessionStore();
   const settingsStore = useSettingsStore();
   const knowledgeStore = useKnowledgeStore();
+  const tasksStore = useTasksStore();
   const connectionError = ref('');
 
   if (!bc) initBroadcastChannel(sessionStore);
@@ -174,10 +176,16 @@ export function useAgentWs() {
         flushTokenBuffer(sessionStore);
         sessionStore.isStreaming = false;
         bc?.postMessage({ type: 'streaming.end' });
-        const metadata = msg.metadata as { duration_ms?: number } | undefined;
+        const metadata = msg.metadata as {
+          duration_ms?: number;
+          task_data_changed?: boolean;
+        } | undefined;
         if (metadata?.duration_ms != null) {
           settingsStore.setLastTurnDuration(metadata.duration_ms);
           sessionStore.setLastAssistantDuration(metadata.duration_ms);
+        }
+        if (metadata?.task_data_changed) {
+          void tasksStore.refreshIfRunning();
         }
         break;
       }
@@ -225,6 +233,7 @@ export function useAgentWs() {
           created_at: (msg.created_at as string) || new Date().toISOString(),
         });
         sessionStore.setCurrentThread(threadId);
+        sessionStore.bumpInputFocus();
         break;
       }
 
@@ -386,6 +395,7 @@ export function useAgentWs() {
       const latest = sessionStore.sessions[0];
       sessionStore.setCurrentThread(latest.thread_id);
       loadSessionHistory(latest.thread_id);
+      sessionStore.bumpInputFocus();
     } else {
       createSession('新会话');
     }

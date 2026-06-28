@@ -106,10 +106,11 @@ async function onClick(e: MouseEvent) {
   min-width: 0;
   max-width: 100%;
   overflow-wrap: anywhere;
+  line-height: 1;
 }
 
 .markdown-body :deep(p) {
-  margin: 0.4em 0;
+  margin: 0.2em 0;
 }
 
 .markdown-body :deep(p:first-child) {
@@ -122,19 +123,27 @@ async function onClick(e: MouseEvent) {
 
 .markdown-body :deep(ul),
 .markdown-body :deep(ol) {
-  margin: 0.4em 0;
+  margin: 0.25em 0;
   padding-left: 1.4em;
 }
 
 .markdown-body :deep(li) {
-  margin: 0.25em 0;
+  margin: 0.1em 0;
+}
+
+.markdown-body :deep(li > p) {
+  margin: 0;
+}
+
+.markdown-body :deep(li > p + p) {
+  margin-top: 0.2em;
 }
 
 .markdown-body :deep(h1),
 .markdown-body :deep(h2),
 .markdown-body :deep(h3),
 .markdown-body :deep(h4) {
-  margin: 0.75em 0 0.35em;
+  margin: 0.5em 0 0.25em;
   font-weight: 650;
   line-height: 1.35;
 }
@@ -211,7 +220,7 @@ async function onClick(e: MouseEvent) {
 }
 
 .markdown-body :deep(.md-code-block) {
-  margin: 0.5em 0;
+  margin: 0.35em 0;
   max-width: 100%;
   border: 1px solid var(--border);
   border-radius: 8px;
@@ -268,27 +277,34 @@ async function onClick(e: MouseEvent) {
 .markdown-body :deep(.md-code-block pre code) {
   display: block;
   background: none;
-  padding: 10px 12px 10px 0;
+  padding: 0;
   font-size: 0.85em;
   font-family: ui-monospace, 'Cascadia Code', monospace;
   color: var(--text-primary);
-  white-space: pre;
+  white-space: normal;
   border: none;
+  line-height: 1.2;
 }
 
 .markdown-body :deep(.md-code-line) {
   display: flex;
   min-width: max-content;
+  line-height: 1.2;
 }
 
 .markdown-body :deep(.md-code-ln) {
-  flex: 0 0 3em;
-  padding: 0 12px 0 12px;
+  flex: 0 0 calc(var(--md-ln-digits, 1) * 1em + 16px);
+  min-width: calc(var(--md-ln-digits, 1) * 1em + 16px);
+  padding: 0 8px;
   text-align: right;
   color: var(--text-muted);
   user-select: none;
   border-right: 1px solid var(--border);
   background: color-mix(in srgb, var(--bg-panel) 70%, transparent);
+  font-family: ui-monospace, 'Cascadia Code', monospace;
+  font-variant-numeric: tabular-nums;
+  white-space: pre;
+  box-sizing: border-box;
 }
 
 .markdown-body :deep(.md-code-lc) {
@@ -394,7 +410,53 @@ async function onClick(e: MouseEvent) {
   font-weight: 600;
 }
 
-.markdown-body :deep(tr:nth-child(even) td) {
+.markdown-assistant :deep(h1),
+.markdown-assistant :deep(h2),
+.markdown-assistant :deep(h3) {
+  color: color-mix(in srgb, var(--accent) 35%, var(--text-primary));
+}
+
+.markdown-assistant :deep(strong) {
+  color: var(--text-primary);
+}
+
+.markdown-assistant :deep(th) {
+  background: var(--bg-elevated);
+  color: var(--text-primary);
+  font-weight: 650;
+  border-color: color-mix(in srgb, var(--border) 70%, var(--text-muted));
+}
+
+.markdown-assistant :deep(td) {
+  color: var(--text-primary);
+  border-color: color-mix(in srgb, var(--border) 70%, var(--text-muted));
+}
+
+.markdown-assistant :deep(tr:nth-child(even) td) {
+  background: color-mix(in srgb, var(--bg-elevated) 45%, var(--bg-panel));
+}
+
+:global(html[data-color-mode='dark']) .markdown-assistant :deep(h1),
+:global(html[data-color-mode='dark']) .markdown-assistant :deep(h2),
+:global(html[data-color-mode='dark']) .markdown-assistant :deep(h3) {
+  color: color-mix(in srgb, var(--accent) 25%, var(--text-primary));
+}
+
+:global(html[data-color-mode='dark']) .markdown-assistant :deep(strong) {
+  color: color-mix(in srgb, var(--accent) 20%, var(--text-primary));
+  font-weight: 650;
+}
+
+:global(html[data-color-mode='dark']) .markdown-assistant :deep(th) {
+  background: color-mix(in srgb, var(--bg-elevated) 85%, var(--text-primary) 5%);
+  color: var(--text-primary);
+}
+
+:global(html[data-color-mode='dark']) .markdown-assistant :deep(tr:nth-child(even) td) {
+  background: color-mix(in srgb, var(--bg-elevated) 35%, transparent);
+}
+
+.markdown-user :deep(tr:nth-child(even) td) {
   background: color-mix(in srgb, var(--bg-input) 55%, transparent);
 }
 

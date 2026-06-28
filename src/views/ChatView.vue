@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import { computed } from 'vue';
+import { computed, watch } from 'vue';
 import AppSidebar from '@/components/AppSidebar.vue';
 import ChatPanel from '@/components/ChatPanel.vue';
 import ConfirmModal from '@/components/ConfirmModal.vue';
@@ -12,8 +12,19 @@ import PlaceholderView from '@/views/PlaceholderView.vue';
 import StartupOverlay from '@/components/StartupOverlay.vue';
 import DialogHost from '@/components/DialogHost.vue';
 import { useNavigationStore } from '@/stores/navigation';
+import { useTasksStore } from '@/stores/tasks';
 
 const navigation = useNavigationStore();
+const tasksStore = useTasksStore();
+
+watch(
+  () => navigation.activeView,
+  (view) => {
+    if (view === 'tasks' || view === 'projects') {
+      void tasksStore.refreshIfRunning();
+    }
+  }
+);
 
 const viewTitle = computed(() => {
   const map: Record<string, string> = {

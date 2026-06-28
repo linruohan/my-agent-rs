@@ -92,26 +92,29 @@ def _format_section_line(s: SectionRow, *, stats: dict[str, Any] | None = None) 
     return line
 
 
-def _escape_md_cell(text: str) -> str:
-    return (text or "—").replace("|", "\\|").replace("\n", " ")
-
-
 def format_projects_list(store: ProjectStore | None = None, *, status: str = "") -> str:
-    """全部项目：扁平任务大表（项目 / Section / 任务各列）。"""
+    """全部项目：扁平任务大表（含 Inbox 零散任务）。"""
     pstore = store or ProjectStore()
     tstore = TaskStore()
-    projects = pstore.list_projects(status, include_inbox=False)
-
-    if not projects:
-        return "暂无项目。可用 `/pro add <名称>` 创建。"
+    pstore.ensure_inbox()
+    projects = sorted(
+        pstore.list_projects(status, include_inbox=True),
+        key=lambda p: (p.is_inbox, p.id),
+    )
 
     table_rows: list[str] = []
     for p in projects:
         sections_map = {s.id: s for s in pstore.list_sections(p.id)}
-        tasks = sorted(
-            tstore.list_filtered(include_done=True, project_id=p.id),
-            key=lambda r: (r.section_id or 0, r.id),
-        )
+        if p.is_inbox:
+            tasks = sorted(
+                tstore.list_filtered(include_done=True, project_id=p.id, inbox_only=True),
+                key=lambda r: r.id,
+            )
+        else:
+            tasks = sorted(
+                tstore.list_filtered(include_done=True, project_id=p.id),
+                key=lambda r: (r.section_id or 0, r.id),
+            )
         for task in tasks:
             sec = sections_map.get(task.section_id) if task.section_id else None
             table_rows.append(
@@ -125,6 +128,9 @@ def format_projects_list(store: ProjectStore | None = None, *, status: str = "")
             )
 
     if not table_rows:
+        non_inbox = [p for p in projects if not p.is_inbox]
+        if not non_inbox:
+            return "暂无项目。可用 `/pro add <名称>` 创建。"
         return "暂无项目任务。"
 
     return "\n".join([FLAT_PROJECT_TASK_HEADER, FLAT_PROJECT_TASK_SEP, *table_rows])
@@ -215,6 +221,8 @@ def format_project_detail(project_id: int, store: ProjectStore | None = None) ->
     ]
 
     if project.is_inbox:
+        parts.append("> 系统 Inbox（零散任务）。业务项目请用 `/pro list` 查看编号。")
+        parts.append("")
         tasks = sorted(
             tstore.list_filtered(include_done=True, project_id=project_id, inbox_only=True),
             key=lambda r: r.id,

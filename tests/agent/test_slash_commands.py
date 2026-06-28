@@ -78,6 +78,22 @@ def test_dispatch_pro_command(monkeypatch):
         assert "风险提示" in status
 
 
+def test_pro_list_includes_inbox_tasks(monkeypatch):
+    with tempfile.TemporaryDirectory() as tmp:
+        monkeypatch.setenv("AGENT_DATA_DIR", tmp)
+        from agent.slash import dispatch_slash_command
+
+        dispatch_slash_command("/tsk add 写报告 @due-6.28 @owner-林若寒")
+        dispatch_slash_command("/pro add 春季发布 @owner-Alice @start-6.1 @end-6.30")
+
+        listed = dispatch_slash_command("/pro list")
+        assert listed is not None
+        assert "| 项目编号 | 项目名 | section编号 | section名 |" in listed
+        assert "Inbox" in listed
+        assert "写报告" in listed
+        assert "春季发布" not in listed or "暂无项目任务" not in listed
+
+
 def test_dispatch_unknown_slash_returns_none():
     from agent.slash import dispatch_slash_command
 

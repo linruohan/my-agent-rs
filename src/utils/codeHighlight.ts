@@ -74,10 +74,15 @@ function span(className: string, text: string): string {
   return `<span class="${className}">${text}</span>`;
 }
 
-// Private-use markers: must not match word/number regexes used below.
+// Private-use markers: IDs must not be plain digits or they get matched by number regex below.
 const STASH_OPEN = '\uE000';
 const STASH_CLOSE = '\uE001';
-const STASH_RE = /\uE000(\d+)\uE001/g;
+const STASH_ID_BASE = 0xe100;
+const STASH_RE = /\uE000([\uE100-\uE8FF])\uE001/g;
+
+function stashIdChar(id: number): string {
+  return String.fromCharCode(STASH_ID_BASE + id);
+}
 
 export function highlightCode(code: string, lang?: string): string {
   const language = normalizeLang(lang);
@@ -88,7 +93,7 @@ export function highlightCode(code: string, lang?: string): string {
   function stash(html: string): string {
     const id = placeholders.length;
     placeholders.push(html);
-    return `${STASH_OPEN}${id}${STASH_CLOSE}`;
+    return `${STASH_OPEN}${stashIdChar(id)}${STASH_CLOSE}`;
   }
 
   result = result.replace(/\/\*[\s\S]*?\*\//g, (m) => stash(span('tok-comment', m)));
@@ -113,22 +118,35 @@ export function highlightCode(code: string, lang?: string): string {
     return stash(span('tok-type', m));
   });
 
-  result = result.replace(/\b([a-z_][\w]*)\s*(?=\()/g, (m) => {
-    const name = m.trim().slice(0, -1);
-    if (keywords.has(name)) return m;
-    return stash(span('tok-function', name)) + ' ';
+  result = result.replace(/\b([a-z_][\w]*)(\s*)(?=\()/g, (full, name, space) => {
+    if (keywords.has(name)) return full;
+    return stash(span('tok-function', name)) + space;
   });
 
-  result = result.replace(STASH_RE, (_, id) => placeholders[Number(id)] ?? '');
+  result = result.replace(STASH_RE, (_, ch) => {
+    const id = ch.charCodeAt(0) - STASH_ID_BASE;
+    return placeholders[id] ?? '';
+  });
   return result;
 }
 
-export function formatHighlightedCodeWithLineNumbers(highlighted: string): string {
-  const lines = highlighted.split('\n');
-  return lines
+export function formatHighlightedCodeWithLineNumbers(
+  highlighted: string
+): { html: string; lineDigits: number } {
+  let lines = highlighted.split('\n');
+  while (lines.length > 1 && lines[0] === '') {
+    lines.shift();
+  }
+  while (lines.length > 1 && lines[lines.length - 1] === '') {
+    lines.pop();
+  }
+  const lineDigits = Math.max(1, String(lines.length || 1).length);
+  const html = lines
     .map((line, index) => {
-      const content = line.length ? line : ' ';
-      return `<span class="md-code-line"><span class="md-code-ln" aria-hidden="true">${index + 1}</span><span class="md-code-lc">${content}</span></span>`;
+      const content = line.length ? line : '';
+      const num = String(index + 1).padStart(lineDigits, ' ');
+      return `<span class="md-code-line"><span class="md-code-ln" aria-hidden="true">${num}</span><span class="md-code-lc">${content}</span></span>`;
     })
-    .join('\n');
+    .join('');
+  return { html, lineDigits };
 }

@@ -9,8 +9,9 @@ from loguru import logger
 
 from infra.config import get_data_dir
 from tools.project.store import ProjectStore, project_to_dict
-from tools.task.api_compat import PROJECT_TAG_PREFIX
 from tools.task.store import TaskStore
+
+_PROJECT_TAG_PREFIX = "project:"
 
 
 def migrate_legacy_projects_db(
@@ -83,9 +84,9 @@ def _migrate_task_project_tags(task_store: TaskStore, id_map: dict[int, int]) ->
             continue
         old_pid: int | None = None
         for tag in row.tags:
-            if tag.startswith(PROJECT_TAG_PREFIX):
+            if tag.startswith(_PROJECT_TAG_PREFIX):
                 try:
-                    old_pid = int(tag[len(PROJECT_TAG_PREFIX) :])
+                    old_pid = int(tag[len(_PROJECT_TAG_PREFIX) :])
                 except ValueError:
                     continue
                 break
@@ -94,7 +95,7 @@ def _migrate_task_project_tags(task_store: TaskStore, id_map: dict[int, int]) ->
         new_pid = id_map.get(old_pid)
         if new_pid is None:
             continue
-        new_tags = [t for t in row.tags if not t.startswith(PROJECT_TAG_PREFIX)]
+        new_tags = [t for t in row.tags if not t.startswith(_PROJECT_TAG_PREFIX)]
         task_store.update(row.id, project_id=new_pid, tags=new_tags)
 
 

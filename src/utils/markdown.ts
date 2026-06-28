@@ -23,11 +23,12 @@ function escapeAttr(text: string): string {
 marked.use({
   renderer: {
     code({ text, lang }) {
+      const trimmed = text.replace(/^\n+|\n+$/g, '');
       const language = escapeHtml(lang || 'code');
-      const highlighted = highlightCode(text, lang || undefined);
-      const numbered = formatHighlightedCodeWithLineNumbers(highlighted);
+      const highlighted = highlightCode(trimmed, lang || undefined);
+      const { html: numbered, lineDigits } = formatHighlightedCodeWithLineNumbers(highlighted);
       const langClass = lang ? ` class="language-${escapeHtml(lang)}"` : '';
-      return `<div class="md-code-block">
+      return `<div class="md-code-block" style="--md-ln-digits: ${lineDigits}">
   <div class="md-code-header">
     <span class="md-code-lang">${language}</span>
     <button type="button" class="md-copy-btn" data-copy-btn aria-label="复制代码">复制</button>

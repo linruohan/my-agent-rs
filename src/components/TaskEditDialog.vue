@@ -50,13 +50,13 @@ const submitLabel = computed(() => (props.mode === 'create' ? 'Add' : 'Save'));
 
 const locationLabel = computed(() => {
   if (projectId.value == null || projectId.value === props.inboxProjectId) {
-    return 'Inbox ———> No Section';
+    return 'Inbox → 无section';
   }
   const proj = props.projects.find((p) => p.id === projectId.value);
   const sec = props.sections.find((s) => s.id === sectionId.value);
   const projName = proj?.name ?? `Project #${projectId.value}`;
-  const secName = sec?.name ?? 'No Section';
-  return `${projName} ———> ${secName}`;
+  const secName = sec?.name ?? '无section';
+  return `${projName} → ${secName}`;
 });
 
 const sectionOptions = computed(() =>
@@ -83,8 +83,9 @@ watch(
       priority.value = t.priority || 'normal';
       selectedTags.value = [...(t.tags ?? [])];
       pinned.value = t.priority === 'high' || (t.tags ?? []).includes('pinned');
-      projectId.value = t.project_id;
-      sectionId.value = t.section_id ?? null;
+      projectId.value = t.project_id ?? props.inboxProjectId;
+      sectionId.value =
+        projectId.value === props.inboxProjectId ? null : (t.section_id ?? null);
     } else {
       title.value = '';
       description.value = '';
@@ -213,7 +214,7 @@ function onKeydown(e: KeyboardEvent) {
               <div class="field-inline">
                 <label>Section</label>
                 <select v-model="sectionId" :disabled="!projectId || projectId === inboxProjectId">
-                  <option :value="null">No Section</option>
+                  <option :value="null">无section</option>
                   <option v-for="s in sectionOptions" :key="s.id" :value="s.id">{{ s.name }}</option>
                 </select>
               </div>

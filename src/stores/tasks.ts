@@ -1,6 +1,7 @@
 import { ref } from 'vue';
 import { defineStore } from 'pinia';
 import { localDatetimeToIso } from '@/utils/dateTime';
+import { useSettingsStore } from '@/stores/settings';
 
 export type ProjectStats = {
   total: number;
@@ -104,6 +105,46 @@ export const useTasksStore = defineStore('tasks', () => {
   const viewMode = ref<TaskViewMode>('filter');
   const activeFilter = ref<TaskFilterId>('inbox');
   const activeLabel = ref<string | null>(null);
+  const revision = ref(0);
+
+  function bumpRevision() {
+    revision.value += 1;
+  }
+
+  function mergeTodo(todo: TodoItem) {
+    const idx = allTodos.value.findIndex((t) => t.id === todo.id);
+    if (idx >= 0) {
+      const next = [...allTodos.value];
+      next[idx] = { ...next[idx], ...todo };
+      allTodos.value = next;
+    } else {
+      allTodos.value = [todo, ...allTodos.value];
+    }
+    todos.value = allTodos.value;
+    bumpRevision();
+  }
+
+  function mergeProject(project: ProjectItem) {
+    if (project.is_inbox) {
+      inbox.value = project;
+      return;
+    }
+    const idx = projects.value.findIndex((p) => p.id === project.id);
+    if (idx >= 0) {
+      const next = [...projects.value];
+      next[idx] = { ...next[idx], ...project };
+      projects.value = next;
+    } else {
+      projects.value = [project, ...projects.value];
+    }
+    bumpRevision();
+  }
+
+  function removeTodoLocal(todoId: number) {
+    allTodos.value = allTodos.value.filter((t) => t.id !== todoId);
+    todos.value = allTodos.value;
+    bumpRevision();
+  }
 
   async function refresh(port: number) {
     loading.value = true;
@@ -117,6 +158,7 @@ export const useTasksStore = defineStore('tasks', () => {
       allTodos.value = data.todos ?? [];
       todos.value = allTodos.value;
       reminders.value = data.reminders ?? [];
+      bumpRevision();
 
       if (viewMode.value === 'project' && selectedProjectId.value != null) {
         const detail = await fetch(`${sidecarBase(port)}/tasks/projects/${selectedProjectId.value}`);
@@ -132,13 +174,16 @@ export const useTasksStore = defineStore('tasks', () => {
       }
     } catch (e) {
       error.value = e instanceof Error ? e.message : String(e);
-      projects.value = [];
-      sections.value = [];
-      todos.value = [];
-      allTodos.value = [];
     } finally {
       loading.value = false;
     }
+  }
+
+  async function refreshIfRunning(port?: number) {
+    const settings = useSettingsStore();
+    const p = port ?? settings.sidecarPort;
+    if (settings.sidecarStatus !== 'running') return;
+    await refresh(p);
   }
 
   function selectFilter(filter: TaskFilterId) {
@@ -224,6 +269,8 @@ export const useTasksStore = defineStore('tasks', () => {
       body: JSON.stringify({ completed: !todo.completed }),
     });
     if (!res.ok) throw new Error(await res.text());
+    const data = await res.json();
+    if (data.todo) mergeTodo(data.todo as TodoItem);
     await refresh(port);
   }
 
@@ -251,7 +298,10 @@ export const useTasksStore = defineStore('tasks', () => {
       body: JSON.stringify(body),
     });
     if (!res.ok) throw new Error(await res.text());
+    const data = await res.json();
+    if (data.todo) mergeTodo(data.todo as TodoItem);
     await refresh(port);
+    return data.todo as TodoItem | undefined;
   }
 
   async function updateTodo(
@@ -283,6 +333,8 @@ export const useTasksStore = defineStore('tasks', () => {
       body: JSON.stringify(body),
     });
     if (!res.ok) throw new Error(await res.text());
+    const data = await res.json();
+    if (data.todo) mergeTodo(data.todo as TodoItem);
     await refresh(port);
   }
 
@@ -313,7 +365,12 @@ export const useTasksStore = defineStore('tasks', () => {
       }),
     });
     if (!res.ok) throw new Error(await res.text());
+    const data = await res.json();
+    if (data.project) {
+      mergeProject(data.project as ProjectItem);
+    }
     await refresh(port);
+    return data.project as ProjectItem | undefined;
   }
 
   /** @deprecated 使用 createProject(port, { name, ... }) */
@@ -483,6 +540,7 @@ export const useTasksStore = defineStore('tasks', () => {
   async function deleteTodo(port: number, todoId: number) {
     const res = await fetch(`${sidecarBase(port)}/tasks/todos/${todoId}`, { method: 'DELETE' });
     if (!res.ok) throw new Error(await res.text());
+    removeTodoLocal(todoId);
     await refresh(port);
   }
 
@@ -501,9 +559,13 @@ export const useTasksStore = defineStore('tasks', () => {
     viewMode,
     activeFilter,
     activeLabel,
+    revision,
     loading,
     error,
     refresh,
+    refreshIfRunning,
+    mergeTodo,
+    mergeProject,
     selectFilter,
     selectLabel,
     selectProjectView,
