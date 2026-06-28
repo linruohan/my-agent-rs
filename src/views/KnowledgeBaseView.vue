@@ -182,6 +182,16 @@ header h2 {
   display: flex;
   justify-content: space-between;
   align-items: center;
+  gap: 8px;
+  min-width: 0;
+}
+
+.sources li span {
+  flex: 1;
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
 }
 
 .btn-delete {
@@ -228,6 +238,13 @@ header h2 {
   padding: 12px;
   margin-bottom: 8px;
   font-size: 13px;
+  min-width: 0;
+  overflow: hidden;
+}
+
+.result p {
+  word-break: break-word;
+  overflow-wrap: anywhere;
 }
 
 .meta {

@@ -66,6 +66,7 @@ function toggle() {
         :name="tool.toolName || ''"
         :category="tool.category"
         :content="tool.content"
+        :args="sessionStore.pendingToolCalls.get(tool.id)?.args"
         :citations="tool.citations"
         :status="toolStatus(tool)"
       />
@@ -76,6 +77,8 @@ function toggle() {
 <style scoped>
 .process-steps {
   width: 100%;
+  min-width: 0;
+  max-width: 100%;
 }
 
 .process-header {
@@ -90,6 +93,8 @@ function toggle() {
   font-size: 13px;
   font-family: inherit;
   text-align: left;
+  min-width: 0;
+  max-width: 100%;
 }
 
 .process-header:hover {
@@ -110,6 +115,10 @@ function toggle() {
 
 .summary {
   line-height: 1.4;
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
 }
 
 .process-body {
@@ -119,5 +128,8 @@ function toggle() {
   margin: 4px 0 10px;
   padding: 4px 0 4px 12px;
   border-left: 2px solid var(--border);
+  min-width: 0;
+  max-width: 100%;
+  overflow: hidden;
 }
 </style>

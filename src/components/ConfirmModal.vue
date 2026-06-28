@@ -2,6 +2,7 @@
 import { computed, ref, watch } from 'vue';
 import { useSessionStore } from '@/stores/session';
 import { useDialogStore } from '@/stores/dialog';
+import { formatArgsForDisplay } from '@/utils/formatToolArgs';
 
 const sessionStore = useSessionStore();
 const dialog = useDialogStore();
@@ -53,7 +54,7 @@ function submitEdit() {
       <pre
         v-else-if="currentInterrupt.args && Object.keys(currentInterrupt.args).length"
         class="args"
-      >{{ JSON.stringify(currentInterrupt.args, null, 2) }}</pre>
+      >{{ formatArgsForDisplay(currentInterrupt.args) }}</pre>
       <p class="action">操作: {{ currentInterrupt.action }}</p>
       <div class="buttons">
         <button class="btn-reject" @click="reject">拒绝</button>
@@ -83,6 +84,8 @@ function submitEdit() {
   padding: 24px;
   max-width: 480px;
   width: 90%;
+  min-width: 0;
+  overflow: hidden;
 }
 
 .modal h3 {
@@ -94,6 +97,8 @@ function submitEdit() {
   color: var(--text-secondary);
   margin-bottom: 8px;
   font-size: 14px;
+  word-break: break-word;
+  overflow-wrap: anywhere;
 }
 
 .action {
@@ -109,7 +114,12 @@ function submitEdit() {
   font-size: 11px;
   color: var(--text-secondary);
   margin-bottom: 16px;
-  overflow-x: auto;
+  max-width: 100%;
+  max-height: 200px;
+  overflow: auto;
+  white-space: pre-wrap;
+  word-break: break-word;
+  overflow-wrap: anywhere;
 }
 
 .edit-label {

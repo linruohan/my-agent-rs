@@ -79,7 +79,7 @@ const slashItems = computed(() => [
 
 const canSend = computed(
   () =>
-    input.value.trim().length > 0 &&
+    (input.value.trim().length > 0 || pendingAttachments.value.length > 0) &&
     !!sessionStore.currentThreadId &&
     !sessionStore.isStreaming
 );
@@ -155,6 +155,12 @@ function applySlashItem(item: ChatCommand) {
   if (item.category === 'skill') {
     const token = item.label;
     input.value = `${stripSlashToken(input.value)} ${token} `.trimStart();
+    showSlashMenu.value = false;
+    nextTick(() => textareaRef.value?.focus());
+    return;
+  }
+  if (item.id === 'tsk' || item.id === 'pro' || item.id === 'ocr') {
+    input.value = `${stripSlashToken(input.value)} ${item.label} `.trimStart();
     showSlashMenu.value = false;
     nextTick(() => textareaRef.value?.focus());
     return;
@@ -371,7 +377,7 @@ function removeAttachment(index: number) {
 
 function handleSend() {
   const text = input.value.trim();
-  if (!text || !sessionStore.currentThreadId) return;
+  if ((!text && pendingAttachments.value.length === 0) || !sessionStore.currentThreadId) return;
   const attachments =
     pendingAttachments.value.length > 0 ? [...pendingAttachments.value] : undefined;
   emit('send', text, attachments);

@@ -5,9 +5,12 @@ import json
 import time
 from typing import Any, Awaitable, Callable
 
-from langchain_core.messages import HumanMessage
+from langchain_core.messages import AIMessage, HumanMessage
 from langgraph.types import Command
 
+from agent.slash import dispatch_slash_command
+from infra.config import load_tools_config
+from ocr.compose import compose_user_message, try_direct_ocr_reply
 from tools.registry import ToolRegistry
 
 EventCallback = Callable[[dict[str, Any]], Awaitable[None]]
@@ -36,7 +39,72 @@ class AgentRunner:
             self._active[thread_id] = task
 
         try:
-            message_content = _build_user_message(content, attachments)
+            ocr_timeout = _ocr_timeout_sec()
+            direct_ocr = await asyncio.to_thread(
+                try_direct_ocr_reply, content, attachments, timeout=ocr_timeout
+            )
+            if direct_ocr is not None:
+                config = self._make_config(thread_id, emit)
+                user_text = (content or "").strip() or "[图片 OCR]"
+                await self.graph.aupdate_state(
+                    config,
+                    {
+                        "messages": [
+                            HumanMessage(content=user_text),
+                            AIMessage(content=direct_ocr),
+                        ]
+                    },
+                )
+                await emit(
+                    {"type": "token", "thread_id": thread_id, "content": direct_ocr}
+                )
+                metadata = {
+                    "duration_ms": int((time.monotonic() - start) * 1000),
+                    "ocr": True,
+                }
+                await emit({"type": "done", "thread_id": thread_id, "metadata": metadata})
+                return
+
+            slash_result = dispatch_slash_command((content or "").strip())
+            if slash_result is not None:
+                user_text = (content or "").strip()
+                config = self._make_config(thread_id, emit)
+                await self.graph.aupdate_state(
+                    config,
+                    {
+                        "messages": [
+                            HumanMessage(content=user_text),
+                            AIMessage(content=slash_result),
+                        ]
+                    },
+                )
+                await emit(
+                    {"type": "token", "thread_id": thread_id, "content": slash_result}
+                )
+                metadata = {
+                    "duration_ms": int((time.monotonic() - start) * 1000),
+                    "slash": True,
+                }
+                await emit({"type": "done", "thread_id": thread_id, "metadata": metadata})
+                return
+
+            message_content = await asyncio.to_thread(
+                compose_user_message,
+                content,
+                attachments,
+                timeout=ocr_timeout,
+            )
+            if not message_content.strip():
+                await emit(
+                    {
+                        "type": "error",
+                        "thread_id": thread_id,
+                        "message": "消息内容不能为空",
+                        "code": "INVALID_REQUEST",
+                    }
+                )
+                return
+
             input_state = {"messages": [HumanMessage(content=message_content)]}
             metadata: dict[str, Any] = {"duration_ms": 0}
 
@@ -112,7 +180,7 @@ class AgentRunner:
             if hasattr(output, "content"):
                 output = output.content
             citations = []
-            if tool_name == "web_search" and isinstance(output, str):
+            if tool_name in ("web_search", "baidu_image_search") and isinstance(output, str):
                 citations = _extract_citations(output)
             await emit(
                 {
@@ -263,21 +331,9 @@ class AgentRunner:
         return result
 
 
-def _build_user_message(
-    content: str, attachments: list[dict[str, Any]] | None = None
-) -> str:
-    if not attachments:
-        return content
-    parts = [content]
-    for att in attachments:
-        name = att.get("name", "attachment")
-        att_type = att.get("type", "text")
-        att_content = att.get("content", "")
-        if att_type == "text" and att_content:
-            parts.append(f"\n\n[附件: {name}]\n{att_content}")
-        elif att_content:
-            parts.append(f"\n\n[附件: {name} ({att_type})]\n{att_content}")
-    return "".join(parts)
+def _ocr_timeout_sec() -> float:
+    cfg = load_tools_config().get("capability", {}).get("ocr", {})
+    return float(cfg.get("timeout_sec", 180))
 
 
 def _extract_citations(text: str) -> list[dict[str, str]]:

@@ -4,24 +4,12 @@ from __future__ import annotations
 
 from typing import Any
 
+from tools.project.stats import task_stats_for_project, task_stats_for_section
+from tools.project.store import ProjectStore
 from tools.task.store import TaskRow, TaskStore, VALID_STATUS
 
 PROJECT_TAG_PREFIX = "project:"
 PRIORITY_TAGS = frozenset({"high", "normal", "low"})
-
-
-def project_tag(project_id: int) -> str:
-    return f"{PROJECT_TAG_PREFIX}{project_id}"
-
-
-def _parse_project_id(tags: list[str]) -> int | None:
-    for tag in tags:
-        if tag.startswith(PROJECT_TAG_PREFIX):
-            try:
-                return int(tag[len(PROJECT_TAG_PREFIX) :])
-            except ValueError:
-                continue
-    return None
 
 
 def _parse_priority(tags: list[str]) -> str:
@@ -47,7 +35,8 @@ def task_to_todo(row: TaskRow) -> dict[str, Any]:
         "due_date": row.due_at or "",
         "priority": _parse_priority(row.tags),
         "completed": row.status == "done",
-        "project_id": _parse_project_id(row.tags),
+        "project_id": row.project_id,
+        "section_id": row.section_id,
         "description": row.content,
         "remind_at": row.remind_at or "",
         "status": row.status,
@@ -56,20 +45,22 @@ def task_to_todo(row: TaskRow) -> dict[str, Any]:
     }
 
 
-def _build_tags(
-    priority: str = "normal",
-    project_id: int | None = None,
-    extra_tags: list[str] | None = None,
-) -> list[str]:
+def _build_tags(priority: str = "normal", extra_tags: list[str] | None = None) -> list[str]:
     tags: list[str] = []
     if priority and priority != "normal":
         tags.append(priority)
-    if project_id is not None:
-        tags.append(project_tag(project_id))
     for tag in extra_tags or []:
         if tag and tag not in tags:
             tags.append(tag)
     return tags
+
+
+def _resolve_project_id(project_id: int | None, store: ProjectStore) -> int:
+    if project_id is not None:
+        if not store.get_project(project_id):
+            raise ValueError(f"Project #{project_id} not found")
+        return project_id
+    return store.ensure_inbox().id
 
 
 def create_todo_record(
@@ -77,16 +68,20 @@ def create_todo_record(
     due_date: str = "",
     priority: str = "normal",
     project_id: int | None = None,
+    section_id: int | None = None,
     description: str = "",
     remind_at: str = "",
     *,
     store: TaskStore | None = None,
 ) -> dict[str, Any]:
-    if project_id is not None:
-        from tools.business.project import get_project_record
-
-        if not get_project_record(project_id):
-            raise ValueError(f"Project #{project_id} not found")
+    pstore = ProjectStore()
+    pid = _resolve_project_id(project_id, pstore)
+    if section_id is not None:
+        section = pstore.get_section(section_id)
+        if not section:
+            raise ValueError(f"Section #{section_id} not found")
+        if section.project_id != pid:
+            raise ValueError(f"Section #{section_id} does not belong to project #{pid}")
 
     store = store or TaskStore()
     row = store.add(
@@ -94,8 +89,10 @@ def create_todo_record(
         description,
         due_at=due_date or None,
         remind_at=remind_at or None,
-        tags=_build_tags(priority, project_id),
+        tags=_build_tags(priority),
         status="pending",
+        project_id=pid,
+        section_id=section_id,
     )
     return task_to_todo(row)
 
@@ -103,17 +100,20 @@ def create_todo_record(
 def list_todo_records(
     include_completed: bool = False,
     project_id: int | None = None,
+    section_id: int | None = None,
+    inbox_only: bool = False,
     sort_by: str = "priority",
     *,
     store: TaskStore | None = None,
 ) -> list[dict[str, Any]]:
     store = store or TaskStore()
-    rows = store.list_all(include_done=include_completed)
+    rows = store.list_filtered(
+        include_done=include_completed,
+        project_id=project_id,
+        section_id=section_id,
+        inbox_only=inbox_only,
+    )
     records = [task_to_todo(r) for r in rows]
-    if project_id is not None:
-        records = [r for r in records if r.get("project_id") == project_id]
-    if not include_completed:
-        records = [r for r in records if not r["completed"]]
 
     priority_order = {"high": 0, "normal": 1, "low": 2}
     if sort_by == "due_date":
@@ -143,7 +143,9 @@ def update_todo_record(
     description: str | None = None,
     completed: bool | None = None,
     project_id: int | None = None,
+    section_id: int | None = None,
     clear_project: bool = False,
+    clear_section: bool = False,
     remind_at: str | None = None,
     clear_reminder: bool = False,
     *,
@@ -155,10 +157,7 @@ def update_todo_record(
         return None
 
     if project_id is not None:
-        from tools.business.project import get_project_record
-
-        if not get_project_record(project_id):
-            raise ValueError(f"Project #{project_id} not found")
+        _resolve_project_id(project_id, ProjectStore())
 
     kwargs: dict[str, Any] = {}
     if title is not None:
@@ -173,15 +172,18 @@ def update_todo_record(
         kwargs["clear_remind"] = True
     elif remind_at is not None:
         kwargs["remind_at"] = remind_at or None
-
-    new_tags = _user_tags(row.tags)
-    new_priority = priority if priority is not None else _parse_priority(row.tags)
-    new_project = _parse_project_id(row.tags)
     if clear_project:
-        new_project = None
+        kwargs["project_id"] = ProjectStore().ensure_inbox().id
+        kwargs["clear_section"] = True
     elif project_id is not None:
-        new_project = project_id
-    kwargs["tags"] = _build_tags(new_priority, new_project, new_tags)
+        kwargs["project_id"] = project_id
+    if clear_section:
+        kwargs["clear_section"] = True
+    elif section_id is not None:
+        kwargs["section_id"] = section_id
+
+    new_priority = priority if priority is not None else _parse_priority(row.tags)
+    kwargs["tags"] = _build_tags(new_priority, _user_tags(row.tags))
 
     store.update(todo_id, **kwargs)
     updated = store.get(todo_id)
@@ -194,20 +196,14 @@ def delete_todo_record(todo_id: int, *, store: TaskStore | None = None) -> bool:
 
 
 def get_todo_stats_for_project(project_id: int, *, store: TaskStore | None = None) -> dict[str, Any]:
-    records = list_todo_records(include_completed=True, project_id=project_id, store=store)
-    total = len(records)
-    completed = sum(1 for r in records if r["completed"])
-    by_priority: dict[str, int] = {}
-    for row in records:
-        if row["completed"]:
-            continue
-        pri = row["priority"] or "normal"
-        by_priority[pri] = by_priority.get(pri, 0) + 1
-    return {"total": total, "completed": completed, "by_priority": by_priority}
+    return task_stats_for_project(project_id, store=store)
+
+
+def get_todo_stats_for_section(section_id: int, *, store: TaskStore | None = None) -> dict[str, Any]:
+    return task_stats_for_section(section_id, store=store)
 
 
 def list_task_reminders(*, store: TaskStore | None = None) -> list[dict[str, Any]]:
-    """列出 task.db 中尚未触发的提醒时刻。"""
     from datetime import datetime
 
     store = store or TaskStore()
@@ -245,9 +241,7 @@ def list_task_reminders(*, store: TaskStore | None = None) -> list[dict[str, Any
 
 
 def migrate_todos_db(*, store: TaskStore | None = None) -> int:
-    """一次性从 legacy todos.db 导入 task.db。"""
     import sqlite3
-    from pathlib import Path
 
     from infra.config import get_data_dir
 
@@ -256,6 +250,7 @@ def migrate_todos_db(*, store: TaskStore | None = None) -> int:
         return 0
 
     store = store or TaskStore()
+    pstore = ProjectStore()
     conn = sqlite3.connect(legacy)
     conn.row_factory = sqlite3.Row
     try:
@@ -276,20 +271,18 @@ def migrate_todos_db(*, store: TaskStore | None = None) -> int:
         due = str(row["due_date"] or "").strip()
         due_at = due if due and "T" in due else (f"{due}T00:00:00" if due else None)
         remind = str(row["remind_at"] or "").strip() or None
-        project_id = row["project_id"]
-        tags = _build_tags(
-            str(row["priority"] or "normal"),
-            int(project_id) if project_id is not None else None,
-        )
+        raw_pid = row["project_id"]
+        project_id = int(raw_pid) if raw_pid is not None else None
         try:
             store.add(
                 title,
                 str(row["description"] or ""),
                 due_at=due_at,
                 remind_at=remind,
-                tags=tags or None,
+                tags=_build_tags(str(row["priority"] or "normal")),
                 status=status,
                 created_at=str(row["created_at"]) if row["created_at"] else None,
+                project_id=project_id or pstore.ensure_inbox().id,
             )
             imported += 1
         except ValueError:

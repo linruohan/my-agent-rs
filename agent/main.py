@@ -98,6 +98,19 @@ def build_app(port: int = 8765) -> FastAPI:
                 migrated_json,
                 migrated_db,
             )
+        from tools.project import (
+            ensure_inbox_and_orphan_tasks,
+            migrate_legacy_projects_db,
+        )
+
+        migrated_projects = migrate_legacy_projects_db(task_store=task_store)
+        inbox_fixed = ensure_inbox_and_orphan_tasks(task_store=task_store)
+        if migrated_projects or inbox_fixed:
+            logger.info(
+                "Project migration: {} projects, {} orphan tasks to inbox",
+                migrated_projects,
+                inbox_fixed,
+            )
 
         task_reminder = TaskReminderService(task_store)
         task_reminder.start()
@@ -202,8 +215,9 @@ def main():
 
         await original_startup(sockets)
         actual_port = requested_port
-        if server.servers:
-            for s in server.servers:
+        servers = getattr(server, "servers", None)
+        if servers:
+            for s in servers:
                 if s.sockets:
                     actual_port = s.sockets[0].getsockname()[1]
                     break

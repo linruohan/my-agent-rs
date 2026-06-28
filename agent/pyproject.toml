@@ -49,6 +49,35 @@ outlook = [
 rag = [
     "sentence-transformers>=3.0",
 ]
+browser = [
+    "playwright>=1.40",
+]
+ocr-rapid = [
+    "rapidocr-onnxruntime>=1.3",
+]
+ocr-winrt = [
+    "winrt-runtime>=3.2.1; sys_platform == 'win32'",
+    "winrt-Windows.Media.Ocr>=3.2.1; sys_platform == 'win32'",
+    "winrt-Windows.Globalization>=3.2.1; sys_platform == 'win32'",
+    "winrt-Windows.Foundation>=3.2.1; sys_platform == 'win32'",
+    "winrt-Windows.Graphics.Imaging>=3.2.1; sys_platform == 'win32'",
+    "winrt-Windows.Storage>=3.2.1; sys_platform == 'win32'",
+    "winrt-Windows.Storage.Streams>=3.2.1; sys_platform == 'win32'",
+]
+ocr-paddle = [
+    "paddleocr>=2.7",
+    "paddlepaddle>=2.6",
+]
+ocr = [
+    "rapidocr-onnxruntime>=1.3",
+    "winrt-runtime>=3.2.1; sys_platform == 'win32'",
+    "winrt-Windows.Media.Ocr>=3.2.1; sys_platform == 'win32'",
+    "winrt-Windows.Globalization>=3.2.1; sys_platform == 'win32'",
+    "winrt-Windows.Foundation>=3.2.1; sys_platform == 'win32'",
+    "winrt-Windows.Graphics.Imaging>=3.2.1; sys_platform == 'win32'",
+    "winrt-Windows.Storage>=3.2.1; sys_platform == 'win32'",
+    "winrt-Windows.Storage.Streams>=3.2.1; sys_platform == 'win32'",
+]
 
 [build-system]
 requires = ["hatchling"]

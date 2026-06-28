@@ -115,6 +115,26 @@ def _register_capability(registry: ToolRegistry, config: dict[str, Any]) -> None
             create_web_fetch_tool(cfg), "capability", {"risk": cfg.get("risk", "low")}
         )
 
+    if cap.get("baidu_image_search", {}).get("enabled"):
+        from tools.capability.baidu_image_search import create_baidu_image_search_tool
+
+        cfg = cap["baidu_image_search"]
+        registry.register(
+            create_baidu_image_search_tool(cfg),
+            "capability",
+            {"risk": cfg.get("risk", "low")},
+        )
+
+    if cap.get("ocr", {}).get("enabled"):
+        from tools.capability.ocr import create_image_ocr_tool
+
+        cfg = cap["ocr"]
+        registry.register(
+            create_image_ocr_tool(cfg),
+            "capability",
+            {"risk": cfg.get("risk", "low")},
+        )
+
     if cap.get("text_editor", {}).get("enabled"):
         from tools.capability.text_editor import create_text_editor_tool
 
@@ -218,17 +238,16 @@ def _register_business(registry: ToolRegistry, config: dict[str, Any]) -> None:
     from tools.business.email import create_email_tools
     from tools.business.file import create_file_tools
     from tools.business.notes import create_notes_tools
-    from tools.business.project import create_project_tools
+    from tools.project.tools import PROJECT_TOOLS
     from tools.task.tools import TASK_TOOLS
 
     factories = [
-        create_project_tools,
         create_calendar_tools,
         create_file_tools,
         create_notes_tools,
         create_email_tools,
     ]
-    for tool in TASK_TOOLS:
+    for tool in TASK_TOOLS + PROJECT_TOOLS:
         cfg = config.get("business", {}).get(tool.name, {})
         registry.register(tool, "business", {"risk": cfg.get("risk", "low")})
     for factory in factories:

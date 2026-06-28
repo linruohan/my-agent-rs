@@ -12,8 +12,8 @@ def tasks_client(monkeypatch, tmp_path):
     config_dir = Path(__file__).resolve().parents[2] / "agent" / "config"
     monkeypatch.setenv("AGENT_DATA_DIR", str(tmp_path))
     monkeypatch.setenv("AGENT_CONFIG_DIR", str(config_dir))
-    monkeypatch.setattr("tools.business.project.DB_PATH", tmp_path / "projects.db")
-    monkeypatch.setattr("infra.config.get_data_dir", lambda: tmp_path)
+    monkeypatch.setenv("AGENT_DATA_DIR", str(tmp_path))
+    monkeypatch.setattr("tools.business.reminders.schedule_project_reminder", lambda *_a, **_k: "")
 
     from langgraph.checkpoint.memory import MemorySaver
 

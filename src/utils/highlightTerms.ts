@@ -47,11 +47,13 @@ export function highlightTermsInHtml(html: string, terms: string[]): string {
   if (!filtered.length) return html;
 
   const pattern = new RegExp(`(${filtered.map(escapeRegex).join('|')})`, 'gi');
-  const segments = html.split(/(<(?:pre|code)[^>]*>[\s\S]*?<\/(?:pre|code)>)/gi);
+  const segments = html.split(
+    /(<a[\s\S]*?<\/a>|<code[\s\S]*?<\/code>|<pre[\s\S]*?<\/pre>)/gi
+  );
 
   return segments
-    .map((segment) => {
-      if (/^<(pre|code)/i.test(segment)) return segment;
+    .map((segment, index) => {
+      if (index % 2 === 1) return segment;
       return segment.replace(pattern, '<mark class="md-search-hit">$1</mark>');
     })
     .join('');

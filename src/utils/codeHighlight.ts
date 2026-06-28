@@ -74,6 +74,11 @@ function span(className: string, text: string): string {
   return `<span class="${className}">${text}</span>`;
 }
 
+// Private-use markers: must not match word/number regexes used below.
+const STASH_OPEN = '\uE000';
+const STASH_CLOSE = '\uE001';
+const STASH_RE = /\uE000(\d+)\uE001/g;
+
 export function highlightCode(code: string, lang?: string): string {
   const language = normalizeLang(lang);
   const keywords = getKeywords(language);
@@ -83,7 +88,7 @@ export function highlightCode(code: string, lang?: string): string {
   function stash(html: string): string {
     const id = placeholders.length;
     placeholders.push(html);
-    return `\x00PH${id}\x00`;
+    return `${STASH_OPEN}${id}${STASH_CLOSE}`;
   }
 
   result = result.replace(/\/\*[\s\S]*?\*\//g, (m) => stash(span('tok-comment', m)));
@@ -114,6 +119,16 @@ export function highlightCode(code: string, lang?: string): string {
     return stash(span('tok-function', name)) + ' ';
   });
 
-  result = result.replace(/\x00PH(\d+)\x00/g, (_, id) => placeholders[Number(id)] ?? '');
+  result = result.replace(STASH_RE, (_, id) => placeholders[Number(id)] ?? '');
   return result;
+}
+
+export function formatHighlightedCodeWithLineNumbers(highlighted: string): string {
+  const lines = highlighted.split('\n');
+  return lines
+    .map((line, index) => {
+      const content = line.length ? line : ' ';
+      return `<span class="md-code-line"><span class="md-code-ln" aria-hidden="true">${index + 1}</span><span class="md-code-lc">${content}</span></span>`;
+    })
+    .join('\n');
 }

@@ -84,6 +84,8 @@ def _build_system_prompt(state: AgentState) -> str:
             "Tool use: Do not call the same tool with the same arguments repeatedly. "
             "If web_fetch already returned page content, answer the user immediately. "
             "If web_search failed, try web_fetch on one known official URL once, then answer. "
+            "For image/photo/picture requests (especially 百度图片), use baidu_image_search once, "
+            "then show results using the Markdown image URLs returned — do not call web_search for images. "
             "For local code/files use glob to find paths, grep to search contents, list_dir to browse, "
             "and text_editor or read_file to read or edit. "
             "External CLI tools (git, jq, tree, bat, pandoc, ffmpeg, etc.) are available when installed on PATH."
@@ -229,7 +231,14 @@ def create_preprocess_node(
 
 
 _PROGRESS_TOOLS = frozenset(
-    {"code_execution", "bash", "web_fetch", "web_search", "computer"}
+    {
+        "code_execution",
+        "bash",
+        "web_fetch",
+        "web_search",
+        "baidu_image_search",
+        "computer",
+    }
 )
 
 
@@ -387,7 +396,7 @@ def create_hitl_tools_node(registry: ToolRegistry):
 
 
 def _extract_tool_citations(tool_name: str, output: str) -> list[dict[str, str]]:
-    if tool_name != "web_search":
+    if tool_name not in ("web_search", "baidu_image_search"):
         return []
     citations = []
     for line in output.split("\n"):

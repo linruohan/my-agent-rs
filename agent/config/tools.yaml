@@ -25,6 +25,18 @@ capability:
     risk: low
     max_chars: 50000
     timeout_sec: 30
+  baidu_image_search:
+    enabled: true
+    risk: low
+    max_results: 8
+    timeout_sec: 30
+    headless: true
+  ocr:
+    enabled: true
+    risk: low
+    timeout_sec: 180
+    # auto = RapidOCR → WinRT → Paddle；也可设 rapid / winrt / paddle
+    engine: auto
   code_execution:
     enabled: true
     risk: high
@@ -107,11 +119,23 @@ business:
   get_project_status:
     enabled: true
     risk: low
+  create_section:
+    enabled: true
+    risk: low
+  list_sections:
+    enabled: true
+    risk: low
+  add_section_daily_summary:
+    enabled: true
+    risk: low
+  list_section_daily_summaries:
+    enabled: true
+    risk: low
   add_project_document:
     enabled: true
     risk: low
   set_project_reminder:
-    enabled: true
+    enabled: false
     risk: low
   read_calendar:
     enabled: true

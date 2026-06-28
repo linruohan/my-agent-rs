@@ -7,6 +7,7 @@ from tools.task.api_compat import (
     delete_todo_record,
     get_todo_record,
     get_todo_stats_for_project,
+    get_todo_stats_for_section,
     list_todo_records,
     update_todo_record,
 )
@@ -16,6 +17,7 @@ __all__ = [
     "delete_todo_record",
     "get_todo_record",
     "get_todo_stats_for_project",
+    "get_todo_stats_for_section",
     "list_todo_records",
     "update_todo_record",
     "create_todo_tools",

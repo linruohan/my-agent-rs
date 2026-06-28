@@ -100,6 +100,7 @@ function handleDelete(threadId: string, e: Event) {
   justify-content: space-between;
   align-items: center;
   border-bottom: 1px solid var(--bg-hover);
+  min-width: 0;
 }
 
 .session-list li:hover {
@@ -116,6 +117,7 @@ function handleDelete(threadId: string, e: Event) {
   text-overflow: ellipsis;
   white-space: nowrap;
   flex: 1;
+  min-width: 0;
 }
 
 .btn-delete {

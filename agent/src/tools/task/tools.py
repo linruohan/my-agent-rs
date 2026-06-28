@@ -15,6 +15,8 @@ def add_task(
     remind_at: str = "",
     tags: str = "",
     status: str = "pending",
+    project_id: int = 0,
+    section_id: int = 0,
 ) -> str:
     """添加一条任务到 task.db（与 /tsk add 相同存储）。
 
@@ -25,6 +27,8 @@ def add_task(
         remind_at: 提醒时间 ISO 格式，可留空
         tags: 逗号分隔标签，如 work,urgent
         status: pending / done / expired / planned，默认 pending
+        project_id: 项目 ID，0 表示 Inbox
+        section_id: Section ID，0 表示无（Inbox 临时任务）
     """
     tag_list = [t.strip() for t in tags.split(",") if t.strip()] if tags else []
     try:
@@ -35,6 +39,8 @@ def add_task(
             remind_at=remind_at or None,
             tags=tag_list or None,
             status=status or "pending",
+            project_id=project_id if project_id > 0 else None,
+            section_id=section_id if section_id > 0 else None,
         )
     except ValueError as exc:
         return str(exc)

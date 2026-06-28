@@ -35,7 +35,9 @@ CREATE TABLE IF NOT EXISTS tasks (
     repeat_count INTEGER NOT NULL DEFAULT 0,
     remind_spec TEXT,
     remind_schedule TEXT,
-    attachments TEXT NOT NULL DEFAULT '[]'
+    attachments TEXT NOT NULL DEFAULT '[]',
+    project_id  INTEGER,
+    section_id  INTEGER
 );
 CREATE INDEX IF NOT EXISTS idx_tasks_status ON tasks(status);
 CREATE INDEX IF NOT EXISTS idx_tasks_due ON tasks(due_at);
@@ -95,6 +97,8 @@ class TaskRow:
     remind_spec: str | None = None
     remind_schedule: list[str] = field(default_factory=list)
     attachments: list[dict[str, str]] = field(default_factory=list)
+    project_id: int | None = None
+    section_id: int | None = None
 
 
 class TaskStore(ReusableSqliteStore):
@@ -106,6 +110,12 @@ class TaskStore(ReusableSqliteStore):
         with self._connect() as conn:
             conn.executescript(_SCHEMA)
             self._migrate_columns(conn)
+            conn.execute(
+                "CREATE INDEX IF NOT EXISTS idx_tasks_project ON tasks(project_id)"
+            )
+            conn.execute(
+                "CREATE INDEX IF NOT EXISTS idx_tasks_section ON tasks(section_id)"
+            )
 
     @staticmethod
     def _migrate_columns(conn: sqlite3.Connection) -> None:
@@ -122,6 +132,10 @@ class TaskStore(ReusableSqliteStore):
             conn.execute("ALTER TABLE tasks ADD COLUMN remind_schedule TEXT")
         if "attachments" not in cols:
             conn.execute("ALTER TABLE tasks ADD COLUMN attachments TEXT NOT NULL DEFAULT '[]'")
+        if "project_id" not in cols:
+            conn.execute("ALTER TABLE tasks ADD COLUMN project_id INTEGER")
+        if "section_id" not in cols:
+            conn.execute("ALTER TABLE tasks ADD COLUMN section_id INTEGER")
 
     @staticmethod
     def _now() -> str:
@@ -151,6 +165,8 @@ class TaskStore(ReusableSqliteStore):
             remind_spec=row["remind_spec"],
             remind_schedule=_load_remind_schedule(row["remind_schedule"]),
             attachments=_load_attachments(row["attachments"]),
+            project_id=int(row["project_id"]) if row["project_id"] is not None else None,
+            section_id=int(row["section_id"]) if row["section_id"] is not None else None,
         )
 
     def add(
@@ -170,11 +186,35 @@ class TaskStore(ReusableSqliteStore):
         remind_schedule: list[str] | None = None,
         attachments: list[dict[str, str]] | None = None,
         repeat_count: int = 0,
+        project_id: int | None = None,
+        section_id: int | None = None,
     ) -> TaskRow:
         title = (title or "").strip()
         if not title:
             raise ValueError("任务名不能为空")
         status = status if status in VALID_STATUS else "pending"
+
+        from tools.project.store import ProjectStore
+
+        pstore = ProjectStore()
+        resolved_project_id = project_id
+        resolved_section_id = section_id
+        if resolved_project_id is None:
+            resolved_project_id = pstore.ensure_inbox().id
+        elif not pstore.get_project(resolved_project_id):
+            raise ValueError(f"项目 #{resolved_project_id} 不存在")
+        if resolved_section_id is not None:
+            section = pstore.get_section(resolved_section_id)
+            if not section:
+                raise ValueError(f"Section #{resolved_section_id} 不存在")
+            if section.project_id != resolved_project_id:
+                raise ValueError(
+                    f"Section #{resolved_section_id} 不属于项目 #{resolved_project_id}"
+                )
+        project = pstore.get_project(resolved_project_id)
+        if project and project.is_inbox and resolved_section_id is not None:
+            raise ValueError("Inbox 中的临时任务不能归属 Section")
+
         now = created_at or self._now()
         tags_json = json.dumps(tags or [], ensure_ascii=False)
         if remind_at is None and remind_spec and due_at and not remind_schedule:
@@ -193,13 +233,14 @@ class TaskStore(ReusableSqliteStore):
                 """
                 INSERT INTO tasks
                     (title, content, due_at, repeat_rule, remind_at, created_at, updated_at,
-                     tags, status, owner, repeat_end, repeat_count, remind_spec, remind_schedule, attachments)
-                VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+                     tags, status, owner, repeat_end, repeat_count, remind_spec, remind_schedule,
+                     attachments, project_id, section_id)
+                VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
                 """,
                 (
                     title, content or "", due_at, repeat_rule, remind_at, now, now,
                     tags_json, status, owner, repeat_end, repeat_count, remind_spec,
-                    schedule_json, attachments_json,
+                    schedule_json, attachments_json, resolved_project_id, resolved_section_id,
                 ),
             )
             tid = int(cur.lastrowid)
@@ -224,17 +265,34 @@ class TaskStore(ReusableSqliteStore):
         return [self._row_from_db(r) for r in rows]
 
     def list_all(self, *, include_done: bool = False) -> list[TaskRow]:
+        return self.list_filtered(include_done=include_done)
+
+    def list_filtered(
+        self,
+        *,
+        include_done: bool = False,
+        project_id: int | None = None,
+        section_id: int | None = None,
+        inbox_only: bool = False,
+    ) -> list[TaskRow]:
+        clauses: list[str] = []
+        params: list[Any] = []
+        if not include_done:
+            clauses.append("status IN ('pending', 'planned', 'expired')")
+        if section_id is not None:
+            clauses.append("section_id = ?")
+            params.append(section_id)
+        elif inbox_only:
+            clauses.append("section_id IS NULL")
+        if project_id is not None:
+            clauses.append("project_id = ?")
+            params.append(project_id)
+        where = f"WHERE {' AND '.join(clauses)}" if clauses else ""
         with self._connect() as conn:
-            if include_done:
-                rows = conn.execute("SELECT * FROM tasks ORDER BY id DESC").fetchall()
-            else:
-                rows = conn.execute(
-                    """
-                    SELECT * FROM tasks
-                    WHERE status IN ('pending', 'planned', 'expired')
-                    ORDER BY id DESC
-                    """
-                ).fetchall()
+            rows = conn.execute(
+                f"SELECT * FROM tasks {where} ORDER BY id DESC",
+                params,
+            ).fetchall()
         return [self._row_from_db(r) for r in rows]
 
     def search(self, keyword: str) -> list[TaskRow]:
@@ -284,6 +342,9 @@ class TaskStore(ReusableSqliteStore):
         attachments: list[dict[str, str]] | None = None,
         clear_remind: bool = False,
         clear_remind_spec: bool = False,
+        project_id: int | None = None,
+        section_id: int | None = None,
+        clear_section: bool = False,
     ) -> bool:
         row = self.get(task_id)
         if not row:
@@ -325,6 +386,24 @@ class TaskStore(ReusableSqliteStore):
             fields["remind_spec"] = remind_spec
         if attachments is not None:
             fields["attachments"] = json.dumps(attachments, ensure_ascii=False)
+        if project_id is not None:
+            from tools.project.store import ProjectStore
+
+            if not ProjectStore().get_project(project_id):
+                raise ValueError(f"项目 #{project_id} 不存在")
+            fields["project_id"] = project_id
+        if clear_section:
+            fields["section_id"] = None
+        elif section_id is not None:
+            from tools.project.store import ProjectStore
+
+            section = ProjectStore().get_section(section_id)
+            if not section:
+                raise ValueError(f"Section #{section_id} 不存在")
+            pid = project_id if project_id is not None else row.project_id
+            if pid is not None and section.project_id != pid:
+                raise ValueError(f"Section #{section_id} 不属于项目 #{pid}")
+            fields["section_id"] = section_id
         if not fields:
             return True
         fields["updated_at"] = self._now()

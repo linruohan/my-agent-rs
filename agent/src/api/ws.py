@@ -178,11 +178,12 @@ def create_ws_router(
                 if msg_type == "chat.send":
                     thread_id = data.get("thread_id", "")
                     content = data.get("content", "")
-                    if not thread_id or not content:
+                    attachments = data.get("attachments") or []
+                    if not thread_id or (not content and not attachments):
                         await ws.send_json(
                             {
                                 "type": "error",
-                                "message": "thread_id and content required",
+                                "message": "thread_id and content or attachments required",
                                 "code": "INVALID_REQUEST",
                             }
                         )
@@ -198,9 +199,8 @@ def create_ws_router(
                         continue
                     session_store.touch(thread_id)
                     _thread_emitters[thread_id] = emit
-                    attachments = data.get("attachments")
                     asyncio.create_task(
-                        runner.run(thread_id, content, emit, attachments=attachments)
+                        runner.run(thread_id, content, emit, attachments=attachments or None)
                     )
                     continue
 

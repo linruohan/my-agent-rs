@@ -7,7 +7,7 @@ import StatusBar from '@/components/StatusBar.vue';
 import SettingsView from '@/views/SettingsView.vue';
 import KnowledgeBaseView from '@/views/KnowledgeBaseView.vue';
 import ProjectsView from '@/views/ProjectsView.vue';
-import TodosView from '@/views/TodosView.vue';
+import TasksView from '@/views/TasksView.vue';
 import SkillsToolsView from '@/views/SkillsToolsView.vue';
 import PlaceholderView from '@/views/PlaceholderView.vue';
 import StartupOverlay from '@/components/StartupOverlay.vue';
@@ -62,7 +62,7 @@ const viewTitle = computed(() => {
       <main class="content-area">
         <ChatPanel v-if="navigation.activeView === 'chat'" />
         <ProjectsView v-else-if="navigation.activeView === 'projects'" />
-        <TodosView v-else-if="navigation.activeView === 'tasks'" />
+        <TasksView v-else-if="navigation.activeView === 'tasks'" />
         <SkillsToolsView v-else-if="navigation.activeView === 'skills'" />
         <KnowledgeBaseView v-else-if="navigation.activeView === 'knowledge'" />
         <SettingsView v-else-if="navigation.activeView === 'settings'" />

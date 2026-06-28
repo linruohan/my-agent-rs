@@ -39,12 +39,8 @@ function formatRemindTime(iso: string) {
 
 async function load() {
   if (settings.sidecarStatus !== 'running') return;
-  await tasksStore.refresh(settings.sidecarPort);
-  if (filterProjectId.value !== '') {
-    await tasksStore.fetchTodos(settings.sidecarPort, filterProjectId.value as number);
-  } else {
-    await tasksStore.fetchTodos(settings.sidecarPort, null);
-  }
+  const id = filterProjectId.value === '' ? null : (filterProjectId.value as number);
+  await tasksStore.fetchTodos(settings.sidecarPort, id);
 }
 
 async function onFilterChange() {

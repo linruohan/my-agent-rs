@@ -29,8 +29,12 @@ async function onClick(e: MouseEvent) {
     e.preventDefault();
     e.stopPropagation();
     const block = btn.closest('.md-code-block');
+    const lineCells = block?.querySelectorAll('.md-code-lc');
     const code = block?.querySelector('code');
-    const text = code?.textContent ?? '';
+    const text =
+      lineCells && lineCells.length
+        ? [...lineCells].map((el) => el.textContent ?? '').join('\n')
+        : (code?.textContent ?? '');
     if (!text) return;
     try {
       await navigator.clipboard.writeText(text);
@@ -98,6 +102,12 @@ async function onClick(e: MouseEvent) {
 </template>
 
 <style scoped>
+.markdown-body {
+  min-width: 0;
+  max-width: 100%;
+  overflow-wrap: anywhere;
+}
+
 .markdown-body :deep(p) {
   margin: 0.4em 0;
 }
@@ -185,6 +195,9 @@ async function onClick(e: MouseEvent) {
   font-size: 0.9em;
   font-family: ui-monospace, 'Cascadia Code', monospace;
   color: var(--syntax-string, var(--success));
+  max-width: 100%;
+  overflow-wrap: anywhere;
+  word-break: break-all;
 }
 
 .markdown-user :deep(:not(pre) > code) {
@@ -199,6 +212,7 @@ async function onClick(e: MouseEvent) {
 
 .markdown-body :deep(.md-code-block) {
   margin: 0.5em 0;
+  max-width: 100%;
   border: 1px solid var(--border);
   border-radius: 8px;
   overflow: hidden;
@@ -245,19 +259,42 @@ async function onClick(e: MouseEvent) {
 
 .markdown-body :deep(.md-code-block pre) {
   margin: 0;
-  padding: 10px 12px;
+  padding: 0;
+  max-width: 100%;
   overflow-x: auto;
   background: transparent;
 }
 
 .markdown-body :deep(.md-code-block pre code) {
+  display: block;
   background: none;
-  padding: 0;
+  padding: 10px 12px 10px 0;
   font-size: 0.85em;
   font-family: ui-monospace, 'Cascadia Code', monospace;
   color: var(--text-primary);
   white-space: pre;
   border: none;
+}
+
+.markdown-body :deep(.md-code-line) {
+  display: flex;
+  min-width: max-content;
+}
+
+.markdown-body :deep(.md-code-ln) {
+  flex: 0 0 3em;
+  padding: 0 12px 0 12px;
+  text-align: right;
+  color: var(--text-muted);
+  user-select: none;
+  border-right: 1px solid var(--border);
+  background: color-mix(in srgb, var(--bg-panel) 70%, transparent);
+}
+
+.markdown-body :deep(.md-code-lc) {
+  flex: 1;
+  padding: 0 12px;
+  min-width: 0;
 }
 
 .markdown-body :deep(.tok-keyword) {
@@ -313,10 +350,13 @@ async function onClick(e: MouseEvent) {
 }
 
 .markdown-body :deep(table) {
-  width: 100%;
+  display: block;
+  width: max-content;
+  max-width: 100%;
   border-collapse: collapse;
   margin: 0.6em 0;
   font-size: 0.92em;
+  overflow-x: auto;
 }
 
 .markdown-body :deep(th),

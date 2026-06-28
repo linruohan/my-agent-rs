@@ -10,9 +10,8 @@ import pytest
 def data_dirs(monkeypatch, tmp_path: Path):
     from infra.scheduler import shutdown_scheduler
 
-    monkeypatch.setattr("tools.business.project.DB_PATH", tmp_path / "projects.db")
+    monkeypatch.setenv("AGENT_DATA_DIR", str(tmp_path))
     monkeypatch.setattr("infra.scheduler._get_db", lambda: tmp_path / "scheduler.db")
-    monkeypatch.setattr("infra.config.get_data_dir", lambda: tmp_path)
     yield tmp_path
     shutdown_scheduler()
 
@@ -56,8 +55,5 @@ def test_list_entity_reminders(data_dirs):
 
     run_at = (datetime.now(timezone.utc) + timedelta(hours=1)).isoformat()
     create_todo_record("A", remind_at=run_at)
-    create_project_record("P", remind_at=run_at)
     items = list_entity_reminders()
-    assert len(items) >= 2
     assert any(i["entity_type"] == "task" for i in items)
-    assert any(i["entity_type"] == "project" for i in items)

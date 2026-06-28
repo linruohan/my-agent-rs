@@ -184,11 +184,14 @@ const showWelcome = computed(
   flex: 1;
   display: flex;
   flex-direction: column;
+  min-width: 0;
   min-height: 0;
 }
 
 .messages {
   flex: 1;
+  min-width: 0;
+  overflow-x: hidden;
   overflow-y: auto;
   padding: 24px 32px;
   display: flex;
@@ -232,6 +235,8 @@ const showWelcome = computed(
 .message {
   display: flex;
   flex-direction: column;
+  min-width: 0;
+  max-width: 100%;
 }
 
 .message.user {
@@ -244,12 +249,14 @@ const showWelcome = computed(
 
 .bubble {
   max-width: 85%;
+  min-width: 0;
   padding: 12px 16px;
   border-radius: 12px;
   line-height: 1.5;
   font-size: 14px;
   white-space: pre-wrap;
   word-break: break-word;
+  overflow-wrap: anywhere;
 }
 
 .message.user .bubble {
@@ -271,7 +278,10 @@ const showWelcome = computed(
 }
 
 .message.assistant .bubble-final {
+  width: 100%;
   max-width: 100%;
+  min-width: 0;
+  box-sizing: border-box;
 }
 
 .typing-indicator {
@@ -282,9 +292,10 @@ const showWelcome = computed(
 .assistant-wrap {
   max-width: 85%;
   width: 100%;
+  min-width: 0;
   display: flex;
   flex-direction: column;
-  align-items: flex-start;
+  align-items: stretch;
 }
 
 .message-meta {

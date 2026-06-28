@@ -2,8 +2,10 @@
 import { computed } from 'vue';
 import { useSettingsStore } from '@/stores/settings';
 import { openExternalUrl } from '@/utils/nativeOpen';
+import { formatToolContent } from '@/utils/formatToolContent';
+import { formatArgsForDisplay } from '@/utils/formatToolArgs';
 
-defineProps<{
+const props = defineProps<{
   name: string;
   category?: string;
   content?: string;
@@ -15,6 +17,9 @@ defineProps<{
 
 const settings = useSettingsStore();
 const showTechnical = computed(() => settings.appearance.toolCallDisplay === 'technical');
+const displayContent = computed(() =>
+  formatToolContent(props.name, props.content ?? '', settings.appearance.toolCallDisplay)
+);
 
 const categoryLabels: Record<string, string> = {
   capability: '通用能力',
@@ -36,7 +41,7 @@ async function onCitationClick(e: MouseEvent, url: string) {
 
 <template>
   <div class="tool-card" :class="{ compact }">
-    <div class="header" :class="{ 'no-body': compact && !showTechnical && !content && !citations?.length }">
+    <div class="header" :class="{ 'no-body': compact && !showTechnical && !displayContent && !citations?.length }">
       <span
         class="badge"
         :style="{ background: categoryColors[category || 'capability'] || 'var(--text-muted)' }"
@@ -47,9 +52,9 @@ async function onCitationClick(e: MouseEvent, url: string) {
       <span v-if="status === 'running'" class="spinner">⏳</span>
     </div>
     <div v-if="showTechnical && args && Object.keys(args).length" class="args">
-      <code>{{ JSON.stringify(args, null, 2) }}</code>
+      <code>{{ formatArgsForDisplay(args) }}</code>
     </div>
-    <div v-if="content" class="content">{{ content }}</div>
+    <div v-if="displayContent" class="content">{{ displayContent }}</div>
     <ul v-if="citations?.length" class="citations">
       <li v-for="(c, i) in citations" :key="i">
         <a href="#" @click="onCitationClick($event, c.url)">{{ c.title || c.url }}</a>
@@ -63,6 +68,9 @@ async function onCitationClick(e: MouseEvent, url: string) {
   padding: 8px 10px;
   font-size: 12px;
   background: var(--bg-panel);
+  min-width: 0;
+  max-width: 100%;
+  overflow: hidden;
 }
 
 .tool-card.compact .header {
@@ -80,7 +88,7 @@ async function onCitationClick(e: MouseEvent, url: string) {
 .tool-card.compact .content {
   font-size: 11px;
   max-height: 120px;
-  overflow-y: auto;
+  overflow: auto;
 }
 
 .tool-card.compact .badge {
@@ -98,6 +106,9 @@ async function onCitationClick(e: MouseEvent, url: string) {
   border-radius: 8px;
   padding: 12px;
   font-size: 13px;
+  min-width: 0;
+  max-width: 100%;
+  overflow: hidden;
 }
 
 .header {
@@ -116,8 +127,13 @@ async function onCitationClick(e: MouseEvent, url: string) {
 }
 
 .name {
+  flex: 1;
+  min-width: 0;
   font-weight: 600;
   color: var(--text-primary);
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
 }
 
 .spinner {
@@ -129,17 +145,30 @@ async function onCitationClick(e: MouseEvent, url: string) {
   border-radius: 4px;
   padding: 8px;
   margin-bottom: 8px;
-  overflow-x: auto;
+  max-width: 100%;
+  min-width: 0;
+  overflow: auto;
+  max-height: 160px;
 }
 
 .args code {
   font-size: 11px;
   color: var(--text-secondary);
+  white-space: pre-wrap;
+  word-break: break-word;
+  overflow-wrap: anywhere;
 }
 
 .content {
   color: var(--text-secondary);
   line-height: 1.4;
+  min-width: 0;
+  max-width: 100%;
+  white-space: pre-wrap;
+  word-break: break-word;
+  overflow-wrap: anywhere;
+  overflow: auto;
+  max-height: 160px;
 }
 
 .citations {
