@@ -7,6 +7,15 @@ import { useKnowledgeStore } from '@/stores/knowledge';
 import { useTasksStore } from '@/stores/tasks';
 import type { ToolCall } from '@/types';
 import { logStartupMilestone } from '@/utils/startupTiming';
+import {
+  archiveSessionRest,
+  createSessionRest,
+  deleteSessionRest,
+  fetchArchivedSessionsRest,
+  fetchSessionHistoryRest,
+  fetchSessionsRest,
+  unarchiveSessionRest,
+} from '@/utils/sidecarSessions';
 import { registerWsResumeHandler } from '@/utils/wsBridge';
 import {
   initWsLeaderElection,
@@ -45,6 +54,39 @@ let dispatchWsMessage: ((msg: Record<string, unknown>) => void) | null = null;
 let leaderHooksReady = false;
 let channelHandlerReady = false;
 
+async function tryRestFollowerSync(
+  sessionStore: ReturnType<typeof useSessionStore>,
+  settingsStore: ReturnType<typeof useSettingsStore>
+) {
+  const port = settingsStore.sidecarPort;
+  if (!port || !settingsStore.wsReadOnly) return;
+
+  try {
+    if (sessionStore.sessions.length === 0) {
+      const sessions = await fetchSessionsRest(port);
+      sessionStore.sessions = sessions;
+      if (sessions.length > 0) {
+        bootstrapFollowerSession(sessionStore);
+      }
+    }
+
+    const threadId = sessionStore.currentThreadId;
+    if (!threadId || sessionStore.messages.length > 0) return;
+
+    const expectedGen =
+      pendingHistoryLoads.get(threadId) ?? sessionStore.historyLoadGeneration;
+    const messages = await fetchSessionHistoryRest(port, threadId);
+    if (
+      threadId === sessionStore.currentThreadId &&
+      expectedGen === sessionStore.historyLoadGeneration
+    ) {
+      sessionStore.loadHistory(messages, expectedGen);
+    }
+  } catch {
+    // Leader BroadcastChannel sync is primary; REST is offline fallback.
+  }
+}
+
 function scheduleFollowerSync(sessionStore: ReturnType<typeof useSessionStore>) {
   const threadId = sessionStore.currentThreadId;
   if (threadId) {
@@ -63,6 +105,14 @@ function scheduleFollowerSync(sessionStore: ReturnType<typeof useSessionStore>) 
     ) {
       pendingHistoryLoads.set(tid, sessionStore.historyLoadGeneration);
       requestSyncFromLeader(tid, { historyOnly: true });
+    }
+    if (settings.wsReadOnly) {
+      const needsSessions = sessionStore.sessions.length === 0;
+      const needsHistory =
+        !!tid && sessionStore.messages.length === 0;
+      if (needsSessions || needsHistory) {
+        void tryRestFollowerSync(sessionStore, settings);
+      }
     }
   }, 800);
 }
@@ -567,20 +617,74 @@ export function useAgentWs() {
     sendRaw({ type: 'chat.resume', thread_id: threadId, decision, edited_args: editedArgs });
   }
 
+  function canUseSessionRest() {
+    return !settingsStore.wsReadOnly && settingsStore.sidecarStatus === 'running';
+  }
+
+  function applySessionCreated(session: {
+    thread_id: string;
+    title: string;
+    created_at: string;
+  }) {
+    sessionStore.sessions.unshift({
+      thread_id: session.thread_id,
+      title: session.title || '新会话',
+      created_at: session.created_at || new Date().toISOString(),
+    });
+    sessionStore.setCurrentThread(session.thread_id);
+    sessionStore.bumpInputFocus();
+  }
+
+  function applySessionDeleted(threadId: string) {
+    sessionStore.sessions = sessionStore.sessions.filter(
+      (s) => s.thread_id !== threadId
+    );
+    sessionStore.removePreview(threadId);
+  }
+
   function listSessions() {
-    sendRaw({ type: 'session.list' });
+    if (sendRaw({ type: 'session.list' })) return;
+    if (settingsStore.wsReadOnly) return;
+    if (!canUseSessionRest()) return;
+    void fetchSessionsRest(settingsStore.sidecarPort)
+      .then((sessions) => {
+        sessionStore.sessions = sessions;
+        bootstrapInitialSession();
+      })
+      .catch(() => {});
   }
 
   function listArchivedSessions() {
-    sendRaw({ type: 'session.archived' });
+    if (sendRaw({ type: 'session.archived' })) return;
+    if (settingsStore.wsReadOnly) return;
+    if (!canUseSessionRest()) return;
+    void fetchArchivedSessionsRest(settingsStore.sidecarPort)
+      .then((sessions) => {
+        sessionStore.archivedSessions = sessions;
+      })
+      .catch(() => {});
   }
 
   function archiveSession(threadId: string) {
-    sendRaw({ type: 'session.archive', thread_id: threadId });
+    if (sendRaw({ type: 'session.archive', thread_id: threadId })) return;
+    if (!canUseSessionRest()) return;
+    void archiveSessionRest(settingsStore.sidecarPort, threadId)
+      .then(() => {
+        listSessions();
+        listArchivedSessions();
+      })
+      .catch(() => {});
   }
 
   function unarchiveSession(threadId: string) {
-    sendRaw({ type: 'session.unarchive', thread_id: threadId });
+    if (sendRaw({ type: 'session.unarchive', thread_id: threadId })) return;
+    if (!canUseSessionRest()) return;
+    void unarchiveSessionRest(settingsStore.sidecarPort, threadId)
+      .then(() => {
+        listSessions();
+        listArchivedSessions();
+      })
+      .catch(() => {});
   }
 
   function bootstrapInitialSession() {
@@ -603,8 +707,16 @@ export function useAgentWs() {
   }
 
   function createSession(title?: string): boolean {
-    if (isConnected()) {
-      return sendRaw({ type: 'session.create', title });
+    if (settingsStore.wsReadOnly) return false;
+    if (sendRaw({ type: 'session.create', title })) return true;
+    if (canUseSessionRest()) {
+      void createSessionRest(settingsStore.sidecarPort, title)
+        .then((session) => applySessionCreated(session))
+        .catch(() => {
+          pendingCreateTitle = title;
+          connect();
+        });
+      return false;
     }
     pendingCreateTitle = title;
     connect();
@@ -612,13 +724,26 @@ export function useAgentWs() {
   }
 
   function deleteSession(threadId: string) {
-    sendRaw({ type: 'session.delete', thread_id: threadId });
+    if (settingsStore.wsReadOnly) return;
+    if (sendRaw({ type: 'session.delete', thread_id: threadId })) return;
+    if (!canUseSessionRest()) return;
+    void deleteSessionRest(settingsStore.sidecarPort, threadId)
+      .then(() => applySessionDeleted(threadId))
+      .catch(() => {});
   }
 
   function loadSessionHistory(threadId: string) {
     pendingHistoryLoads.set(threadId, sessionStore.historyLoadGeneration);
     if (settingsStore.wsReadOnly) {
       requestSyncFromLeader(threadId, { historyOnly: true });
+      window.setTimeout(() => {
+        if (
+          threadId === sessionStore.currentThreadId &&
+          sessionStore.messages.length === 0
+        ) {
+          void tryRestFollowerSync(sessionStore, settingsStore);
+        }
+      }, 800);
       return;
     }
     sendRaw({ type: 'session.history', thread_id: threadId });

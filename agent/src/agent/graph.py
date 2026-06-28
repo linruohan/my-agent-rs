@@ -1,19 +1,19 @@
 from __future__ import annotations
 
+import asyncio
 import json
-import time
 from typing import Any, Callable
 
 from langchain_core.language_models.chat_models import BaseChatModel
 from langchain_core.messages import HumanMessage, ToolMessage
 from langgraph.checkpoint.base import BaseCheckpointSaver
-from langgraph.graph import END, START, StateGraph
-from langgraph.prebuilt import tools_condition
-from langgraph.types import interrupt, RunnableConfig
+from langgraph.prebuilt import create_react_agent
+from langgraph._internal._runnable import RunnableCallable
 from loguru import logger
 
 from agent.planner import format_plan_for_prompt, generate_task_plan, needs_planning
 from agent.state import AgentState
+from agent.hitl_node import create_hitl_tool_node
 from infra.config import get_data_dir, load_effective_tools_config
 from infra.time_context import (
     format_current_time_context,
@@ -245,197 +245,41 @@ def create_preprocess_node(
     return preprocess
 
 
-_PROGRESS_TOOLS = frozenset(
-    {
-        "code_execution",
-        "bash",
-        "web_fetch",
-        "web_search",
-        "baidu_image_search",
-        "computer",
-    }
-)
+def create_pre_model_hook(
+    llm_get: Callable[[], BaseChatModel | None],
+):
+    preprocess = create_preprocess_node(llm_get)
+    reflect = create_reflect_node()
 
+    def pre_model_hook(state: AgentState) -> dict[str, Any]:
+        messages = state.get("messages") or []
+        updates: dict[str, Any] = {}
 
-def create_hitl_tools_node(registry: ToolRegistry):
-    async def hitl_tools(state: AgentState, config: RunnableConfig) -> dict[str, Any]:
-        emit = config.get("configurable", {}).get("_emit")
-        messages = state["messages"]
-        last = messages[-1]
-        if not hasattr(last, "tool_calls") or not last.tool_calls:
-            return {"messages": []}
+        if messages and isinstance(messages[-1], HumanMessage):
+            updates.update(preprocess(state))
+        elif messages and isinstance(messages[-1], ToolMessage):
+            meta = _state_metadata(state)
+            meta["tool_rounds"] = meta.get("tool_rounds", 0) + 1
 
-        result_messages: list[ToolMessage] = []
+            last_tool_msgs: list[ToolMessage] = []
+            for msg in reversed(messages):
+                if isinstance(msg, ToolMessage):
+                    last_tool_msgs.insert(0, msg)
+                elif last_tool_msgs:
+                    break
+            for tm in last_tool_msgs:
+                if _is_usable_tool_output(str(tm.content or "")):
+                    meta["has_tool_content"] = True
+                    break
 
-        for tc in last.tool_calls:
-            name = tc["name"]
-            args = tc.get("args") or {}
-            tool_id = tc.get("id") or name
-            meta = registry.get_meta(name)
+            merged = {**state, **updates, "metadata": meta}
+            updates.update(reflect(merged))
 
-            if emit:
-                await emit(
-                    {
-                        "type": "tool_start",
-                        "thread_id": config.get("configurable", {}).get("thread_id", ""),
-                        "tool_call_id": tool_id,
-                        "name": name,
-                        "args": args,
-                        "category": meta.get("category", "capability"),
-                    }
-                )
+        merged_state: AgentState = {**state, **updates}  # type: ignore[typeddict-item]
+        updates["llm_input_messages"] = _messages_for_llm(merged_state)
+        return updates
 
-            if registry.requires_confirmation(name):
-                response = interrupt(
-                    {
-                        "action": name,
-                        "preview": (
-                            f"确认执行工具 `{name}`？\n"
-                            f"参数: {json.dumps(args, ensure_ascii=False, indent=2)}"
-                        ),
-                        "args": args,
-                    }
-                )
-                if isinstance(response, dict):
-                    decision = response.get("decision", "reject")
-                    if decision == "reject":
-                        result_messages.append(
-                            ToolMessage(
-                                content=f"用户拒绝了工具 `{name}` 的执行。",
-                                tool_call_id=tool_id,
-                            )
-                        )
-                        if emit:
-                            await emit(
-                                {
-                                    "type": "tool_end",
-                                    "thread_id": config.get("configurable", {}).get(
-                                        "thread_id", ""
-                                    ),
-                                    "tool_call_id": tool_id,
-                                    "name": name,
-                                    "result": f"用户拒绝了工具 `{name}` 的执行。",
-                                    "category": meta.get("category", "capability"),
-                                    "citations": [],
-                                }
-                            )
-                        continue
-                    if decision == "edit" and response.get("edited_args"):
-                        args = response["edited_args"]
-
-            tool = registry.get_tool(name)
-            if not tool:
-                err = f"Tool not found: {name}"
-                result_messages.append(
-                    ToolMessage(content=err, tool_call_id=tool_id)
-                )
-                if emit:
-                    await emit(
-                        {
-                            "type": "tool_end",
-                            "thread_id": config.get("configurable", {}).get(
-                                "thread_id", ""
-                            ),
-                            "tool_call_id": tool_id,
-                            "name": name,
-                            "result": err,
-                            "category": meta.get("category", "capability"),
-                            "citations": [],
-                        }
-                    )
-                continue
-
-            try:
-                if emit and name in _PROGRESS_TOOLS:
-                    await emit(
-                        {
-                            "type": "tool_progress",
-                            "thread_id": config.get("configurable", {}).get(
-                                "thread_id", ""
-                            ),
-                            "tool_call_id": tool_id,
-                            "tool_name": name,
-                            "status": "executing",
-                        }
-                    )
-                tool_start = time.monotonic()
-                from infra.tracing import trace_span
-
-                with trace_span("tool.invoke", tool=name, thread_id=config.get("configurable", {}).get("thread_id", "")):
-                    output = tool.invoke(args)
-                tool_ms = int((time.monotonic() - tool_start) * 1000)
-                from infra.metrics import observe_tool_duration
-
-                output_str = str(output)
-                citations = _extract_tool_citations(name, output_str)
-                observe_tool_duration(tool_ms, success=True)
-                logger.info(
-                    "tool_end name={} duration_ms={} thread_id={}",
-                    name,
-                    tool_ms,
-                    config.get("configurable", {}).get("thread_id", ""),
-                )
-                result_messages.append(
-                    ToolMessage(content=output_str, tool_call_id=tool_id)
-                )
-                if emit:
-                    await emit(
-                        {
-                            "type": "tool_end",
-                            "thread_id": config.get("configurable", {}).get(
-                                "thread_id", ""
-                            ),
-                            "tool_call_id": tool_id,
-                            "name": name,
-                            "result": output_str[:2000],
-                            "category": meta.get("category", "capability"),
-                            "citations": citations,
-                        }
-                    )
-            except Exception as e:
-                err = f"Error executing {name}: {e}"
-                from infra.metrics import observe_tool_duration
-
-                observe_tool_duration(0, success=False)
-                result_messages.append(
-                    ToolMessage(content=err, tool_call_id=tool_id)
-                )
-                if emit:
-                    await emit(
-                        {
-                            "type": "tool_end",
-                            "thread_id": config.get("configurable", {}).get(
-                                "thread_id", ""
-                            ),
-                            "tool_call_id": tool_id,
-                            "name": name,
-                            "result": err,
-                            "category": meta.get("category", "capability"),
-                            "citations": [],
-                        }
-                    )
-
-        meta = _state_metadata(state)
-        meta["tool_rounds"] = meta.get("tool_rounds", 0) + 1
-        for tm in result_messages:
-            if _is_usable_tool_output(str(tm.content or "")):
-                meta["has_tool_content"] = True
-                break
-
-        return {"messages": result_messages, "metadata": meta}
-
-    return hitl_tools
-
-
-def _extract_tool_citations(tool_name: str, output: str) -> list[dict[str, str]]:
-    if tool_name not in ("web_search", "baidu_image_search"):
-        return []
-    citations = []
-    for line in output.split("\n"):
-        if line.strip().startswith("Source:"):
-            url = line.split("Source:", 1)[1].strip()
-            citations.append({"url": url, "title": url})
-    return citations
+    return pre_model_hook
 
 
 def create_reflect_node():
@@ -522,11 +366,9 @@ def create_agent_graph(
 ):
     lazy_llm = _LazyLlm(registry, llm=llm)
 
-    def call_model(state: AgentState) -> dict[str, Any]:
-        messages = _messages_for_llm(state)
-        meta = _state_metadata(state)
+    def _invoke_with_fallback(messages: list, config: dict | None, meta: dict[str, Any]):
         force_answer = meta.get("force_answer") or meta.get("tool_rounds", 0) >= MAX_TOOL_ROUNDS
-        tools = registry.get_enabled_tools()
+        bind_tools = bool(registry.get_enabled_tools()) and not force_answer
 
         chain = get_fallback_chain()
         primary = lazy_llm._primary
@@ -539,10 +381,10 @@ def create_agent_graph(
                 continue
             try:
                 lazy_llm.reset(name)
-                llm = lazy_llm.with_tools() if tools and not force_answer else lazy_llm.get()
-                response = llm.invoke(messages)
+                model = lazy_llm.with_tools() if bind_tools else lazy_llm.get()
+                response = model.invoke(messages, config)
                 lazy_llm._provider_name = name
-                return {"messages": [response]}
+                return response
             except (TimeoutError, ConnectionError, OSError) as exc:
                 last_error = exc
                 logger.warning("Provider {} request failed: {}", name, exc)
@@ -558,17 +400,71 @@ def create_agent_graph(
             raise RuntimeError(f"All LLM providers unavailable: {last_error}") from last_error
         raise RuntimeError("All LLM providers unavailable (no API keys configured)")
 
-    workflow = StateGraph(AgentState)
-    workflow.add_node("preprocess", create_preprocess_node(lazy_llm.get))
-    workflow.add_node("agent", call_model)
-    workflow.add_node("tools", create_hitl_tools_node(registry))
-    workflow.add_node("reflect", create_reflect_node())
-    workflow.add_edge(START, "preprocess")
-    workflow.add_edge("preprocess", "agent")
-    workflow.add_conditional_edges(
-        "agent", tools_condition, {"tools": "tools", END: END}
-    )
-    workflow.add_edge("tools", "reflect")
-    workflow.add_edge("reflect", "agent")
+    async def _ainvoke_with_fallback(messages: list, config: dict | None, meta: dict[str, Any]):
+        force_answer = meta.get("force_answer") or meta.get("tool_rounds", 0) >= MAX_TOOL_ROUNDS
+        bind_tools = bool(registry.get_enabled_tools()) and not force_answer
 
-    return workflow.compile(checkpointer=checkpointer)
+        chain = get_fallback_chain()
+        primary = lazy_llm._primary
+        if primary and primary not in chain:
+            chain = [primary, *[p for p in chain if p != primary]]
+
+        last_error: Exception | None = None
+        for name in chain:
+            if not _provider_available(name):
+                continue
+            try:
+                lazy_llm.reset(name)
+                model = lazy_llm.with_tools() if bind_tools else lazy_llm.get()
+                coro = model.ainvoke(messages, config)
+                if asyncio.iscoroutine(coro):
+                    response = await coro
+                else:
+                    response = await asyncio.to_thread(model.invoke, messages, config)
+                lazy_llm._provider_name = name
+                return response
+            except (TimeoutError, ConnectionError, OSError) as exc:
+                last_error = exc
+                logger.warning("Provider {} request failed: {}", name, exc)
+            except Exception as exc:
+                err_name = type(exc).__name__
+                if err_name in ("APITimeoutError", "RateLimitError", "APIConnectionError"):
+                    last_error = exc
+                    logger.warning("Provider {} API error: {}", name, exc)
+                    continue
+                raise
+
+        if last_error:
+            raise RuntimeError(f"All LLM providers unavailable: {last_error}") from last_error
+        raise RuntimeError("All LLM providers unavailable (no API keys configured)")
+
+    def resolve_model(state: AgentState, runtime) -> RunnableCallable:
+        meta = _state_metadata(state)
+
+        def invoke_model(input_value, config=None):
+            messages = (
+                input_value.get("messages", input_value)
+                if isinstance(input_value, dict)
+                else input_value
+            )
+            return _invoke_with_fallback(messages, config, meta)
+
+        async def ainvoke_model(input_value, config=None):
+            messages = (
+                input_value.get("messages", input_value)
+                if isinstance(input_value, dict)
+                else input_value
+            )
+            return await _ainvoke_with_fallback(messages, config, meta)
+
+        return RunnableCallable(invoke_model, ainvoke_model)
+
+    return create_react_agent(
+        model=resolve_model,
+        tools=create_hitl_tool_node(registry),
+        state_schema=AgentState,
+        pre_model_hook=create_pre_model_hook(lazy_llm.get),
+        checkpointer=checkpointer,
+        version="v2",
+        name="personal_assistant",
+    )

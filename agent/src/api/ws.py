@@ -172,7 +172,9 @@ def create_ws_router(
 
                 if msg_type == "session.archive":
                     thread_id = data.get("thread_id", "")
-                    ok = session_store.set_archived(thread_id, True) if thread_id else False
+                    from api.session_ops import set_session_archived
+
+                    ok = set_session_archived(session_store, thread_id, True)
                     await ws.send_json(
                         {"type": "session.archived_one", "thread_id": thread_id, "ok": ok}
                     )
@@ -180,31 +182,30 @@ def create_ws_router(
 
                 if msg_type == "session.unarchive":
                     thread_id = data.get("thread_id", "")
-                    ok = session_store.set_archived(thread_id, False) if thread_id else False
+                    from api.session_ops import set_session_archived
+
+                    ok = set_session_archived(session_store, thread_id, False)
                     await ws.send_json(
                         {"type": "session.unarchived", "thread_id": thread_id, "ok": ok}
                     )
                     continue
 
                 if msg_type == "session.create":
-                    session = session_store.create(data.get("title"))
+                    from api.session_ops import create_session_record
+
+                    session = create_session_record(session_store, data.get("title"))
                     await ws.send_json({"type": "session.created", **session})
                     continue
 
                 if msg_type == "session.delete":
                     thread_id = data.get("thread_id", "")
-                    ok = session_store.delete(thread_id) if thread_id else False
-                    if ok and thread_id:
-                        checkpointer = getattr(
-                            getattr(runner, "graph", None), "checkpointer", None
-                        )
-                        from infra.session_lifecycle import purge_thread_data
+                    from api.session_ops import delete_session_record
 
-                        await purge_thread_data(
-                            thread_id,
-                            runner=runner,
-                            checkpointer=checkpointer,
-                        )
+                    ok = await delete_session_record(
+                        thread_id,
+                        session_store=session_store,
+                        runner=runner,
+                    )
                     await ws.send_json(
                         {"type": "session.deleted", "thread_id": thread_id, "ok": ok}
                     )

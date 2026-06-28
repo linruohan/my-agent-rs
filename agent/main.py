@@ -27,6 +27,7 @@ from agent.runner import AgentRunner
 from api.config_route import router as config_router
 from api.health import router as health_router
 from api.health import VERSION
+from api.sessions_route import create_sessions_router
 from api.tasks_route import router as tasks_router
 from api.tools_route import create_tools_router
 from api.ws import create_ws_router, manager
@@ -180,6 +181,7 @@ def build_app(port: int = 8765) -> FastAPI:
     app.include_router(health_router)
     app.include_router(config_router)
     app.include_router(tasks_router)
+    app.include_router(create_sessions_router(runner, session_store))
     app.include_router(create_tools_router(registry, runner))
     ws_router = create_ws_router(runner, session_store, port)
     app.include_router(ws_router)
