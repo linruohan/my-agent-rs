@@ -37,7 +37,7 @@ const inner = computed({
   },
 });
 
-const isDark = computed(() => resolveColorMode(settings.appearance.colorMode));
+const isDark = computed(() => resolveColorMode(settings.appearance.colorMode) === 'dark');
 </script>
 
 <template>

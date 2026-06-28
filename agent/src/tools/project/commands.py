@@ -28,11 +28,10 @@ _RE_CHALLENGE = re.compile(r"^@challenge-(.+)$", re.IGNORECASE)
 _RE_NOTE = re.compile(r"^@note-(.+)$", re.IGNORECASE)
 
 _USAGE = (
-    "用法：/pro list | add <项目名> [描述] [标记…] | mod <项目ID> [修改内容] | status <项目ID>\n"
-    "      /pro sec add <项目ID> <Section名> [目标…] | sec task add <SectionID> <任务名> [标记…]\n"
-    "      /pro sec list <项目ID> | sec mod <SectionID> … | sec summary <SectionID> <日期> [进度…] | sec summaries <SectionID>\n"
-    "      /pro doc add <项目ID> <标题> [路径] | <项目ID> | <关键字>\n"
-    "标记：@owner-姓名 @start-日期 @end-日期 @status-active @risk-… @challenge-… @note-…"
+    "用法：/pro list | add <项目名> [描述] | mod <项目ID> [名称/描述/标记…] | del <项目ID> | <项目ID>\n"
+    "      /pro sec add <项目ID> <Section名> [描述…] | sec list <项目ID> | sec mod <SectionID> …\n"
+    "      /pro sec summary <SectionID> <日期> [进度…] | doc add <项目ID> <标题> [路径]\n"
+    "标记：@owner-姓名 @start-日期 @end-日期 @status-active"
 )
 
 
@@ -143,7 +142,14 @@ def _cmd_list(store: ProjectStore, rest: str) -> str:
         status = meta["status"]
     elif plain:
         status = plain[0]
-    return format_projects_list(store, status=status)
+    store.ensure_inbox()
+    projects = [p for p in store.list_projects(status, include_inbox=False) if not p.is_inbox]
+    if not projects:
+        return "暂无项目。可用 `/pro add <名称> [描述]` 创建。"
+    lines = ["项目列表："]
+    for p in sorted(projects, key=lambda x: x.id):
+        lines.append(_format_project_line(p, stats=task_stats_for_project(p.id)))
+    return "\n".join(lines)
 
 
 def _cmd_add(store: ProjectStore, rest: str) -> str:
@@ -197,6 +203,24 @@ def _cmd_mod(store: ProjectStore, rest: str) -> str:
     if not updated:
         return f"项目 #{pid} 不存在。"
     return f"已更新项目 #{pid}：{updated.name} [{updated.status}]"
+
+
+def _cmd_del(store: ProjectStore, rest: str) -> str:
+    pid_s = rest.split(None, 1)[0] if rest else ""
+    if not pid_s.isdigit():
+        return "用法：/pro del <项目ID>"
+    pid = int(pid_s)
+    project = store.get_project(pid)
+    if not project:
+        return f"项目 #{pid} 不存在。"
+    if project.is_inbox:
+        return "Inbox 项目不可删除。"
+    from tools.business.project import delete_project_record
+
+    name = project.name
+    if delete_project_record(pid):
+        return f"已删除项目 #{pid}：{name}（其任务已移入 Inbox）"
+    return f"删除项目 #{pid} 失败。"
 
 
 def _pct(stats: dict[str, Any]) -> int:
@@ -520,6 +544,8 @@ def handle_project_command(args: str, store: ProjectStore | None = None) -> str:
         return _cmd_add(store, rest)
     if sub == "mod":
         return _cmd_mod(store, rest)
+    if sub in ("del", "rm", "delete"):
+        return _cmd_del(store, rest)
     if sub in ("status", "show", "get"):
         return _cmd_status(store, rest)
     if sub in ("sec", "section"):

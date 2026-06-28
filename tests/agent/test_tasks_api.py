@@ -100,6 +100,43 @@ def test_tasks_api_flow(tasks_client):
     assert deleted.status_code == 200
 
 
+def test_delete_project_and_section(tasks_client):
+    proj = tasks_client.post(
+        "/tasks/projects",
+        json={"name": "To Delete", "status": "active"},
+    )
+    project_id = proj.json()["project"]["id"]
+
+    sec = tasks_client.post(
+        f"/tasks/projects/{project_id}/sections",
+        json={"name": "Phase 1", "goals": "test"},
+    )
+    section_id = sec.json()["section"]["id"]
+
+    todo = tasks_client.post(
+        "/tasks/todos",
+        json={"title": "In section", "project_id": project_id, "section_id": section_id},
+    )
+    todo_id = todo.json()["todo"]["id"]
+
+    del_sec = tasks_client.delete(f"/tasks/sections/{section_id}")
+    assert del_sec.status_code == 200
+
+    patched = tasks_client.patch(f"/tasks/todos/{todo_id}", json={})
+    assert patched.json()["todo"]["section_id"] is None
+
+    del_proj = tasks_client.delete(f"/tasks/projects/{project_id}")
+    assert del_proj.status_code == 200
+
+    inbox = tasks_client.get("/tasks/inbox").json()
+    inbox_id = inbox["id"]
+    moved = tasks_client.get(f"/tasks/todos?project_id={inbox_id}").json()
+    assert any(t["id"] == todo_id for t in moved["todos"])
+
+    assert tasks_client.get(f"/tasks/projects/{project_id}").status_code == 404
+    assert tasks_client.delete(f"/tasks/projects/{inbox_id}").status_code == 400
+
+
 def test_tasks_snapshot(tasks_client):
     tasks_client.post("/tasks/projects", json={"name": "Snap", "status": "active"})
     tasks_client.post("/tasks/todos", json={"title": "Snap todo", "priority": "normal"})

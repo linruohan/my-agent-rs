@@ -21,6 +21,7 @@ const props = defineProps<{
 const emit = defineEmits<{
   save: [payload: SectionFormPayload];
   cancel: [];
+  delete: [];
 }>();
 
 const name = ref('');
@@ -126,9 +127,19 @@ function onKeydown(e: KeyboardEvent) {
           <p v-if="dialogError" class="error">{{ dialogError }}</p>
         </div>
 
-        <footer class="dialog-footer">
-          <button type="button" class="btn-cancel" @click="emit('cancel')">Cancel</button>
-          <button type="button" class="btn-primary" @click="submit">{{ submitLabel }}</button>
+        <footer class="dialog-footer" :class="{ 'with-delete': mode === 'edit' }">
+          <button
+            v-if="mode === 'edit'"
+            type="button"
+            class="btn-danger"
+            @click="emit('delete')"
+          >
+            删除 Section
+          </button>
+          <div class="footer-actions">
+            <button type="button" class="btn-cancel" @click="emit('cancel')">Cancel</button>
+            <button type="button" class="btn-primary" @click="submit">{{ submitLabel }}</button>
+          </div>
         </footer>
       </div>
     </div>
@@ -224,6 +235,32 @@ function onKeydown(e: KeyboardEvent) {
   gap: 8px;
   padding: 12px 16px;
   border-top: 1px solid var(--border);
+}
+
+.dialog-footer.with-delete {
+  grid-template-columns: auto 1fr;
+  align-items: center;
+}
+
+.footer-actions {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 8px;
+}
+
+.btn-danger {
+  background: transparent;
+  color: var(--danger);
+  border: 1px solid color-mix(in srgb, var(--danger) 40%, transparent);
+  border-radius: 8px;
+  padding: 10px 14px;
+  font-size: 13px;
+  cursor: pointer;
+  font-family: inherit;
+}
+
+.btn-danger:hover {
+  background: color-mix(in srgb, var(--danger) 12%, transparent);
 }
 
 .btn-cancel {

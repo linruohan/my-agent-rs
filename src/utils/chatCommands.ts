@@ -14,8 +14,9 @@ export const SESSION_COMMANDS: ChatCommand[] = [
   { id: 'title', label: '/title', description: '重命名当前会话', category: 'session' },
   { id: 'clear', label: '/clear', description: '清空输入框', category: 'session' },
   { id: 'stop', label: '/stop', description: '停止当前生成', category: 'session' },
-  { id: 'tsk', label: '/tsk', description: '任务管理（add/list/mod/rm）', category: 'session', keywords: ['task', 'todo'] },
-  { id: 'pro', label: '/pro', description: '项目管理（add/list/sec）', category: 'session', keywords: ['project'] },
+  { id: 'tsk', label: '/tsk', description: '任务：list/add/mod/del/详情', category: 'session', keywords: ['task', 'todo'] },
+  { id: 'pro', label: '/pro', description: '项目：list/add/mod/del/sec/详情', category: 'session', keywords: ['project'] },
+  { id: 'sec', label: '/sec', description: 'Section：list/add/mod/del/详情', category: 'session', keywords: ['section'] },
   { id: 'ocr', label: '/ocr', description: '图片 OCR 识图', category: 'session', keywords: ['ocr', '识别', '文字'] },
 ];
 

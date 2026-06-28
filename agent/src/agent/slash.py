@@ -4,7 +4,7 @@ from __future__ import annotations
 
 import re
 
-_SLASH_RE = re.compile(r"^/(tsk|pro)\b\s*(.*)$", re.IGNORECASE | re.DOTALL)
+_SLASH_RE = re.compile(r"^/(tsk|pro|sec)\b\s*(.*)$", re.IGNORECASE | re.DOTALL)
 
 
 def dispatch_slash_command(text: str) -> str | None:
@@ -26,5 +26,10 @@ def dispatch_slash_command(text: str) -> str | None:
         from tools.project.commands import handle_project_command
 
         return handle_project_command(args)
+
+    if cmd == "sec":
+        from tools.project.section_commands import handle_section_command
+
+        return handle_section_command(args)
 
     return None

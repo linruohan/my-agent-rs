@@ -19,6 +19,7 @@ import {
   pickFolderNative,
   pickImagesNative,
   attachmentsFromFileList,
+  attachmentsFromFiles,
   attachmentFromFolderFiles,
 } from '@/utils/tauriFiles';
 import { openExternalUrl, openLocalPath } from '@/utils/nativeOpen';
@@ -330,6 +331,39 @@ async function onAttachmentChipClick(att: ChatAttachment) {
   }
 }
 
+function collectPastedFiles(clipboardData: DataTransfer): File[] {
+  if (clipboardData.files.length > 0) {
+    return Array.from(clipboardData.files);
+  }
+  const files: File[] = [];
+  for (const item of Array.from(clipboardData.items)) {
+    if (item.kind !== 'file') continue;
+    const file = item.getAsFile();
+    if (file) files.push(file);
+  }
+  return files;
+}
+
+async function addPastedFiles(files: File[]) {
+  if (!files.length) return;
+  const added = await attachmentsFromFiles(files);
+  if (!added.length) return;
+  pendingAttachments.value.push(...added);
+  showAttachMenu.value = false;
+}
+
+async function handlePaste(e: ClipboardEvent) {
+  if (!sessionStore.currentThreadId) return;
+  const clipboardData = e.clipboardData;
+  if (!clipboardData) return;
+
+  const files = collectPastedFiles(clipboardData);
+  if (!files.length) return;
+
+  e.preventDefault();
+  await addPastedFiles(files);
+}
+
 async function pasteImageFromClipboard() {
   try {
     const items = await navigator.clipboard.read();
@@ -337,20 +371,9 @@ async function pasteImageFromClipboard() {
       const type = item.types.find((t) => t.startsWith('image/'));
       if (!type) continue;
       const blob = await item.getType(type);
-      const buf = await blob.arrayBuffer();
-      const bytes = new Uint8Array(buf);
-      let binary = '';
-      const chunk = 8192;
-      for (let i = 0; i < bytes.length; i += chunk) {
-        binary += String.fromCharCode(...bytes.subarray(i, i + chunk));
-      }
-      pendingAttachments.value.push({
-        type: 'image',
-        name: `paste-${Date.now()}.png`,
-        content: btoa(binary),
-        mimeType: type,
-      });
-      showAttachMenu.value = false;
+      const ext = type.split('/')[1]?.replace('jpeg', 'jpg') ?? 'png';
+      const file = new File([blob], `paste-${Date.now()}.${ext}`, { type });
+      await addPastedFiles([file]);
       return;
     }
   } catch {
@@ -623,7 +646,7 @@ defineExpose({ pendingAttachments });
         <span class="attach-icon">💬</span>
         <span>提示词片段…</span>
       </button>
-      <p class="attach-hint">提示：输入 @ 引用技能，输入 / 搜索命令</p>
+      <p class="attach-hint">提示：输入 @ 引用技能，输入 / 搜索命令；Ctrl+V 可粘贴文件或图片</p>
       <!-- Web fallback hidden inputs -->
       <input
         id="attach-file-input"
@@ -672,6 +695,7 @@ defineExpose({ pendingAttachments });
         rows="1"
         @input="autoResize"
         @keydown="handleKeydown"
+        @paste="handlePaste"
       />
 
       <button

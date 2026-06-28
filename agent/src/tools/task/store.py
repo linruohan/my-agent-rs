@@ -768,10 +768,9 @@ def handle_task_command(args: str, store: TaskStore | None = None) -> str:
     body = (args or "").strip()
     if not body:
         return (
-            "用法：/tsk add <任务名> [内容] [标记…] | mod <任务ID> <修改内容> | list | notify [id] | tick | rm <id> | <id> | <关键字>\n"
+            "用法：/tsk list | add <任务名> [描述…] | mod <任务ID> <修改内容> | del <任务ID> | <任务ID>\n"
             "标记：@{owner} #{tag} @due-日期 @pro-<项目ID> @sec-<SectionID> "
             "@rem-1m|1h|1d|具体时间 @rep-1day-2|@rep-day @rep-end-none|日期|次数\n"
-            "mod 时 @rem-6.22.10:00 等具体时间会在现有提醒计划中追加一条\n"
             "add 未指定时默认：负责人=设置中的名字，截止=当天17:30，"
             "提醒=截止前一天9:00/14:30/16:30，无@rep-则不重复"
         )
@@ -781,7 +780,8 @@ def handle_task_command(args: str, store: TaskStore | None = None) -> str:
     rest = parts[1].strip() if len(parts) > 1 else ""
 
     if sub == "list":
-        return format_task_list(store.list_incomplete())
+        rows = store.list_all(include_done=True)
+        return format_task_list(rows, heading="任务列表：")
 
     if sub == "notify":
         from tools.task.notify import send_task_toast
@@ -862,10 +862,10 @@ def handle_task_command(args: str, store: TaskStore | None = None) -> str:
         except ValueError as exc:
             return str(exc)
 
-    if sub == "rm":
+    if sub in ("rm", "del", "delete"):
         tid_s = rest.split(None, 1)[0] if rest else ""
         if not tid_s.isdigit():
-            return "用法：/tsk rm <任务ID>"
+            return "用法：/tsk del <任务ID>"
         tid = int(tid_s)
         if store.delete(tid):
             return f"已删除任务 #{tid}"

@@ -134,6 +134,14 @@ export async function pickFolderNative(): Promise<ChatAttachment | 'use-html' | 
   return pickFolderViaDialog();
 }
 
+/** 从 File 数组构建附件 */
+export async function attachmentsFromFiles(files: File[]): Promise<ChatAttachment[]> {
+  if (!files.length) return [];
+  const dt = new DataTransfer();
+  for (const file of files) dt.items.add(file);
+  return attachmentsFromFileList(dt.files);
+}
+
 /** 从 HTML FileList 构建附件（Web fallback） */
 export async function attachmentsFromFileList(files: FileList): Promise<ChatAttachment[]> {
   const attachments: ChatAttachment[] = [];

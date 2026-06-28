@@ -237,6 +237,20 @@ def patch_project_api(project_id: int, body: ProjectPatchBody) -> dict[str, Any]
     return {"ok": True, "project": updated}
 
 
+@router.delete("/projects/{project_id}")
+def delete_project_api(project_id: int) -> dict[str, Any]:
+    from tools.business.project import delete_project_record, get_project_record
+
+    project = get_project_record(project_id)
+    if not project:
+        raise HTTPException(status_code=404, detail="Project not found")
+    if project.get("is_inbox"):
+        raise HTTPException(status_code=400, detail="Inbox project cannot be deleted")
+    if not delete_project_record(project_id):
+        raise HTTPException(status_code=400, detail="Failed to delete project")
+    return {"ok": True, "deleted_id": project_id}
+
+
 @router.get("/projects/{project_id}/sections")
 def list_sections_api(project_id: int, status: str = "") -> dict[str, Any]:
     from tools.business.project import get_project_record, list_section_records
@@ -301,6 +315,17 @@ def patch_section_api(section_id: int, body: SectionPatchBody) -> dict[str, Any]
     if not updated:
         raise HTTPException(status_code=404, detail="Section not found")
     return {"ok": True, "section": _enrich_section(updated)}
+
+
+@router.delete("/sections/{section_id}")
+def delete_section_api(section_id: int) -> dict[str, Any]:
+    from tools.business.project import delete_section_record, get_section_record
+
+    if not get_section_record(section_id):
+        raise HTTPException(status_code=404, detail="Section not found")
+    if not delete_section_record(section_id):
+        raise HTTPException(status_code=400, detail="Failed to delete section")
+    return {"ok": True, "deleted_id": section_id}
 
 
 @router.get("/sections/{section_id}/summaries")

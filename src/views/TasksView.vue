@@ -19,7 +19,14 @@ import SectionEditDialog, { type SectionFormPayload } from '@/components/Section
 import LabelEditDialog, { type LabelFormPayload } from '@/components/LabelEditDialog.vue';
 import TaskListTable from '@/components/TaskListTable.vue';
 import AppDatePicker from '@/components/AppDatePicker.vue';
+import DeleteTasksConfirmDialog from '@/components/DeleteTasksConfirmDialog.vue';
 import { labelColorMap, colorForLabel, labelChipStyle } from '@/utils/labelColors';
+import {
+  analyzeTasksForDelete,
+  tasksForProject as projectTasksForDelete,
+  tasksForSection as sectionTasksForDelete,
+  type DeleteTargetKind,
+} from '@/utils/deleteConfirm';
 
 const tasksStore = useTasksStore();
 const settings = useSettingsStore();
@@ -46,6 +53,19 @@ const editingSection = ref<SectionItem | null>(null);
 const labelDialogOpen = ref(false);
 const labelDialogMode = ref<'create' | 'edit'>('create');
 const editingLabel = ref<LabelItem | null>(null);
+
+type PendingDelete = {
+  kind: DeleteTargetKind;
+  targetName: string;
+  incomplete: TodoItem[];
+  completed: TodoItem[];
+  todoId?: number;
+  projectId?: number;
+  sectionId?: number;
+};
+
+const deleteConfirmOpen = ref(false);
+const pendingDelete = ref<PendingDelete | null>(null);
 
 const UNSECTIONED_SECTION = 0;
 
@@ -318,13 +338,110 @@ async function toggleTodo(todo: TodoItem) {
   }
 }
 
-async function removeTodo(id: number) {
-  if (!confirm(`删除任务 #${id}？`)) return;
+function openDeleteConfirm(payload: PendingDelete) {
+  pendingDelete.value = payload;
+  deleteConfirmOpen.value = true;
+}
+
+function cancelDeleteConfirm() {
+  deleteConfirmOpen.value = false;
+  pendingDelete.value = null;
+}
+
+async function executePendingDelete() {
+  const pending = pendingDelete.value;
+  if (!pending) return;
+  deleteConfirmOpen.value = false;
+  pendingDelete.value = null;
   try {
-    await tasksStore.deleteTodo(settings.sidecarPort, id);
+    if (pending.kind === 'task' && pending.todoId != null) {
+      await tasksStore.deleteTodo(settings.sidecarPort, pending.todoId);
+      if (editingTodo.value?.id === pending.todoId) taskDialogOpen.value = false;
+    } else if (pending.kind === 'project' && pending.projectId != null) {
+      await tasksStore.deleteProject(settings.sidecarPort, pending.projectId);
+      if (projectDialogOpen.value && editingProject.value?.id === pending.projectId) {
+        projectDialogOpen.value = false;
+      }
+    } else if (pending.kind === 'section' && pending.sectionId != null) {
+      await tasksStore.deleteSection(settings.sidecarPort, pending.sectionId);
+      if (sectionDialogOpen.value && editingSection.value?.id === pending.sectionId) {
+        sectionDialogOpen.value = false;
+      }
+    }
   } catch (e) {
     tasksStore.error = e instanceof Error ? e.message : String(e);
   }
+}
+
+function requestDeleteTodo(todo: TodoItem) {
+  const { incomplete, completed } = analyzeTasksForDelete([todo]);
+  openDeleteConfirm({
+    kind: 'task',
+    targetName: todo.title,
+    incomplete,
+    completed,
+    todoId: todo.id,
+  });
+}
+
+function removeTodo(id: number) {
+  const todo = tasksStore.allTodos.find((t) => t.id === id);
+  if (!todo) return;
+  requestDeleteTodo(todo);
+}
+
+function deleteTaskFromDialog() {
+  const todo = editingTodo.value;
+  if (!todo) return;
+  requestDeleteTodo(todo);
+}
+
+function requestDeleteProject(project: ProjectItem) {
+  const { incomplete, completed } = analyzeTasksForDelete(
+    projectTasksForDelete(tasksStore.allTodos, project.id)
+  );
+  openDeleteConfirm({
+    kind: 'project',
+    targetName: project.name,
+    incomplete,
+    completed,
+    projectId: project.id,
+  });
+}
+
+function removeProject(project: ProjectItem, e?: Event) {
+  e?.stopPropagation();
+  requestDeleteProject(project);
+}
+
+function deleteProjectFromDialog() {
+  const project = editingProject.value;
+  if (!project) return;
+  requestDeleteProject(project);
+}
+
+function requestDeleteSection(section: SectionItem) {
+  const { incomplete, completed } = analyzeTasksForDelete(
+    sectionTasksForDelete(tasksStore.allTodos, section.id)
+  );
+  openDeleteConfirm({
+    kind: 'section',
+    targetName: section.name,
+    incomplete,
+    completed,
+    sectionId: section.id,
+  });
+}
+
+function removeSection(section: SectionItem, e?: Event) {
+  e?.stopPropagation();
+  requestDeleteSection(section);
+}
+
+function deleteSectionFromDialog() {
+  const section = editingSection.value;
+  if (!section) return;
+  requestDeleteSection(section);
 }
 
 function openCreateLabel() {
@@ -438,6 +555,7 @@ watch(
             <span class="proj-actions">
               <span class="proj-meta">{{ p.stats?.completed ?? 0 }}/{{ p.stats?.total ?? 0 }}</span>
               <button class="btn-edit" title="编辑项目" @click="openEditProject(p, $event)">✎</button>
+              <button class="btn-del-inline" title="删除项目" @click="removeProject(p, $event)">×</button>
             </span>
           </li>
           <li v-if="!tasksStore.projects.length" class="empty">暂无项目</li>
@@ -474,6 +592,13 @@ watch(
             @click="openEditProject(selectedProject)"
           >
             编辑项目
+          </button>
+          <button
+            v-if="tasksStore.viewMode === 'project' && selectedProject"
+            class="btn-del-head"
+            @click="removeProject(selectedProject)"
+          >
+            删除项目
           </button>
         </div>
       </header>
@@ -606,6 +731,7 @@ watch(
               <span class="section-nav-meta">
                 <small>{{ s.stats?.completed ?? 0 }}/{{ s.stats?.total ?? 0 }}</small>
                 <button class="btn-edit" title="编辑 Section" @click="openEditSection(s, $event)">✎</button>
+                <button class="btn-del-inline" title="删除 Section" @click="removeSection(s, $event)">×</button>
               </span>
             </div>
           </aside>
@@ -661,7 +787,10 @@ watch(
             <template v-else-if="selectedSection">
               <div class="section-head">
                 <h3 class="section-title">{{ selectedSection.name }}</h3>
-                <button class="btn-edit-head" @click="openEditSection(selectedSection)">编辑 Section</button>
+                <div class="section-head-actions">
+                  <button class="btn-edit-head" @click="openEditSection(selectedSection)">编辑 Section</button>
+                  <button class="btn-del-head" @click="removeSection(selectedSection)">删除 Section</button>
+                </div>
               </div>
               <p v-if="selectedSection.goals" class="section-goals">{{ selectedSection.goals }}</p>
               <TaskListTable
@@ -715,6 +844,7 @@ watch(
       "
       @project-change="onTaskDialogProjectChange"
       @save="saveTask"
+      @delete="deleteTaskFromDialog"
       @cancel="taskDialogOpen = false"
     />
 
@@ -723,6 +853,7 @@ watch(
       :mode="projectDialogMode"
       :project="editingProject"
       @save="saveProject"
+      @delete="deleteProjectFromDialog"
       @cancel="projectDialogOpen = false"
     />
 
@@ -731,7 +862,19 @@ watch(
       :mode="sectionDialogMode"
       :section="editingSection"
       @save="saveSection"
+      @delete="deleteSectionFromDialog"
       @cancel="sectionDialogOpen = false"
+    />
+
+    <DeleteTasksConfirmDialog
+      v-if="pendingDelete"
+      :open="deleteConfirmOpen"
+      :kind="pendingDelete.kind"
+      :target-name="pendingDelete.targetName"
+      :incomplete="pendingDelete.incomplete"
+      :completed="pendingDelete.completed"
+      @confirm="executePendingDelete"
+      @cancel="cancelDeleteConfirm"
     />
   </div>
 </template>
@@ -912,8 +1055,20 @@ watch(
   opacity: 0;
 }
 
-.project-list li:hover .btn-edit {
+.project-list li:hover .btn-edit,
+.project-list li:hover .btn-del-inline {
   opacity: 1;
+}
+
+.btn-del-inline {
+  background: none;
+  border: none;
+  color: var(--danger);
+  cursor: pointer;
+  font-size: 14px;
+  padding: 0 4px;
+  opacity: 0;
+  line-height: 1;
 }
 
 .main-panel {
@@ -946,6 +1101,26 @@ watch(
   cursor: pointer;
   font-size: 12px;
   color: var(--text-primary);
+}
+
+.btn-del-head {
+  background: transparent;
+  border: 1px solid color-mix(in srgb, var(--danger) 35%, transparent);
+  border-radius: 6px;
+  padding: 6px 12px;
+  cursor: pointer;
+  font-size: 12px;
+  color: var(--danger);
+}
+
+.btn-del-head:hover {
+  background: color-mix(in srgb, var(--danger) 10%, transparent);
+}
+
+.section-head-actions {
+  display: flex;
+  gap: 8px;
+  flex-shrink: 0;
 }
 
 .main-head h2 { margin: 0; font-size: 20px; }
@@ -1071,22 +1246,75 @@ watch(
 
 .empty { color: var(--text-muted); font-size: 13px; padding: 12px 4px; }
 
-.labels-panel h3 { font-size: 14px; margin-bottom: 12px; }
+.labels-panel h3 { font-size: 14px; margin: 0; }
+
+.labels-head {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  margin-bottom: 12px;
+}
+
 .label-list { list-style: none; }
 .label-list li {
   display: flex;
   justify-content: space-between;
-  padding: 10px 12px;
+  align-items: center;
+  gap: 8px;
+  padding: 8px 4px;
   border-bottom: 1px solid var(--border);
-  cursor: pointer;
 }
-.label-list li:hover { background: var(--bg-hover); }
+
+.label-main {
+  flex: 1;
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  gap: 8px;
+  background: none;
+  border: none;
+  cursor: pointer;
+  padding: 4px 8px;
+  border-radius: 8px;
+  font: inherit;
+  color: inherit;
+  min-width: 0;
+}
+
+.label-main:hover {
+  background: var(--bg-hover);
+}
+
+.label-actions {
+  display: flex;
+  align-items: center;
+  gap: 4px;
+  flex-shrink: 0;
+}
+
+.btn-del-label {
+  background: none;
+  border: none;
+  color: var(--text-muted);
+  cursor: pointer;
+  font-size: 16px;
+  padding: 0 4px;
+}
+
+.label-list li:hover .btn-edit {
+  opacity: 1;
+}
+
 .tag-chip {
-  background: var(--accent-muted);
-  color: var(--accent);
   padding: 4px 10px;
   border-radius: 6px;
   font-size: 13px;
+  font-weight: 500;
+}
+
+.tag-count {
+  font-size: 12px;
+  color: var(--text-muted);
 }
 
 .project-toolbar {
@@ -1178,17 +1406,27 @@ watch(
   flex-shrink: 0;
 }
 
-.section-nav-meta .btn-edit {
+.section-nav-meta .btn-edit,
+.section-nav-meta .btn-del-inline {
   background: none;
   border: none;
-  color: var(--text-muted);
   cursor: pointer;
   font-size: 11px;
   padding: 0 2px;
   opacity: 0;
 }
 
-.section-nav-item:hover .btn-edit {
+.section-nav-meta .btn-edit {
+  color: var(--text-muted);
+}
+
+.section-nav-meta .btn-del-inline {
+  color: var(--danger);
+  font-size: 13px;
+}
+
+.section-nav-item:hover .btn-edit,
+.section-nav-item:hover .btn-del-inline {
   opacity: 1;
 }
 

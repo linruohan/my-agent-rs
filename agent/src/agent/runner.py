@@ -67,7 +67,9 @@ class AgentRunner:
                 metadata = {
                     "duration_ms": int((time.monotonic() - start) * 1000),
                     "slash": True,
-                    "task_data_changed": lowered.startswith("/tsk") or lowered.startswith("/pro"),
+                    "task_data_changed": lowered.startswith("/tsk")
+                    or lowered.startswith("/pro")
+                    or lowered.startswith("/sec"),
                 }
                 await emit({"type": "done", "thread_id": thread_id, "metadata": metadata})
                 return

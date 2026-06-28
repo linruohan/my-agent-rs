@@ -493,6 +493,39 @@ class ProjectStore(ReusableSqliteStore):
             for row in rows
         ]
 
+    def delete_section(self, section_id: int) -> bool:
+        if not self.get_section(section_id):
+            return False
+        with self._connect() as conn:
+            conn.execute(
+                "DELETE FROM section_daily_summaries WHERE section_id = ?",
+                (section_id,),
+            )
+            conn.execute("DELETE FROM sections WHERE id = ?", (section_id,))
+        return True
+
+    def delete_project(self, project_id: int) -> bool:
+        row = self.get_project(project_id)
+        if not row or row.is_inbox:
+            return False
+        with self._connect() as conn:
+            section_ids = [
+                int(r[0])
+                for r in conn.execute(
+                    "SELECT id FROM sections WHERE project_id = ?",
+                    (project_id,),
+                ).fetchall()
+            ]
+            for sid in section_ids:
+                conn.execute(
+                    "DELETE FROM section_daily_summaries WHERE section_id = ?",
+                    (sid,),
+                )
+            conn.execute("DELETE FROM sections WHERE project_id = ?", (project_id,))
+            conn.execute("DELETE FROM project_docs WHERE project_id = ?", (project_id,))
+            conn.execute("DELETE FROM projects WHERE id = ?", (project_id,))
+        return True
+
 
 def project_to_dict(row: ProjectRow) -> dict[str, Any]:
     return {

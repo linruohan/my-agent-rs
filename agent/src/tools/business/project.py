@@ -239,6 +239,34 @@ def list_project_docs(project_id: int) -> list[dict[str, Any]]:
     return _store().list_docs(project_id)
 
 
+def delete_section_record(section_id: int) -> bool:
+    store = _store()
+    if not store.get_section(section_id):
+        return False
+    from tools.task.store import TaskStore
+
+    tstore = TaskStore()
+    for row in tstore.list_filtered(include_done=True, section_id=section_id):
+        tstore.update(row.id, clear_section=True)
+    return store.delete_section(section_id)
+
+
+def delete_project_record(project_id: int) -> bool:
+    store = _store()
+    project = store.get_project(project_id)
+    if not project or project.is_inbox:
+        return False
+    inbox = store.ensure_inbox()
+    from tools.business.reminders import cancel_project_reminder
+    from tools.task.store import TaskStore
+
+    tstore = TaskStore()
+    for row in tstore.list_filtered(include_done=True, project_id=project_id):
+        tstore.update(row.id, project_id=inbox.id, clear_section=True)
+    cancel_project_reminder(project_id)
+    return store.delete_project(project_id)
+
+
 def create_project_tools():
     from tools.project.tools import PROJECT_TOOLS
 

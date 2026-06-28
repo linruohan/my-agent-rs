@@ -21,6 +21,10 @@ def test_dispatch_tsk_command(monkeypatch):
         assert listed is not None
         assert "写报告" in listed
 
+        deleted = dispatch_slash_command("/tsk del 1")
+        assert deleted is not None
+        assert "已删除任务" in deleted
+
 
 def test_dispatch_pro_command(monkeypatch):
     with tempfile.TemporaryDirectory() as tmp:
@@ -34,7 +38,8 @@ def test_dispatch_pro_command(monkeypatch):
 
         listed = dispatch_slash_command("/pro list")
         assert listed is not None
-        assert "暂无项目任务。" in listed
+        assert "项目列表" in listed
+        assert "春季发布" in listed
 
         sec = dispatch_slash_command("/pro sec add 1 R13B100 核心功能 @owner-Bob")
         assert sec is not None
@@ -59,12 +64,6 @@ def test_dispatch_pro_command(monkeypatch):
         tstore.add("写报告", project_id=1, section_id=1)
         tstore.add("临时事项", project_id=1)
 
-        listed2 = dispatch_slash_command("/pro list")
-        assert listed2 is not None
-        assert "| 项目编号 | 项目名 | section编号 | section名 |" in listed2
-        assert "春季发布" in listed2
-        assert "R13B100" in listed2
-
         status = dispatch_slash_command("/pro 1")
         assert status is not None
         assert "【项目 #1】" in status
@@ -78,7 +77,20 @@ def test_dispatch_pro_command(monkeypatch):
         assert "风险提示" in status
 
 
-def test_pro_list_includes_inbox_tasks(monkeypatch):
+def test_pro_del_command(monkeypatch):
+    with tempfile.TemporaryDirectory() as tmp:
+        monkeypatch.setenv("AGENT_DATA_DIR", tmp)
+        from agent.slash import dispatch_slash_command
+        from tools.project.store import ProjectStore
+
+        missing = dispatch_slash_command("/pro del 99")
+        assert missing is not None
+        assert "不存在" in missing
+
+        inbox = ProjectStore().ensure_inbox()
+        inbox_del = dispatch_slash_command(f"/pro del {inbox.id}")
+        assert inbox_del is not None
+        assert "不可删除" in inbox_del
     with tempfile.TemporaryDirectory() as tmp:
         monkeypatch.setenv("AGENT_DATA_DIR", tmp)
         from agent.slash import dispatch_slash_command
@@ -88,10 +100,41 @@ def test_pro_list_includes_inbox_tasks(monkeypatch):
 
         listed = dispatch_slash_command("/pro list")
         assert listed is not None
-        assert "| 项目编号 | 项目名 | section编号 | section名 |" in listed
-        assert "Inbox" in listed
-        assert "写报告" in listed
-        assert "春季发布" not in listed or "暂无项目任务" not in listed
+        assert "项目列表" in listed
+        assert "春季发布" in listed
+        assert "写报告" not in listed
+
+
+def test_dispatch_sec_command(monkeypatch):
+    with tempfile.TemporaryDirectory() as tmp:
+        monkeypatch.setenv("AGENT_DATA_DIR", tmp)
+        from agent.slash import dispatch_slash_command
+
+        dispatch_slash_command("/pro add 春季发布 发布说明")
+        dispatch_slash_command("/pro sec add 1 R13B100 核心功能")
+
+        detail = dispatch_slash_command("/sec 1")
+        assert detail is not None
+        assert "【Section #1】" in detail
+        assert "R13B100" in detail
+
+        task = dispatch_slash_command("/sec add 1 写接口 接口文档")
+        assert task is not None
+        assert "已添加任务" in task
+
+        listed = dispatch_slash_command("/sec list")
+        assert listed is not None
+        assert "Section 列表" in listed
+        assert "R13B100" in listed
+        assert "写接口" in listed
+
+        modified = dispatch_slash_command("/sec mod 1 R14B200 新目标")
+        assert modified is not None
+        assert "已更新 Section" in modified
+
+        deleted = dispatch_slash_command("/sec del 1")
+        assert deleted is not None
+        assert "已删除 Section" in deleted
 
 
 def test_dispatch_unknown_slash_returns_none():

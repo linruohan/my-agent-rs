@@ -156,6 +156,32 @@ export const useTasksStore = defineStore('tasks', () => {
     bumpRevision();
   }
 
+  function removeProjectLocal(projectId: number) {
+    projects.value = projects.value.filter((p) => p.id !== projectId);
+    if (selectedProjectId.value === projectId) {
+      selectedProjectId.value = null;
+      selectedSectionId.value = null;
+      sections.value = [];
+      projectDocs.value = [];
+      sectionSummaries.value = [];
+      viewMode.value = 'filter';
+    }
+    bumpRevision();
+  }
+
+  function removeSectionLocal(sectionId: number) {
+    sections.value = sections.value.filter((s) => s.id !== sectionId);
+    if (selectedSectionId.value === sectionId) {
+      selectedSectionId.value = null;
+      sectionSummaries.value = [];
+    }
+    allTodos.value = allTodos.value.map((t) =>
+      t.section_id === sectionId ? { ...t, section_id: null } : t
+    );
+    todos.value = allTodos.value;
+    bumpRevision();
+  }
+
   async function refresh(port: number) {
     loading.value = true;
     error.value = '';
@@ -565,6 +591,22 @@ export const useTasksStore = defineStore('tasks', () => {
     await refresh(port);
   }
 
+  async function deleteProject(port: number, projectId: number) {
+    const res = await fetch(`${sidecarBase(port)}/tasks/projects/${projectId}`, { method: 'DELETE' });
+    if (!res.ok) throw new Error(await res.text());
+    removeProjectLocal(projectId);
+    await refresh(port);
+  }
+
+  async function deleteSection(port: number, sectionId: number) {
+    const res = await fetch(`${sidecarBase(port)}/tasks/sections/${sectionId}`, { method: 'DELETE' });
+    if (!res.ok) throw new Error(await res.text());
+    removeSectionLocal(sectionId);
+    const pid = selectedProjectId.value;
+    if (pid != null) await loadSections(port, pid);
+    await refresh(port);
+  }
+
   async function createLabel(port: number, payload: { name: string; color: string }) {
     const res = await fetch(`${sidecarBase(port)}/tasks/labels`, {
       method: 'POST',
@@ -648,6 +690,8 @@ export const useTasksStore = defineStore('tasks', () => {
     setProjectReminder,
     addProjectDoc,
     deleteTodo,
+    deleteProject,
+    deleteSection,
     createLabel,
     updateLabel,
     deleteLabel,
