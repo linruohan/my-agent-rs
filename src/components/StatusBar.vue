@@ -18,7 +18,7 @@ const modelLabel = computed(() => {
     <div class="status-left">
       <span :class="['status-dot', settings.wsConnected ? 'ok' : 'err']" title="WebSocket" />
       <span class="status-text">
-        {{ settings.wsConnected ? '已连接' : '未连接' }}
+        {{ settings.wsReadOnly ? '只读' : settings.wsConnected ? '已连接' : '未连接' }}
       </span>
       <span class="status-sep">·</span>
       <span :class="['sidecar', settings.sidecarStatus]">

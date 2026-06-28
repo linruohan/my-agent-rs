@@ -305,33 +305,45 @@ def create_ws_router(
                     continue
 
                 if msg_type == "rag.ingest":
+                    from infra.rag_paths import validate_rag_ingest_path
                     from memory.rag import RagStore
 
                     rag = RagStore()
                     path = data.get("path", "")
                     content = data.get("content", "")
-                    if path:
-                        result = rag.ingest_file(path)
-                    elif content:
-                        source = data.get("source", "inline")
-                        if content.startswith("__pdf_b64__:"):
-                            import base64
-                            import io
+                    try:
+                        if path:
+                            validate_rag_ingest_path(path)
+                            result = rag.ingest_file(path)
+                        elif content:
+                            source = data.get("source", "inline")
+                            if content.startswith("__pdf_b64__:"):
+                                import base64
+                                import io
 
-                            from pypdf import PdfReader
+                                from pypdf import PdfReader
 
-                            raw = base64.b64decode(content[len("__pdf_b64__:") :])
-                            reader = PdfReader(io.BytesIO(raw))
-                            text = "\n".join(
-                                p.extract_text() or "" for p in reader.pages
-                            )
-                            count = rag.ingest_text(text, source=source)
-                            result = f"Ingested {count} chunks from PDF {source}"
+                                raw = base64.b64decode(content[len("__pdf_b64__:") :])
+                                reader = PdfReader(io.BytesIO(raw))
+                                text = "\n".join(
+                                    p.extract_text() or "" for p in reader.pages
+                                )
+                                count = rag.ingest_text(text, source=source)
+                                result = f"Ingested {count} chunks from PDF {source}"
+                            else:
+                                count = rag.ingest_text(content, source=source)
+                                result = f"Ingested {count} chunks from {source}"
                         else:
-                            count = rag.ingest_text(content, source=source)
-                            result = f"Ingested {count} chunks from {source}"
-                    else:
-                        result = "path or content required"
+                            result = "path or content required"
+                    except ValueError as exc:
+                        await ws.send_json(
+                            {
+                                "type": "error",
+                                "message": str(exc),
+                                "code": "INVALID_REQUEST",
+                            }
+                        )
+                        continue
                     await ws.send_json({"type": "rag.ingest", "result": result})
                     continue
 

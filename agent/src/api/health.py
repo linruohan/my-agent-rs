@@ -65,6 +65,13 @@ async def health():
     return build_health_payload()
 
 
+@router.get("/metrics")
+async def metrics():
+    from infra.metrics import snapshot
+
+    return snapshot()
+
+
 @router.get("/auth/token")
 async def auth_token(request: Request):
     host = request.client.host if request.client else request.url.hostname or ""

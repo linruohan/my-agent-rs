@@ -1,4 +1,5 @@
 import { ref } from 'vue';
+import { getActivePinia } from 'pinia';
 import type { ChatAttachment } from '@/utils/attachments';
 import { useSessionStore } from '@/stores/session';
 import { useSettingsStore } from '@/stores/settings';
@@ -7,10 +8,29 @@ import { useTasksStore } from '@/stores/tasks';
 import type { ToolCall } from '@/types';
 import { logStartupMilestone } from '@/utils/startupTiming';
 import { registerWsResumeHandler } from '@/utils/wsBridge';
+import {
+  initWsLeaderElection,
+  isWsLeader,
+  registerLeaderCallbacks,
+  tryClaimLeader,
+} from '@/utils/wsLeader';
 
 const RECONNECT_DELAYS = [1000, 2000, 4000, 8000, 16000];
 const TOKEN_FLUSH_MS = 50;
 const BC_CHANNEL = 'personal-assistant-agent';
+
+const WRITE_MSG_TYPES = new Set([
+  'chat.send',
+  'chat.stop',
+  'chat.resume',
+  'session.create',
+  'session.delete',
+  'session.archive',
+  'session.unarchive',
+  'rag.ingest',
+  'rag.delete',
+  'memory.set',
+]);
 
 let ws: WebSocket | null = null;
 let reconnectAttempt = 0;
@@ -20,17 +40,28 @@ let initialSessionBootstrapped = false;
 let tokenBuffer = '';
 let tokenFlushTimer: ReturnType<typeof setTimeout> | null = null;
 let bc: BroadcastChannel | null = null;
+let dispatchWsMessage: ((msg: Record<string, unknown>) => void) | null = null;
+let leaderHooksReady = false;
 
 function initBroadcastChannel(sessionStore: ReturnType<typeof useSessionStore>) {
   if (typeof BroadcastChannel === 'undefined') return;
+  if (bc) return;
   bc = new BroadcastChannel(BC_CHANNEL);
   bc.onmessage = (e: MessageEvent) => {
-    const data = e.data as { type?: string; threadId?: string };
+    const data = e.data as { type?: string; threadId?: string; msg?: Record<string, unknown> };
     if (data.type === 'streaming.start' && data.threadId !== sessionStore.currentThreadId) {
       sessionStore.isStreaming = true;
     }
     if (data.type === 'streaming.end') {
       sessionStore.isStreaming = false;
+    }
+    if (data.type === 'ws.forward' && data.msg && dispatchWsMessage) {
+      const pinia = getActivePinia();
+      if (!pinia) return;
+      const settings = useSettingsStore(pinia);
+      if (settings.wsReadOnly) {
+        dispatchWsMessage(data.msg);
+      }
     }
   };
 }
@@ -71,6 +102,14 @@ function flushTokenBuffer(sessionStore: ReturnType<typeof useSessionStore>) {
 }
 
 function sendRaw(data: Record<string, unknown>) {
+  const pinia = getActivePinia();
+  if (pinia) {
+    const settings = useSettingsStore(pinia);
+    const msgType = data.type as string | undefined;
+    if (settings.wsReadOnly && msgType && WRITE_MSG_TYPES.has(msgType)) {
+      return false;
+    }
+  }
   if (ws?.readyState === WebSocket.OPEN) {
     ws.send(JSON.stringify(data));
     return true;
@@ -95,6 +134,26 @@ export function useAgentWs() {
   const connectionError = ref('');
 
   if (!bc) initBroadcastChannel(sessionStore);
+
+  dispatchWsMessage = handleMessage;
+
+  if (!leaderHooksReady) {
+    leaderHooksReady = true;
+    registerLeaderCallbacks({
+      onBecomeLeader: () => {
+        settingsStore.setWsReadOnly(false);
+        connectionError.value = '';
+        connectInternal();
+      },
+      onBecomeFollower: () => {
+        settingsStore.setWsReadOnly(true);
+        settingsStore.setWsConnected(false);
+        connectionError.value = '已在其他标签页打开，当前为只读模式';
+        disconnectInternal();
+      },
+    });
+    initWsLeaderElection();
+  }
 
   function wsUrl() {
     return `ws://127.0.0.1:${settingsStore.sidecarPort}/ws`;
@@ -344,9 +403,13 @@ export function useAgentWs() {
         listRagSources();
         break;
     }
+
+    if (isWsLeader() && bc && type !== 'pong') {
+      bc.postMessage({ type: 'ws.forward', msg });
+    }
   }
 
-  function connect() {
+  function connectInternal() {
     if (settingsStore.sidecarStatus === 'starting') {
       connectionError.value = 'Sidecar 正在启动，请稍候…';
       return;
@@ -367,6 +430,7 @@ export function useAgentWs() {
     ws.onopen = () => {
       reconnectAttempt = 0;
       settingsStore.setWsConnected(true);
+      settingsStore.setWsReadOnly(false);
       connectionError.value = '';
       logStartupMilestone('WebSocket connected — loading complete');
     };
@@ -381,13 +445,32 @@ export function useAgentWs() {
 
     ws.onclose = () => {
       settingsStore.setWsConnected(false);
-      scheduleReconnect();
+      if (isWsLeader()) scheduleReconnect();
     };
 
     ws.onerror = () => {
       settingsStore.setWsConnected(false);
       connectionError.value = `无法连接 Sidecar (port ${settingsStore.sidecarPort})`;
     };
+  }
+
+  function connect() {
+    tryClaimLeader();
+    if (!isWsLeader()) {
+      settingsStore.setWsReadOnly(true);
+      settingsStore.setWsConnected(false);
+      connectionError.value = '已在其他标签页打开，当前为只读模式';
+      return;
+    }
+    settingsStore.setWsReadOnly(false);
+    connectInternal();
+  }
+
+  function disconnectInternal() {
+    if (reconnectTimer) clearTimeout(reconnectTimer);
+    reconnectTimer = null;
+    ws?.close();
+    ws = null;
   }
 
   function scheduleReconnect() {
@@ -398,9 +481,7 @@ export function useAgentWs() {
   }
 
   function disconnect() {
-    if (reconnectTimer) clearTimeout(reconnectTimer);
-    ws?.close();
-    ws = null;
+    disconnectInternal();
   }
 
   function send(content: string, threadId: string, attachments?: ChatAttachment[]) {

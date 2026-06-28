@@ -88,7 +88,8 @@ const canSend = computed(
   () =>
     (input.value.trim().length > 0 || pendingAttachments.value.length > 0) &&
     !!sessionStore.currentThreadId &&
-    !sessionStore.isStreaming
+    !sessionStore.isStreaming &&
+    !settings.wsReadOnly
 );
 
 watch(

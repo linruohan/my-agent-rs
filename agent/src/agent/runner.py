@@ -7,6 +7,7 @@ from typing import Any, Awaitable, Callable
 
 from langchain_core.messages import AIMessage, HumanMessage
 from langgraph.types import Command
+from loguru import logger
 
 from agent.slash import dispatch_slash_command
 from infra.config import load_tools_config
@@ -158,6 +159,15 @@ class AgentRunner:
             usage = self._turn_usage.pop(thread_id, {})
             if usage:
                 metadata["token_usage"] = usage
+            from infra.metrics import observe_turn_duration
+
+            observe_turn_duration(metadata["duration_ms"])
+            logger.info(
+                "agent.turn_done thread_id={} duration_ms={} tokens={}",
+                thread_id,
+                metadata["duration_ms"],
+                usage.get("total_tokens", 0),
+            )
             await self._post_turn_index(thread_id, config, user_text)
             await emit({"type": "done", "thread_id": thread_id, "metadata": metadata})
 

@@ -1,6 +1,7 @@
 <script setup lang="ts">
 import { computed, nextTick, ref, watch } from 'vue';
 import { useSessionStore } from '@/stores/session';
+import { useSettingsStore } from '@/stores/settings';
 import { useAgentWs } from '@/composables/useAgentWs';
 import ProcessSteps from '@/components/ProcessSteps.vue';
 import ChatInputBar from '@/components/ChatInputBar.vue';
@@ -14,6 +15,7 @@ import type { Message } from '@/types';
 import type { ChatAttachment } from '@/utils/attachments';
 
 const sessionStore = useSessionStore();
+const settings = useSettingsStore();
 const { send } = useAgentWs();
 
 const previewSrc = ref<string | null>(null);
@@ -142,6 +144,9 @@ const showWelcome = computed(
 
 <template>
   <div class="chat-panel">
+    <div v-if="settings.wsReadOnly" class="readonly-banner">
+      已在其他标签页打开 Agent 连接，当前标签页为只读模式。请切换到主标签页发送消息。
+    </div>
     <div ref="messagesEl" class="messages">
       <div
         v-if="!sessionStore.currentThreadId || showWelcome"
@@ -228,6 +233,16 @@ const showWelcome = computed(
   flex-direction: column;
   min-width: 0;
   min-height: 0;
+}
+
+.readonly-banner {
+  flex-shrink: 0;
+  padding: 8px 16px;
+  background: color-mix(in srgb, var(--warning) 15%, var(--bg-sidebar));
+  border-bottom: 1px solid var(--border);
+  color: var(--text-muted);
+  font-size: 12px;
+  text-align: center;
 }
 
 .messages {

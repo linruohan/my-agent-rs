@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import json
+import time
 from typing import Any, Callable
 
 from langchain_core.language_models.chat_models import BaseChatModel
@@ -357,9 +358,20 @@ def create_hitl_tools_node(registry: ToolRegistry):
                             "status": "executing",
                         }
                     )
+                tool_start = time.monotonic()
                 output = tool.invoke(args)
+                tool_ms = int((time.monotonic() - tool_start) * 1000)
+                from infra.metrics import observe_tool_duration
+
                 output_str = str(output)
                 citations = _extract_tool_citations(name, output_str)
+                observe_tool_duration(tool_ms, success=True)
+                logger.info(
+                    "tool_end name={} duration_ms={} thread_id={}",
+                    name,
+                    tool_ms,
+                    config.get("configurable", {}).get("thread_id", ""),
+                )
                 result_messages.append(
                     ToolMessage(content=output_str, tool_call_id=tool_id)
                 )
@@ -379,6 +391,9 @@ def create_hitl_tools_node(registry: ToolRegistry):
                     )
             except Exception as e:
                 err = f"Error executing {name}: {e}"
+                from infra.metrics import observe_tool_duration
+
+                observe_tool_duration(0, success=False)
                 result_messages.append(
                     ToolMessage(content=err, tool_call_id=tool_id)
                 )

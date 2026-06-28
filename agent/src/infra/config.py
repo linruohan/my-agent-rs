@@ -356,11 +356,17 @@ def get_workspace_dir() -> Path:
 
 
 def resolve_workspace_path(relative: str) -> Path:
-    """Resolve a relative path within workspace; reject path traversal."""
+    """Resolve a path within workspace; reject path traversal."""
     workspace = get_workspace_dir()
-    target = (workspace / relative).resolve()
-    if not str(target).startswith(str(workspace)):
-        raise ValueError(f"Path escapes workspace: {relative}")
+    candidate = Path(relative).expanduser()
+    if candidate.is_absolute():
+        target = candidate.resolve()
+    else:
+        target = (workspace / candidate).resolve()
+    try:
+        target.relative_to(workspace)
+    except ValueError as exc:
+        raise ValueError(f"Path escapes workspace: {relative}") from exc
     return target
 
 

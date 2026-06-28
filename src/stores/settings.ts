@@ -87,6 +87,7 @@ export const useSettingsStore = defineStore('settings', () => {
   const stored = loadStored();
   const sidecarPort = ref(Number(import.meta.env.VITE_SIDECAR_PORT) || 8765);
   const wsConnected = ref(false);
+  const wsReadOnly = ref(false);
   const sidecarStatus = ref<'stopped' | 'starting' | 'running' | 'error'>(
     isTauriEnv() ? 'starting' : 'stopped'
   );
@@ -185,6 +186,10 @@ export const useSettingsStore = defineStore('settings', () => {
     wsConnected.value = connected;
   }
 
+  function setWsReadOnly(readOnly: boolean) {
+    wsReadOnly.value = readOnly;
+  }
+
   function setSidecarStatus(status: typeof sidecarStatus.value) {
     sidecarStatus.value = status;
   }
@@ -279,6 +284,7 @@ export const useSettingsStore = defineStore('settings', () => {
   return {
     sidecarPort,
     wsConnected,
+    wsReadOnly,
     sidecarStatus,
     provider,
     temperature,
@@ -301,6 +307,7 @@ export const useSettingsStore = defineStore('settings', () => {
     lastTokenUsage,
     setSidecarPort,
     setWsConnected,
+    setWsReadOnly,
     setSidecarStatus,
     setLastTurnDuration,
     setLastTokenUsage,
