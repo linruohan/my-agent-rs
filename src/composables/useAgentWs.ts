@@ -16,6 +16,13 @@ import {
   fetchSessionsRest,
   unarchiveSessionRest,
 } from '@/utils/sidecarSessions';
+import { stopChatRest, streamChatRest, streamChatResumeRest } from '@/utils/sidecarChat';
+import {
+  deleteRagSourceRest,
+  ingestRagRest,
+  listRagSourcesRest,
+  searchRagRest,
+} from '@/utils/sidecarRag';
 import { registerWsResumeHandler } from '@/utils/wsBridge';
 import {
   initWsLeaderElection,
@@ -53,6 +60,7 @@ let tokenFlushTimer: ReturnType<typeof setTimeout> | null = null;
 let dispatchWsMessage: ((msg: Record<string, unknown>) => void) | null = null;
 let leaderHooksReady = false;
 let channelHandlerReady = false;
+let chatAbortController: AbortController | null = null;
 
 async function tryRestFollowerSync(
   sessionStore: ReturnType<typeof useSessionStore>,
@@ -582,7 +590,7 @@ export function useAgentWs() {
     disconnectInternal();
   }
 
-  function send(content: string, threadId: string, attachments?: ChatAttachment[]) {
+  function beginChatTurn(content: string, threadId: string, attachments?: ChatAttachment[]) {
     sessionStore.isStreaming = true;
     postChannelMessage({ type: 'streaming.start', threadId });
     sessionStore.addMessage({
@@ -596,16 +604,55 @@ export function useAgentWs() {
       role: 'assistant',
       content: '',
     });
-    sendRaw({
-      type: 'chat.send',
-      thread_id: threadId,
+  }
+
+  function send(content: string, threadId: string, attachments?: ChatAttachment[]) {
+    beginChatTurn(content, threadId, attachments);
+    if (
+      sendRaw({
+        type: 'chat.send',
+        thread_id: threadId,
+        content,
+        attachments: attachments?.length ? attachments : undefined,
+      })
+    ) {
+      return;
+    }
+    if (!canUseSessionRest()) return;
+
+    chatAbortController?.abort();
+    chatAbortController = new AbortController();
+    const signal = chatAbortController.signal;
+    void streamChatRest(
+      settingsStore.sidecarPort,
+      threadId,
       content,
-      attachments: attachments?.length ? attachments : undefined,
+      (msg) => {
+        if (!msg.thread_id) msg.thread_id = threadId;
+        handleMessage(msg);
+      },
+      attachments,
+      signal
+    ).catch((err: unknown) => {
+      if (err instanceof DOMException && err.name === 'AbortError') return;
+      handleMessage({
+        type: 'error',
+        thread_id: threadId,
+        message: err instanceof Error ? err.message : String(err),
+      });
     });
   }
 
   function stop(threadId: string) {
-    sendRaw({ type: 'chat.stop', thread_id: threadId });
+    if (sendRaw({ type: 'chat.stop', thread_id: threadId })) {
+      sessionStore.isStreaming = false;
+      return;
+    }
+    chatAbortController?.abort();
+    chatAbortController = null;
+    if (canUseSessionRest()) {
+      void stopChatRest(settingsStore.sidecarPort, threadId).catch(() => {});
+    }
     sessionStore.isStreaming = false;
   }
 
@@ -614,11 +661,53 @@ export function useAgentWs() {
     decision: 'approve' | 'reject' | 'edit',
     editedArgs?: Record<string, unknown>
   ) {
-    sendRaw({ type: 'chat.resume', thread_id: threadId, decision, edited_args: editedArgs });
+    sessionStore.isStreaming = true;
+    if (
+      sendRaw({
+        type: 'chat.resume',
+        thread_id: threadId,
+        decision,
+        edited_args: editedArgs,
+      })
+    ) {
+      return;
+    }
+    if (!canUseSessionRest()) return;
+
+    chatAbortController?.abort();
+    chatAbortController = new AbortController();
+    const signal = chatAbortController.signal;
+    void streamChatResumeRest(
+      settingsStore.sidecarPort,
+      threadId,
+      decision,
+      (msg) => {
+        if (!msg.thread_id) msg.thread_id = threadId;
+        handleMessage(msg);
+      },
+      editedArgs,
+      signal
+    ).catch((err: unknown) => {
+      if (err instanceof DOMException && err.name === 'AbortError') return;
+      handleMessage({
+        type: 'error',
+        thread_id: threadId,
+        message: err instanceof Error ? err.message : String(err),
+      });
+    });
   }
 
-  function canUseSessionRest() {
+  function canUseRestRead() {
+    return settingsStore.sidecarStatus === 'running';
+  }
+
+  function canUseRestWrite() {
     return !settingsStore.wsReadOnly && settingsStore.sidecarStatus === 'running';
+  }
+
+  /** @deprecated alias */
+  function canUseSessionRest() {
+    return canUseRestWrite();
   }
 
   function applySessionCreated(session: {
@@ -755,22 +844,61 @@ export function useAgentWs() {
 
   function listRagSources() {
     knowledgeStore.isLoading = true;
-    sendRaw({ type: 'rag.list' });
+    if (sendRaw({ type: 'rag.list' })) return;
+    if (!canUseRestRead()) {
+      knowledgeStore.isLoading = false;
+      return;
+    }
+    void listRagSourcesRest(settingsStore.sidecarPort)
+      .then((sources) => handleMessage({ type: 'rag.list', sources }))
+      .catch(() => {
+        knowledgeStore.isLoading = false;
+      });
   }
 
   function ingestRagContent(source: string, content: string) {
     knowledgeStore.isLoading = true;
-    sendRaw({ type: 'rag.ingest', source, content });
+    if (sendRaw({ type: 'rag.ingest', source, content })) return;
+    if (!canUseRestWrite()) {
+      knowledgeStore.isLoading = false;
+      return;
+    }
+    void ingestRagRest(settingsStore.sidecarPort, source, content)
+      .then((result) => handleMessage({ type: 'rag.ingest', result }))
+      .catch((err: unknown) => {
+        knowledgeStore.isLoading = false;
+        knowledgeStore.setIngestResult(
+          err instanceof Error ? err.message : String(err)
+        );
+      });
   }
 
   function searchRag(query: string, topK = 6) {
     knowledgeStore.isLoading = true;
-    sendRaw({ type: 'rag.search', query, top_k: topK });
+    if (sendRaw({ type: 'rag.search', query, top_k: topK })) return;
+    if (!canUseRestRead()) {
+      knowledgeStore.isLoading = false;
+      return;
+    }
+    void searchRagRest(settingsStore.sidecarPort, query, topK)
+      .then((results) => handleMessage({ type: 'rag.search', query, results }))
+      .catch(() => {
+        knowledgeStore.isLoading = false;
+      });
   }
 
   function deleteRagSource(source: string) {
     knowledgeStore.isLoading = true;
-    sendRaw({ type: 'rag.delete', source });
+    if (sendRaw({ type: 'rag.delete', source })) return;
+    if (!canUseRestWrite()) {
+      knowledgeStore.isLoading = false;
+      return;
+    }
+    void deleteRagSourceRest(settingsStore.sidecarPort, source)
+      .then((ok) => handleMessage({ type: 'rag.deleted', source, ok }))
+      .catch(() => {
+        knowledgeStore.isLoading = false;
+      });
   }
 
   return {

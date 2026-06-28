@@ -306,56 +306,27 @@ def create_ws_router(
                     continue
 
                 if msg_type == "rag.ingest":
-                    import io
+                    from api.rag_ops import RagRateLimitError, ingest_rag_payload
 
-                    from infra.rate_limit import check_rag_ingest_allowed
-                    from infra.rag_paths import (
-                        validate_rag_ingest_path,
-                        validate_rag_inline_content,
-                        validate_rag_pdf_b64,
-                    )
-                    from memory.rag import RagStore
-
-                    allowed, retry_after = check_rag_ingest_allowed(str(ws_id))
-                    if not allowed:
+                    try:
+                        result = ingest_rag_payload(
+                            client_key=str(ws_id),
+                            path=data.get("path", ""),
+                            content=data.get("content", ""),
+                            source=data.get("source", "inline"),
+                        )
+                    except RagRateLimitError as exc:
                         await ws.send_json(
                             {
                                 "type": "error",
                                 "message": (
                                     f"RAG ingest rate limit exceeded; "
-                                    f"retry after {retry_after}s"
+                                    f"retry after {exc.retry_after}s"
                                 ),
                                 "code": "RATE_LIMIT",
                             }
                         )
                         continue
-
-                    rag = RagStore()
-                    path = data.get("path", "")
-                    content = data.get("content", "")
-                    try:
-                        if path:
-                            validate_rag_ingest_path(path)
-                            result = rag.ingest_file(path)
-                        elif content:
-                            source = data.get("source", "inline")
-                            if content.startswith("__pdf_b64__:"):
-                                from pypdf import PdfReader
-
-                                raw = validate_rag_pdf_b64(content)
-                                reader = PdfReader(io.BytesIO(raw))
-                                text = "\n".join(
-                                    p.extract_text() or "" for p in reader.pages
-                                )
-                                validate_rag_inline_content(text, source=source)
-                                count = rag.ingest_text(text, source=source)
-                                result = f"Ingested {count} chunks from PDF {source}"
-                            else:
-                                validate_rag_inline_content(content, source=source)
-                                count = rag.ingest_text(content, source=source)
-                                result = f"Ingested {count} chunks from {source}"
-                        else:
-                            result = "path or content required"
                     except ValueError as exc:
                         await ws.send_json(
                             {
@@ -369,28 +340,25 @@ def create_ws_router(
                     continue
 
                 if msg_type == "rag.search":
-                    from memory.rag import RagStore
+                    from api.rag_ops import search_rag
 
-                    rag = RagStore()
                     query = data.get("query", "")
-                    results = rag.search(query, top_k=data.get("top_k", 6))
+                    results = search_rag(query, top_k=data.get("top_k", 6))
                     await ws.send_json({"type": "rag.search", "query": query, "results": results})
                     continue
 
                 if msg_type == "rag.list":
-                    from memory.rag import RagStore
+                    from api.rag_ops import list_rag_sources
 
-                    rag = RagStore()
-                    sources = rag.list_sources()
+                    sources = list_rag_sources()
                     await ws.send_json({"type": "rag.list", "sources": sources})
                     continue
 
                 if msg_type == "rag.delete":
-                    from memory.rag import RagStore
+                    from api.rag_ops import delete_rag_source
 
-                    rag = RagStore()
                     source = data.get("source", "")
-                    ok = rag.delete_source(source) if source else False
+                    ok = delete_rag_source(source)
                     await ws.send_json({"type": "rag.deleted", "source": source, "ok": ok})
                     continue
 
