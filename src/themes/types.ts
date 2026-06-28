@@ -7,6 +7,8 @@ export interface ThemeDefinition {
   name: string;
   description: string;
   preview: [string, string, string];
+  /** Theme JSON origin, e.g. gpui-component */
+  source?: string;
 }
 
 export interface ThemeColorTokens {

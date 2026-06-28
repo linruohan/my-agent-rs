@@ -1,17 +1,51 @@
-/* Ayu */
+/* Ayu Light — light */
+html[data-theme='ayu'][data-color-mode='light'] {
+  --bg-app: #fcfcfc;
+  --bg-sidebar: #f4f4f5;
+  --bg-panel: #f3f4f5;
+  --bg-elevated: #ececed;
+  --bg-input: #fcfcfc;
+  --bg-hover: #e0e0e0;
+  --bg-popover: #ececed;
+  --bg-subtle: #f3f4f5;
+  --border: rgba(207, 209, 210, 1);
+  --text-primary: #5c6166;
+  --text-secondary: #5c6773;
+  --text-muted: #99a0a6;
+  --text-on-accent: #fafafa;
+  --accent: #ff9940;
+  --accent-hover: #5fb9d7;
+  --accent-subtle: rgba(85, 180, 212, 0.133);
+  --success: #85b304;
+  --warning: #f1ad49;
+  --danger: #f07171;
+  --user-bubble: #55b4d3;
+  --assistant-bubble: #ececed;
+  --settings-nav-active: rgba(85, 180, 212, 0.133);
+}
+
+/* Ayu Dark — dark */
 html[data-theme='ayu'][data-color-mode='dark'] {
-  --bg-app: #0f1419;
-  --bg-sidebar: #0b0e11;
-  --bg-panel: #1f2430;
-  --bg-elevated: #252b38;
-  --bg-input: #0b0e11;
-  --border: #323844;
-  --text-primary: #bfbdb6;
-  --text-secondary: #8a9199;
-  --text-muted: #5c6773;
+  --bg-app: #0d1016;
+  --bg-sidebar: #16191f;
+  --bg-panel: #1f2127;
+  --bg-elevated: #1f2127;
+  --bg-input: #0d1016;
+  --bg-hover: rgba(38, 40, 47, 0.6);
+  --bg-popover: #0d1016;
+  --bg-subtle: #1f2127;
+  --border: #292a2c;
+  --text-primary: #b3b1ad;
+  --text-secondary: #b3b1ad;
+  --text-muted: #52514f;
+  --text-on-accent: #1f2430;
   --accent: #ffb454;
-  --accent-subtle: #252b38;
-  --user-bubble: #59c2ff;
-  --assistant-bubble: #252b38;
-  --settings-nav-active: #252b38;
+  --accent-hover: #3daee9;
+  --accent-subtle: rgba(54, 163, 217, 0.133);
+  --success: #aad84c;
+  --warning: #feb454;
+  --danger: #ef7177;
+  --user-bubble: #5ac1fe;
+  --assistant-bubble: #1f2127;
+  --settings-nav-active: rgba(54, 163, 217, 0.133);
 }

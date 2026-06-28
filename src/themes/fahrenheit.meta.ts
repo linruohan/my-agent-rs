@@ -3,8 +3,9 @@ import type { ThemeDefinition } from './types';
 const theme: ThemeDefinition = {
   id: 'fahrenheit',
   name: "Fahrenheit",
-  description: "华氏 — 暖橙暗色",
-  preview: ["#1a1410", "#ff9933", "#2a2018"],
+  description: "Fahrenheit — 暖橙暗色",
+  preview: ["#000000", "#570101", "#1e1e1e"],
+  source: 'gpui-component',
 };
 
 export default theme;

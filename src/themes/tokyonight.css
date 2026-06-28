@@ -1,17 +1,51 @@
-/* Tokyo Night */
-html[data-theme='tokyonight'][data-color-mode='dark'] {
+/* Tokyo Night (fallback) — light */
+html[data-theme='tokyonight'][data-color-mode='light'] {
   --bg-app: #1a1b26;
-  --bg-sidebar: #16161e;
-  --bg-panel: #24283b;
+  --bg-sidebar: #161720;
+  --bg-panel: #292e42;
   --bg-elevated: #292e42;
-  --bg-input: #16161e;
-  --border: #414868;
+  --bg-input: #1a1b26;
+  --bg-hover: #2d3349;
+  --bg-popover: #1a1b26;
+  --bg-subtle: #292e42;
+  --border: #292e42;
   --text-primary: #c0caf5;
-  --text-secondary: #9aa5ce;
+  --text-secondary: #c0caf5;
   --text-muted: #565f89;
+  --text-on-accent: #1a1b26;
   --accent: #7aa2f7;
-  --accent-subtle: #1f2335;
+  --accent-hover: #7aa2f7;
+  --accent-subtle: rgba(122, 162, 247, 0.133);
+  --success: #9ece6a;
+  --warning: #e0af68;
+  --danger: #f7768e;
   --user-bubble: #7aa2f7;
   --assistant-bubble: #292e42;
-  --settings-nav-active: #292e42;
+  --settings-nav-active: rgba(122, 162, 247, 0.133);
+}
+
+/* Tokyo Night — dark */
+html[data-theme='tokyonight'][data-color-mode='dark'] {
+  --bg-app: #1a1b26;
+  --bg-sidebar: #161720;
+  --bg-panel: #292e42;
+  --bg-elevated: #292e42;
+  --bg-input: #1a1b26;
+  --bg-hover: #2d3349;
+  --bg-popover: #1a1b26;
+  --bg-subtle: #292e42;
+  --border: #292e42;
+  --text-primary: #c0caf5;
+  --text-secondary: #c0caf5;
+  --text-muted: #565f89;
+  --text-on-accent: #1a1b26;
+  --accent: #7aa2f7;
+  --accent-hover: #7aa2f7;
+  --accent-subtle: rgba(122, 162, 247, 0.133);
+  --success: #9ece6a;
+  --warning: #e0af68;
+  --danger: #f7768e;
+  --user-bubble: #7aa2f7;
+  --assistant-bubble: #292e42;
+  --settings-nav-active: rgba(122, 162, 247, 0.133);
 }

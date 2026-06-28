@@ -1,17 +1,51 @@
-/* Asciinema */
-html[data-theme='asciinema'][data-color-mode='dark'] {
-  --bg-app: #121212;
-  --bg-sidebar: #0a0a0a;
-  --bg-panel: #1a1a1a;
-  --bg-elevated: #222222;
-  --bg-input: #0a0a0a;
-  --border: #333333;
+/* Asciinema (fallback) — light */
+html[data-theme='asciinema'][data-color-mode='light'] {
+  --bg-app: #121314;
+  --bg-sidebar: #1a1b1c;
+  --bg-panel: #181919;
+  --bg-elevated: #181919;
+  --bg-input: #121314;
+  --bg-hover: rgba(31, 32, 32, 0.6);
+  --bg-popover: #121314;
+  --bg-subtle: #181919;
+  --border: #3a3a3a;
   --text-primary: #cccccc;
-  --text-secondary: #00a100;
-  --text-muted: #666666;
-  --accent: #00a100;
-  --accent-subtle: #222222;
-  --user-bubble: #008800;
-  --assistant-bubble: #222222;
-  --settings-nav-active: #222222;
+  --text-secondary: #cccccc;
+  --text-muted: #6d6d6d;
+  --text-on-accent: #ffffff;
+  --accent: #5d5d5d;
+  --accent-hover: rgba(38, 176, 215, 0.667);
+  --accent-subtle: #1a1b1c;
+  --success: #4ebf22;
+  --warning: #ddaf3c;
+  --danger: #dd3c69;
+  --user-bubble: #26b0d7;
+  --assistant-bubble: #181919;
+  --settings-nav-active: #1a1b1c;
+}
+
+/* Asciinema — dark */
+html[data-theme='asciinema'][data-color-mode='dark'] {
+  --bg-app: #121314;
+  --bg-sidebar: #1a1b1c;
+  --bg-panel: #181919;
+  --bg-elevated: #181919;
+  --bg-input: #121314;
+  --bg-hover: rgba(31, 32, 32, 0.6);
+  --bg-popover: #121314;
+  --bg-subtle: #181919;
+  --border: #3a3a3a;
+  --text-primary: #cccccc;
+  --text-secondary: #cccccc;
+  --text-muted: #6d6d6d;
+  --text-on-accent: #ffffff;
+  --accent: #5d5d5d;
+  --accent-hover: rgba(38, 176, 215, 0.667);
+  --accent-subtle: #1a1b1c;
+  --success: #4ebf22;
+  --warning: #ddaf3c;
+  --danger: #dd3c69;
+  --user-bubble: #26b0d7;
+  --assistant-bubble: #181919;
+  --settings-nav-active: #1a1b1c;
 }

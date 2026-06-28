@@ -1,17 +1,51 @@
-/* Jellybeans */
+/* Jellybeans (fallback) — light */
+html[data-theme='jellybeans'][data-color-mode='light'] {
+  --bg-app: #151515;
+  --bg-sidebar: #101010;
+  --bg-panel: #151515;
+  --bg-elevated: #2f2f2f;
+  --bg-input: #151515;
+  --bg-hover: #252525;
+  --bg-popover: #151515;
+  --bg-subtle: #151515;
+  --border: #2e2e2e;
+  --text-primary: #e8e8d3;
+  --text-secondary: #e8e8e8;
+  --text-muted: #767676;
+  --text-on-accent: #151515;
+  --accent: #97bedc;
+  --accent-hover: #97bedc;
+  --accent-subtle: rgba(151, 190, 220, 0.082);
+  --success: #94b979;
+  --warning: #ffba7b;
+  --danger: #e27373;
+  --user-bubble: #97bedc;
+  --assistant-bubble: #2f2f2f;
+  --settings-nav-active: rgba(151, 190, 220, 0.082);
+}
+
+/* Jellybeans — dark */
 html[data-theme='jellybeans'][data-color-mode='dark'] {
   --bg-app: #151515;
   --bg-sidebar: #101010;
-  --bg-panel: #1c1c1c;
-  --bg-elevated: #262626;
-  --bg-input: #101010;
-  --border: #353535;
+  --bg-panel: #151515;
+  --bg-elevated: #2f2f2f;
+  --bg-input: #151515;
+  --bg-hover: #252525;
+  --bg-popover: #151515;
+  --bg-subtle: #151515;
+  --border: #2e2e2e;
   --text-primary: #e8e8d3;
-  --text-secondary: #c0b18a;
-  --text-muted: #888888;
-  --accent: #ff907a;
-  --accent-subtle: #262626;
-  --user-bubble: #c6b6ee;
-  --assistant-bubble: #262626;
-  --settings-nav-active: #262626;
+  --text-secondary: #e8e8e8;
+  --text-muted: #767676;
+  --text-on-accent: #151515;
+  --accent: #97bedc;
+  --accent-hover: #97bedc;
+  --accent-subtle: rgba(151, 190, 220, 0.082);
+  --success: #94b979;
+  --warning: #ffba7b;
+  --danger: #e27373;
+  --user-bubble: #97bedc;
+  --assistant-bubble: #2f2f2f;
+  --settings-nav-active: rgba(151, 190, 220, 0.082);
 }

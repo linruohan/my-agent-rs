@@ -1,17 +1,51 @@
-/* Matrix */
+/* Matrix (fallback) — light */
+html[data-theme='matrix'][data-color-mode='light'] {
+  --bg-app: #020d02;
+  --bg-sidebar: #020d02;
+  --bg-panel: #001900;
+  --bg-elevated: #002900;
+  --bg-input: #020d02;
+  --bg-hover: #003300;
+  --bg-popover: #020d02;
+  --bg-subtle: #001900;
+  --border: #12410e;
+  --text-primary: #88ff88;
+  --text-secondary: #3fd43a;
+  --text-muted: #007700;
+  --text-on-accent: #0d0208;
+  --accent: #00ff00;
+  --accent-hover: rgba(0, 255, 0, 0.667);
+  --accent-subtle: rgba(0, 255, 0, 0.067);
+  --success: #00ff00;
+  --warning: #ffea00;
+  --danger: #ff0000;
+  --user-bubble: #00ff00;
+  --assistant-bubble: #002900;
+  --settings-nav-active: rgba(0, 255, 0, 0.067);
+}
+
+/* Matrix — dark */
 html[data-theme='matrix'][data-color-mode='dark'] {
-  --bg-app: #0a0a0a;
-  --bg-sidebar: #050505;
-  --bg-panel: #0d1a0d;
-  --bg-elevated: #102010;
-  --bg-input: #050505;
-  --border: #1a3a1a;
-  --text-primary: #00ff41;
-  --text-secondary: #00cc33;
-  --text-muted: #008822;
-  --accent: #00ff41;
-  --accent-subtle: #102010;
-  --user-bubble: #00aa2a;
-  --assistant-bubble: #0d1a0d;
-  --settings-nav-active: #102010;
+  --bg-app: #020d02;
+  --bg-sidebar: #020d02;
+  --bg-panel: #001900;
+  --bg-elevated: #002900;
+  --bg-input: #020d02;
+  --bg-hover: #003300;
+  --bg-popover: #020d02;
+  --bg-subtle: #001900;
+  --border: #12410e;
+  --text-primary: #88ff88;
+  --text-secondary: #3fd43a;
+  --text-muted: #007700;
+  --text-on-accent: #0d0208;
+  --accent: #00ff00;
+  --accent-hover: rgba(0, 255, 0, 0.667);
+  --accent-subtle: rgba(0, 255, 0, 0.067);
+  --success: #00ff00;
+  --warning: #ffea00;
+  --danger: #ff0000;
+  --user-bubble: #00ff00;
+  --assistant-bubble: #002900;
+  --settings-nav-active: rgba(0, 255, 0, 0.067);
 }

@@ -181,7 +181,8 @@ const inlinePreviewModes = [
 
 <style scoped>
 .appearance-settings {
-  max-width: 640px;
+  width: 100%;
+  max-width: none;
 }
 
 .section-intro {
@@ -241,7 +242,7 @@ h3 {
 .mode-tabs {
   display: flex;
   gap: 4px;
-  background: var(--bg-elevated);
+  background: var(--segment-track);
   border: 1px solid var(--border);
   border-radius: 8px;
   padding: 3px;
@@ -249,24 +250,33 @@ h3 {
 }
 
 .mode-tab {
-  background: none;
-  border: none;
-  color: var(--text-secondary);
+  background: transparent;
+  border: 1px solid transparent;
+  color: var(--segment-item-text);
   padding: 6px 12px;
   border-radius: 6px;
   font-size: 12px;
+  font-weight: 500;
   cursor: pointer;
   font-family: inherit;
+  transition:
+    background 0.15s,
+    color 0.15s,
+    border-color 0.15s,
+    box-shadow 0.15s;
 }
 
-.mode-tab:hover {
+.mode-tab:hover:not(.active) {
   color: var(--text-primary);
+  background: color-mix(in srgb, var(--text-primary) 6%, transparent);
 }
 
 .mode-tab.active {
-  background: var(--bg-panel);
-  color: var(--text-primary);
-  box-shadow: 0 1px 2px rgba(0, 0, 0, 0.08);
+  background: var(--segment-item-active-bg);
+  color: var(--segment-item-active-text);
+  border-color: var(--segment-item-active-border);
+  font-weight: 600;
+  box-shadow: 0 1px 3px var(--shadow-color);
 }
 
 .theme-search {
@@ -289,7 +299,7 @@ h3 {
 
 .theme-grid {
   display: grid;
-  grid-template-columns: repeat(2, 1fr);
+  grid-template-columns: repeat(auto-fill, minmax(240px, 1fr));
   gap: 10px;
   max-height: 420px;
   overflow-y: auto;
@@ -307,16 +317,20 @@ h3 {
   cursor: pointer;
   text-align: left;
   font-family: inherit;
-  transition: border-color 0.15s;
+  transition:
+    border-color 0.15s,
+    background 0.15s,
+    box-shadow 0.15s;
 }
 
-.theme-card:hover {
-  border-color: var(--accent);
+.theme-card:hover:not(.active) {
+  border-color: color-mix(in srgb, var(--accent) 45%, var(--border));
 }
 
 .theme-card.active {
-  border-color: var(--accent);
-  background: var(--accent-subtle);
+  border-color: var(--choice-active-border);
+  background: var(--choice-active-bg);
+  box-shadow: 0 0 0 1px color-mix(in srgb, var(--accent) 35%, transparent);
 }
 
 .theme-preview {
@@ -345,6 +359,14 @@ h3 {
   font-size: 13px;
   font-weight: 600;
   color: var(--text-primary);
+}
+
+.theme-card.active .theme-name {
+  color: var(--accent);
+}
+
+.theme-card.active .theme-desc {
+  color: var(--text-secondary);
 }
 
 .theme-desc {

@@ -4,7 +4,8 @@ const theme: ThemeDefinition = {
   id: 'solarized',
   name: "Solarized",
   description: "Solarized — 科学配色",
-  preview: ["#002b36", "#268bd2", "#073642"],
+  preview: ["#fdf6e3", "#586e75", "#fdf6e3"],
+  source: 'gpui-component',
 };
 
 export default theme;

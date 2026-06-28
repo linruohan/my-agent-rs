@@ -1,17 +1,51 @@
-/* Adventure */
+/* Adventure (fallback) — light */
+html[data-theme='adventure'][data-color-mode='light'] {
+  --bg-app: #040404;
+  --bg-sidebar: #040404;
+  --bg-panel: #003a5b;
+  --bg-elevated: #171a1c;
+  --bg-input: #040404;
+  --bg-hover: #1e2224;
+  --bg-popover: #040404;
+  --bg-subtle: #003a5b;
+  --border: #282828;
+  --text-primary: #feffff;
+  --text-secondary: #e4d5c7;
+  --text-muted: #5d6165;
+  --text-on-accent: #feffff;
+  --accent: #5da602;
+  --accent-hover: #417ab3;
+  --accent-subtle: rgba(93, 166, 2, 0.133);
+  --success: #5da602;
+  --warning: #aa7900;
+  --danger: #d84a33;
+  --user-bubble: #4384ad;
+  --assistant-bubble: #171a1c;
+  --settings-nav-active: rgba(93, 166, 2, 0.133);
+}
+
+/* Adventure — dark */
 html[data-theme='adventure'][data-color-mode='dark'] {
   --bg-app: #040404;
-  --bg-sidebar: #080808;
-  --bg-panel: #1a1010;
-  --bg-elevated: #281818;
-  --bg-input: #080808;
-  --border: #402020;
-  --text-primary: #d0d0d0;
-  --text-secondary: #d78787;
-  --text-muted: #875757;
-  --accent: #d78787;
-  --accent-subtle: #281818;
-  --user-bubble: #af5f5f;
-  --assistant-bubble: #281818;
-  --settings-nav-active: #281818;
+  --bg-sidebar: #040404;
+  --bg-panel: #003a5b;
+  --bg-elevated: #171a1c;
+  --bg-input: #040404;
+  --bg-hover: #1e2224;
+  --bg-popover: #040404;
+  --bg-subtle: #003a5b;
+  --border: #282828;
+  --text-primary: #feffff;
+  --text-secondary: #e4d5c7;
+  --text-muted: #5d6165;
+  --text-on-accent: #feffff;
+  --accent: #5da602;
+  --accent-hover: #417ab3;
+  --accent-subtle: rgba(93, 166, 2, 0.133);
+  --success: #5da602;
+  --warning: #aa7900;
+  --danger: #d84a33;
+  --user-bubble: #4384ad;
+  --assistant-bubble: #171a1c;
+  --settings-nav-active: rgba(93, 166, 2, 0.133);
 }

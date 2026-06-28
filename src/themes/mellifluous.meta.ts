@@ -3,8 +3,9 @@ import type { ThemeDefinition } from './types';
 const theme: ThemeDefinition = {
   id: 'mellifluous',
   name: "Mellifluous",
-  description: "圆润 — 柔和粉彩暗色",
-  preview: ["#1a1820", "#c4a7e7", "#252230"],
+  description: "Mellifluous — 圆润柔和粉彩",
+  preview: ["#e7e7e7", "#5a6599", "#fafafa"],
+  source: 'gpui-component',
 };
 
 export default theme;

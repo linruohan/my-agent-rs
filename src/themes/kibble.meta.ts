@@ -4,7 +4,8 @@ const theme: ThemeDefinition = {
   id: 'kibble',
   name: "Kibble",
   description: "Kibble — 深蓝编辑器",
-  preview: ["#0e0e0e", "#6fb3d2", "#1a1a2e"],
+  preview: ["#0e100a", "#6ce05c", "#003a5b"],
+  source: 'gpui-component',
 };
 
 export default theme;

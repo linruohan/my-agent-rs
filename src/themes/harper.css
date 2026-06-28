@@ -1,17 +1,51 @@
-/* Harper */
+/* Harper (fallback) — light */
+html[data-theme='harper'][data-color-mode='light'] {
+  --bg-app: #010101;
+  --bg-sidebar: #101010;
+  --bg-panel: #003a5b;
+  --bg-elevated: #1b1b1b;
+  --bg-input: #010101;
+  --bg-hover: rgba(35, 35, 35, 0.6);
+  --bg-popover: #010101;
+  --bg-subtle: #003a5b;
+  --border: #333333;
+  --text-primary: #a8a49d;
+  --text-secondary: #a8a49d;
+  --text-muted: #726e69;
+  --text-on-accent: #000000;
+  --accent: #b196c6;
+  --accent-hover: #b196c6;
+  --accent-subtle: rgba(177, 150, 198, 0.133);
+  --success: #489e48;
+  --warning: #f8b63f;
+  --danger: #ff5874;
+  --user-bubble: #b196c6;
+  --assistant-bubble: #1b1b1b;
+  --settings-nav-active: rgba(177, 150, 198, 0.133);
+}
+
+/* Harper — dark */
 html[data-theme='harper'][data-color-mode='dark'] {
-  --bg-app: #131018;
-  --bg-sidebar: #0c080e;
-  --bg-panel: #1e1828;
-  --bg-elevated: #282038;
-  --bg-input: #0c080e;
-  --border: #383048;
-  --text-primary: #e8e0f0;
-  --text-secondary: #c4b0e0;
-  --text-muted: #8878a8;
-  --accent: #a78bfa;
-  --accent-subtle: #282038;
-  --user-bubble: #8b5cf6;
-  --assistant-bubble: #282038;
-  --settings-nav-active: #282038;
+  --bg-app: #010101;
+  --bg-sidebar: #101010;
+  --bg-panel: #003a5b;
+  --bg-elevated: #1b1b1b;
+  --bg-input: #010101;
+  --bg-hover: rgba(35, 35, 35, 0.6);
+  --bg-popover: #010101;
+  --bg-subtle: #003a5b;
+  --border: #333333;
+  --text-primary: #a8a49d;
+  --text-secondary: #a8a49d;
+  --text-muted: #726e69;
+  --text-on-accent: #000000;
+  --accent: #b196c6;
+  --accent-hover: #b196c6;
+  --accent-subtle: rgba(177, 150, 198, 0.133);
+  --success: #489e48;
+  --warning: #f8b63f;
+  --danger: #ff5874;
+  --user-bubble: #b196c6;
+  --assistant-bubble: #1b1b1b;
+  --settings-nav-active: rgba(177, 150, 198, 0.133);
 }

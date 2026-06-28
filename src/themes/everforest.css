@@ -1,17 +1,51 @@
-/* Everforest */
+/* Everforest Light — light */
+html[data-theme='everforest'][data-color-mode='light'] {
+  --bg-app: #fefcee;
+  --bg-sidebar: #f4f1e2;
+  --bg-panel: #eeeada;
+  --bg-elevated: #eeeada;
+  --bg-input: #fefcee;
+  --bg-hover: #e7e5d4;
+  --bg-popover: #fefcee;
+  --bg-subtle: #eeeada;
+  --border: #e7e5d4;
+  --text-primary: #5f6d75;
+  --text-secondary: #5f6d75;
+  --text-muted: #959a9d;
+  --text-on-accent: #fefcee;
+  --accent: #e69875;
+  --accent-hover: #e69875;
+  --accent-subtle: rgba(167, 192, 128, 0.145);
+  --success: #a7c080;
+  --warning: #dbbc7f;
+  --danger: #e67e80;
+  --user-bubble: #e69875;
+  --assistant-bubble: #eeeada;
+  --settings-nav-active: rgba(167, 192, 128, 0.145);
+}
+
+/* Everforest Dark — dark */
 html[data-theme='everforest'][data-color-mode='dark'] {
-  --bg-app: #2d353b;
-  --bg-sidebar: #272e33;
-  --bg-panel: #343f44;
-  --bg-elevated: #3d484d;
-  --bg-input: #272e33;
-  --border: #475258;
+  --bg-app: #262e34;
+  --bg-sidebar: #2e383b;
+  --bg-panel: #2e383b;
+  --bg-elevated: #2e383b;
+  --bg-input: #262e34;
+  --bg-hover: rgba(62, 71, 75, 0.6);
+  --bg-popover: #262e34;
+  --bg-subtle: #2e383b;
+  --border: #40484c;
   --text-primary: #d3c6aa;
-  --text-secondary: #a7b0a2;
-  --text-muted: #859289;
-  --accent: #a7c080;
-  --accent-subtle: #3d484d;
-  --user-bubble: #7fbbb3;
-  --assistant-bubble: #3d484d;
-  --settings-nav-active: #3d484d;
+  --text-secondary: #849087;
+  --text-muted: #6d7873;
+  --text-on-accent: #262e34;
+  --accent: #e69875;
+  --accent-hover: #e69875;
+  --accent-subtle: rgba(167, 192, 128, 0.133);
+  --success: #a7c080;
+  --warning: #dbbc7f;
+  --danger: #e67e80;
+  --user-bubble: #e69875;
+  --assistant-bubble: #2e383b;
+  --settings-nav-active: rgba(167, 192, 128, 0.133);
 }

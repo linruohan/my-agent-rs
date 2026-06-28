@@ -4,7 +4,8 @@ const theme: ThemeDefinition = {
   id: 'flexoki',
   name: "Flexoki",
   description: "Flexoki — 暖中性色",
-  preview: ["#100f0f", "#205ea6", "#1c1b1a"],
+  preview: ["#fffcf0", "#d0a215", "#f2f0e5"],
+  source: 'gpui-component',
 };
 
 export default theme;

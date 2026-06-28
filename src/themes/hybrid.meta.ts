@@ -4,7 +4,8 @@ const theme: ThemeDefinition = {
   id: 'hybrid',
   name: "Hybrid",
   description: "Hybrid — Vim 混合色",
-  preview: ["#1d1f21", "#f0c674", "#282a2e"],
+  preview: ["#e4e4e4", "#005f87", "#d0d0d0"],
+  source: 'gpui-component',
 };
 
 export default theme;

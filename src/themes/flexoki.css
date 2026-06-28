@@ -1,17 +1,51 @@
-/* Flexoki */
+/* Flexoki Light — light */
+html[data-theme='flexoki'][data-color-mode='light'] {
+  --bg-app: #fffcf0;
+  --bg-sidebar: #f2f0e5;
+  --bg-panel: #f2f0e5;
+  --bg-elevated: #f2f0e5;
+  --bg-input: #fffcf0;
+  --bg-hover: #e6e4d9;
+  --bg-popover: #fffcf0;
+  --bg-subtle: #f2f0e5;
+  --border: #e6e4d9;
+  --text-primary: #100f0f;
+  --text-secondary: #100f0f;
+  --text-muted: #6f6e69;
+  --text-on-accent: #fafafa;
+  --accent: #d0a215;
+  --accent-hover: #3aa99f;
+  --accent-subtle: rgba(208, 162, 21, 0.125);
+  --success: #879a39;
+  --warning: #d0a215;
+  --danger: #d14d41;
+  --user-bubble: #3aa99f;
+  --assistant-bubble: #f2f0e5;
+  --settings-nav-active: rgba(208, 162, 21, 0.125);
+}
+
+/* Flexoki Dark — dark */
 html[data-theme='flexoki'][data-color-mode='dark'] {
   --bg-app: #100f0f;
-  --bg-sidebar: #0c0b0a;
+  --bg-sidebar: rgba(28, 27, 26, 0.6);
   --bg-panel: #1c1b1a;
-  --bg-elevated: #282726;
-  --bg-input: #0c0b0a;
-  --border: #343331;
+  --bg-elevated: #232221;
+  --bg-input: #100f0f;
+  --bg-hover: #232221;
+  --bg-popover: #100f0f;
+  --bg-subtle: #1c1b1a;
+  --border: #282726;
   --text-primary: #cecdc3;
-  --text-secondary: #878580;
-  --text-muted: #6f6e69;
-  --accent: #205ea6;
-  --accent-subtle: #282726;
-  --user-bubble: #af3029;
-  --assistant-bubble: #282726;
-  --settings-nav-active: #282726;
+  --text-secondary: #cecdc3;
+  --text-muted: #878580;
+  --text-on-accent: #fffcf0;
+  --accent: #ad8301;
+  --accent-hover: #24837b;
+  --accent-subtle: rgba(208, 162, 21, 0.082);
+  --success: #66800b;
+  --warning: #ad8301;
+  --danger: #af3029;
+  --user-bubble: #24837b;
+  --assistant-bubble: #232221;
+  --settings-nav-active: rgba(208, 162, 21, 0.082);
 }

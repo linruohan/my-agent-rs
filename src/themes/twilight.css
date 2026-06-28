@@ -1,17 +1,51 @@
-/* Twilight */
+/* Twilight (fallback) — light */
+html[data-theme='twilight'][data-color-mode='light'] {
+  --bg-app: #141414;
+  --bg-sidebar: #1e1e1e;
+  --bg-panel: #262626;
+  --bg-elevated: #262626;
+  --bg-input: #141414;
+  --bg-hover: #272727;
+  --bg-popover: #141414;
+  --bg-subtle: #262626;
+  --border: #343434;
+  --text-primary: #dcdcdc;
+  --text-secondary: #dcdcdc;
+  --text-muted: #828282;
+  --text-on-accent: #1e1e1e;
+  --accent: #cda869;
+  --accent-hover: #cda869;
+  --accent-subtle: rgba(205, 168, 105, 0.067);
+  --success: #afb97a;
+  --warning: #c2a86c;
+  --danger: #c06d44;
+  --user-bubble: #cda869;
+  --assistant-bubble: #262626;
+  --settings-nav-active: rgba(205, 168, 105, 0.067);
+}
+
+/* Twilight — dark */
 html[data-theme='twilight'][data-color-mode='dark'] {
   --bg-app: #141414;
-  --bg-sidebar: #0f0f0f;
-  --bg-panel: #1a1a1a;
-  --bg-elevated: #2a2a2a;
-  --bg-input: #0f0f0f;
-  --border: #333333;
-  --text-primary: #f7f7f7;
-  --text-secondary: #c0c0c0;
-  --text-muted: #808080;
-  --accent: #cf6a4c;
-  --accent-subtle: #2a2a2a;
-  --user-bubble: #7587a6;
-  --assistant-bubble: #2a2a2a;
-  --settings-nav-active: #2a2a2a;
+  --bg-sidebar: #1e1e1e;
+  --bg-panel: #262626;
+  --bg-elevated: #262626;
+  --bg-input: #141414;
+  --bg-hover: #272727;
+  --bg-popover: #141414;
+  --bg-subtle: #262626;
+  --border: #343434;
+  --text-primary: #dcdcdc;
+  --text-secondary: #dcdcdc;
+  --text-muted: #828282;
+  --text-on-accent: #1e1e1e;
+  --accent: #cda869;
+  --accent-hover: #cda869;
+  --accent-subtle: rgba(205, 168, 105, 0.067);
+  --success: #afb97a;
+  --warning: #c2a86c;
+  --danger: #c06d44;
+  --user-bubble: #cda869;
+  --assistant-bubble: #262626;
+  --settings-nav-active: rgba(205, 168, 105, 0.067);
 }

@@ -511,6 +511,7 @@ onMounted(async () => {
   flex: 1;
   display: flex;
   min-height: 0;
+  width: 100%;
   background: var(--bg-app);
 }
 
@@ -574,6 +575,8 @@ onMounted(async () => {
   flex-direction: column;
   min-width: 0;
   min-height: 0;
+  width: 100%;
+  background: var(--bg-panel);
 }
 
 .settings-header {
@@ -583,6 +586,7 @@ onMounted(async () => {
   padding: 16px 24px;
   border-bottom: 1px solid var(--border);
   flex-shrink: 0;
+  background: var(--bg-panel);
 }
 
 .settings-header h2 {
@@ -608,7 +612,8 @@ onMounted(async () => {
   flex: 1;
   overflow-y: auto;
   padding: 20px 24px 32px;
-  max-width: 720px;
+  width: 100%;
+  box-sizing: border-box;
 }
 
 .field-row {

@@ -72,6 +72,11 @@ capability:
     risk: low
     max_entries: 200
     exclude_dirs: [.git, node_modules, __pycache__, .venv, target, dist, build]
+  cli_tools:
+    enabled: true
+    default_timeout_sec: 60
+    max_output_chars: 80000
+    default_risk: low
 
 business:
   create_todo:

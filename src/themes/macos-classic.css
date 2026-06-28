@@ -1,17 +1,51 @@
-/* macOS Classic */
+/* macOS Classic Light — light */
+html[data-theme='macos-classic'][data-color-mode='light'] {
+  --bg-app: #f9f9f9;
+  --bg-sidebar: #e9e9e9;
+  --bg-panel: #e0e0e0;
+  --bg-elevated: #e0e0e0;
+  --bg-input: #f5f5f5;
+  --bg-hover: #e7e7e7;
+  --bg-popover: #f5f5f5;
+  --bg-subtle: #e0e0e0;
+  --border: #d2d2d2;
+  --text-primary: #000000;
+  --text-secondary: #000000;
+  --text-muted: #707070;
+  --text-on-accent: #ffffff;
+  --accent: #0060de;
+  --accent-hover: #0060de;
+  --accent-subtle: rgba(0, 96, 222, 0.082);
+  --success: #319a00;
+  --warning: #b59a00;
+  --danger: #d21f07;
+  --user-bubble: #0060de;
+  --assistant-bubble: #e0e0e0;
+  --settings-nav-active: rgba(0, 96, 222, 0.082);
+}
+
+/* macOS Classic Dark — dark */
 html[data-theme='macos-classic'][data-color-mode='dark'] {
-  --bg-app: #2a2a2a;
-  --bg-sidebar: #222222;
-  --bg-panel: #333333;
-  --bg-elevated: #404040;
-  --bg-input: #222222;
-  --border: #505050;
-  --text-primary: #e0e0e0;
-  --text-secondary: #c0c0c0;
-  --text-muted: #909090;
-  --accent: #6699cc;
-  --accent-subtle: #404040;
-  --user-bubble: #0066cc;
-  --assistant-bubble: #404040;
-  --settings-nav-active: #404040;
+  --bg-app: #131313;
+  --bg-sidebar: #1c1c1e;
+  --bg-panel: #353535;
+  --bg-elevated: #353535;
+  --bg-input: #131313;
+  --bg-hover: rgba(53, 53, 53, 0.6);
+  --bg-popover: #101010;
+  --bg-subtle: #353535;
+  --border: #303030;
+  --text-primary: #dedede;
+  --text-secondary: #dedede;
+  --text-muted: #9d9d9d;
+  --text-on-accent: #f2f9ff;
+  --accent: #077cfd;
+  --accent-hover: #077cfd;
+  --accent-subtle: rgba(0, 89, 209, 0.082);
+  --success: #30d158;
+  --warning: #ffc600;
+  --danger: #ff5257;
+  --user-bubble: #077cfd;
+  --assistant-bubble: #353535;
+  --settings-nav-active: rgba(0, 89, 209, 0.082);
 }

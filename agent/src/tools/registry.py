@@ -62,7 +62,10 @@ class ToolRegistry:
         cfg = self._find_config(tool_name)
         if "requires_confirmation" in cfg:
             return cfg["requires_confirmation"]
-        risk = self._meta.get(tool_name, {}).get("risk", "low")
+        meta = self._meta.get(tool_name, {})
+        if "requires_confirmation" in meta:
+            return bool(meta["requires_confirmation"])
+        risk = meta.get("risk", cfg.get("risk", "low"))
         defaults = self.config.get("defaults", {})
         threshold = defaults.get("requires_confirmation_risk", "medium")
         risk_levels = {"low": 0, "medium": 1, "high": 2}
@@ -187,6 +190,27 @@ def _register_capability(registry: ToolRegistry, config: dict[str, Any]) -> None
             "capability",
             {"risk": cfg.get("risk", "low")},
         )
+
+    if cap.get("cli_tools", {}).get("enabled"):
+        from tools.capability.cli_tools import cli_tool_meta, create_cli_tools
+
+        cfg = cap["cli_tools"]
+        cap_cfg = registry.config.setdefault("capability", {})
+        for cli_tool in create_cli_tools(cfg):
+            meta = cli_tool_meta(cli_tool)
+            cap_cfg[cli_tool.name] = {
+                "enabled": True,
+                "risk": meta.get("risk", "low"),
+                "requires_confirmation": meta.get("requires_confirmation", False),
+            }
+            registry.register(
+                cli_tool,
+                "capability",
+                {
+                    "risk": meta.get("risk", "low"),
+                    "requires_confirmation": meta.get("requires_confirmation", False),
+                },
+            )
 
 
 def _register_business(registry: ToolRegistry, config: dict[str, Any]) -> None:

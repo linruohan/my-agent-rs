@@ -1,0 +1,340 @@
+# External CLI tools (Scoop / PATH). Enabled programs become agent tools.
+# GUI/TUI-only apps and duplicates of built-in glob/grep are disabled.
+
+defaults:
+  timeout_sec: 60
+  max_output_chars: 80000
+  risk: low
+
+programs:
+  7zip:
+    enabled: true
+    tool_name: seven_zip
+    binaries: [7z, 7za]
+    description: "List, test, or extract 7z/zip archives. Example args: l archive.zip or x archive.zip -oout"
+    allowed_prefixes: [l, ls, t, x, e, h, i]
+    risk: medium
+
+  act:
+    enabled: true
+    tool_name: act
+    binaries: [act]
+    description: "Run GitHub Actions locally with act. Example: -l or -n -j build"
+    allowed_prefixes: ["-l", "-n", "-j", "--list", "--dryrun", "workflow_dispatch"]
+    risk: medium
+    timeout_sec: 300
+
+  aria2:
+    enabled: true
+    tool_name: aria2
+    binaries: [aria2c]
+    description: "Download files with aria2. Example: -x5 -s5 -o file.zip URL"
+    allowed_prefixes: ["-x", "-s", "-o", "-d", "--max-download-limit", "--split", "http://", "https://"]
+    risk: medium
+    requires_confirmation: true
+
+  bat:
+    enabled: true
+    tool_name: bat
+    binaries: [bat]
+    description: "View file with syntax highlighting. Example: --plain -n src/main.py"
+    allowed_prefixes: ["--plain", "-n", "--language", "--line-range", "."]
+    risk: low
+
+  bun:
+    enabled: true
+    tool_name: bun
+    binaries: [bun]
+    description: "Bun runtime. Example: --version, run script.ts, test, install"
+    allowed_prefixes: [run, test, install, add, remove, --version, x, pm]
+    risk: medium
+
+  ccache:
+    enabled: true
+    tool_name: ccache
+    binaries: [ccache]
+    description: "Compiler cache stats and management. Example: -s or -C"
+    allowed_prefixes: ["-s", "-C", "--version", "-z", "-M"]
+    risk: low
+
+  delta:
+    enabled: true
+    tool_name: delta
+    binaries: [delta]
+    description: "Pager for git diff output. Pipe via git diff | delta or use --side-by-side"
+    allowed_prefixes: ["--side-by-side", "--line-numbers", "--max-line-length", "--width"]
+    risk: low
+
+  ffmpeg:
+    enabled: true
+    tool_name: ffmpeg
+    binaries: [ffmpeg, ffprobe]
+    description: "Media probe/transcode. Prefer ffprobe for metadata. Example ffprobe -v quiet -show_format file.mp4"
+    allowed_prefixes: [ffprobe, "-i", "-v", "-show_format", "-show_streams", "-hide_banner", "-f", "-t", "-y"]
+    risk: medium
+    timeout_sec: 120
+
+  git:
+    enabled: true
+    tool_name: git
+    binaries: [git]
+    description: "Git in workspace. Example: status -sb, log -5 --oneline, diff, show HEAD"
+    allowed_prefixes:
+      [status, log, diff, show, branch, rev-parse, add, commit, checkout, switch, pull, fetch, clone, blame, grep, stash, tag, remote, config, init]
+    confirm_prefixes: [push, reset, clean, rebase, merge, cherry-pick]
+    risk: low
+
+  go:
+    enabled: true
+    tool_name: go
+    binaries: [go]
+    description: "Go toolchain. Example: version, env, build ./..., test ./..., mod tidy"
+    allowed_prefixes: [version, env, build, test, mod, list, vet, fmt, doc, run]
+    risk: medium
+    timeout_sec: 180
+
+  gzip:
+    enabled: true
+    tool_name: gzip
+    binaries: [gzip]
+    description: "Compress with gzip. Example: -k -9 file.txt or -d file.gz"
+    allowed_prefixes: ["-k", "-d", "-9", "-l", "-t", "-c", "-n"]
+    risk: low
+
+  imagemagick:
+    enabled: true
+    tool_name: magick
+    binaries: [magick, convert, identify]
+    description: "ImageMagick convert/identify. Example: identify img.png or convert in.png -resize 50% out.png"
+    allowed_prefixes: [identify, convert, magick, -resize, -quality, -format, -strip, "-version"]
+    risk: medium
+
+  jq:
+    enabled: true
+    tool_name: jq
+    binaries: [jq]
+    description: "Query JSON. Example: .name file.json or -r '.items[]' data.json"
+    allowed_prefixes: [".", "-r", "-c", "-s", "-e", "--version", "--tab"]
+    risk: low
+
+  lsd:
+    enabled: true
+    tool_name: lsd
+    binaries: [lsd]
+    description: "List directory with icons/tree. Example: -l --tree --depth 2 src"
+    allowed_prefixes: ["-l", "-a", "--tree", "--depth", "--group-dirs", "--icon", "."]
+    risk: low
+
+  make:
+    enabled: true
+    tool_name: make
+    binaries: [make, mingw32-make, gmake]
+    description: "Run Makefile targets. Example: -n target or build"
+    allowed_prefixes: ["-n", "-j", "-C", "-f", "clean", "build", "test", "all", "install"]
+    risk: medium
+    timeout_sec: 180
+
+  pandoc:
+    enabled: true
+    tool_name: pandoc
+    binaries: [pandoc]
+    description: "Convert documents. Example: -f markdown -t html -o out.html in.md"
+    allowed_prefixes: ["-f", "-t", "-o", "-s", "--standalone", "-i", "--version"]
+    risk: low
+    timeout_sec: 120
+
+  poppler:
+    enabled: true
+    tool_name: pdf
+    binaries: [pdftotext, pdfinfo, pdftoppm]
+    description: "PDF tools. Example: pdfinfo doc.pdf or pdftotext doc.pdf -"
+    allowed_prefixes: [pdfinfo, pdftotext, pdftoppm, "-f", "-l", "-"]
+    risk: low
+
+  resvg:
+    enabled: true
+    tool_name: resvg
+    binaries: [resvg]
+    description: "Render SVG to PNG. Example: input.svg output.png"
+    risk: low
+
+  rga:
+    enabled: true
+    tool_name: rga
+    binaries: [rga]
+    description: "Ripgrep-all: search in PDF/office archives. Example: -n pattern ."
+    allowed_prefixes: ["-n", "-i", "-l", "-g", "--type", "."]
+    risk: low
+
+  shellcheck:
+    enabled: true
+    tool_name: shellcheck
+    binaries: [shellcheck]
+    description: "Lint shell scripts. Example: -x script.sh or -f sh script.sh"
+    allowed_prefixes: ["-x", "-f", "-e", "-S", "-V", "--version"]
+    risk: low
+
+  shfmt:
+    enabled: true
+    tool_name: shfmt
+    binaries: [shfmt]
+    description: "Format shell scripts. Example: -i 2 -w script.sh or -d script.sh"
+    allowed_prefixes: ["-i", "-w", "-d", "-l", "-bn", "-ci"]
+    risk: low
+
+  tar:
+    enabled: true
+    tool_name: tar
+    binaries: [tar]
+    description: "Archive with tar. Example: -tf archive.tar or -xf archive.tar.gz"
+    allowed_prefixes: ["-t", "-x", "-c", "-f", "-z", "-v", "--version"]
+    risk: medium
+
+  tldr:
+    enabled: true
+    tool_name: tldr
+    binaries: [tldr]
+    description: "Quick command examples. Example: tar or git commit"
+    risk: low
+    timeout_sec: 20
+
+  tree:
+    enabled: true
+    tool_name: tree
+    binaries: [tree]
+    description: "Directory tree. Example: -L 2 -a src or -d ."
+    allowed_prefixes: ["-L", "-a", "-d", "-I", "--dirsfirst", "-f", "."]
+    risk: low
+
+  unzip:
+    enabled: true
+    tool_name: unzip
+    binaries: [unzip]
+    description: "List or extract zip. Example: -l file.zip or -o file.zip -d outdir"
+    allowed_prefixes: ["-l", "-t", "-o", "-d", "-q", "-j", "-Z"]
+    risk: medium
+
+  upx:
+    enabled: true
+    tool_name: upx
+    binaries: [upx]
+    description: "UPX packer info/test. Example: -t binary or -l binary"
+    allowed_prefixes: ["-t", "-l", "-d", "--version", "-q"]
+    risk: medium
+
+  zig:
+    enabled: true
+    tool_name: zig
+    binaries: [zig]
+    description: "Zig toolchain. Example: version, build, test, fmt"
+    allowed_prefixes: [version, build, test, fmt, run, fetch]
+    risk: medium
+    timeout_sec: 180
+
+  # --- Disabled: GUI/TUI, shell-only, or covered by built-in tools ---
+
+  fd:
+    enabled: false
+    note: "Use built-in glob tool (fd backend)"
+
+  ripgrep:
+    enabled: false
+    note: "Use built-in grep tool (rg backend)"
+
+  fzf:
+    enabled: false
+    note: "Interactive TUI"
+
+  lazygit:
+    enabled: false
+    note: "Interactive TUI"
+
+  yazi:
+    enabled: false
+    note: "Interactive TUI file manager"
+
+  zoxide:
+    enabled: false
+    note: "Shell directory jump"
+
+  neovim:
+    enabled: false
+    note: "Interactive editor"
+
+  zed:
+    enabled: false
+    note: "GUI editor"
+
+  alacritty:
+    enabled: false
+    note: "Terminal emulator"
+
+  starship:
+    enabled: false
+    note: "Shell prompt"
+
+  clink:
+    enabled: false
+    note: "Shell enhancement"
+
+  carapace-bin:
+    enabled: false
+    note: "Shell completion"
+
+  scoop-completion:
+    enabled: false
+
+  scoop-search:
+    enabled: false
+
+  coreutils:
+    enabled: false
+    note: "Use bash or lsd/tree"
+
+  everything:
+    enabled: false
+    note: "Windows GUI search"
+
+  obsidian:
+    enabled: false
+    note: "GUI app"
+
+  potplayer:
+    enabled: false
+    note: "GUI media player"
+
+  pixpin:
+    enabled: false
+    note: "GUI screenshot"
+
+  BaiduNetdisk:
+    enabled: false
+    note: "GUI cloud client"
+
+  jd:
+    enabled: false
+    note: "GUI downloader"
+
+  cursor-latest:
+    enabled: false
+    note: "IDE"
+
+  dark:
+    enabled: false
+    note: "Unknown / non-CLI"
+
+  marksman:
+    enabled: false
+    note: "LSP server"
+
+  mingw-nuwen:
+    enabled: false
+    note: "Use make/go/zig; raw gcc via bash if needed"
+
+  sudo:
+    enabled: false
+    note: "Elevation not allowed in agent sandbox"
+
+  tree-sitter:
+    enabled: false
+    note: "Parser CLI rarely needed by agent"

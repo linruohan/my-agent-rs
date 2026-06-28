@@ -1,6 +1,6 @@
 import { watch, onMounted } from 'vue';
 import { useSettingsStore } from '@/stores/settings';
-import { DEFAULT_APPEARANCE, resolveColorMode } from '@/utils/themes';
+import { DEFAULT_APPEARANCE, resolveColorMode, resolveThemeId } from '@/utils/themes';
 
 let systemModeListener: ((e: MediaQueryListEvent) => void) | null = null;
 
@@ -10,7 +10,7 @@ export function applyAppearanceToDocument() {
   const root = document.documentElement;
   const resolved = resolveColorMode(appearance.colorMode);
 
-  root.setAttribute('data-theme', appearance.themeId);
+  root.setAttribute('data-theme', resolveThemeId(appearance.themeId));
   root.setAttribute('data-color-mode', resolved);
   root.style.setProperty(
     '--window-transparency',

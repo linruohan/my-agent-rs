@@ -36,6 +36,13 @@ html {
   --danger-hover: #dc2626;
   --danger-muted: color-mix(in srgb, var(--danger) 12%, transparent);
   --btn-secondary-bg: var(--bg-elevated);
+  --segment-track: color-mix(in srgb, var(--border) 55%, var(--bg-input));
+  --segment-item-text: color-mix(in srgb, var(--text-primary) 70%, var(--text-muted));
+  --segment-item-active-bg: color-mix(in srgb, var(--text-primary) 10%, var(--bg-input));
+  --segment-item-active-text: var(--text-primary);
+  --segment-item-active-border: color-mix(in srgb, var(--accent) 60%, var(--border));
+  --choice-active-bg: color-mix(in srgb, var(--accent) 24%, var(--bg-panel));
+  --choice-active-border: var(--accent);
   --shadow-color: rgba(0, 0, 0, 0.4);
   --overlay-bg: rgba(0, 0, 0, 0.85);
   --user-bubble: #2563eb;
@@ -46,6 +53,8 @@ html {
 html[data-color-mode='light'] {
   --shadow-color: rgba(0, 0, 0, 0.12);
   --overlay-bg: rgba(0, 0, 0, 0.55);
+  --segment-item-active-bg: color-mix(in srgb, var(--text-primary) 5%, #ffffff);
+  --choice-active-bg: color-mix(in srgb, var(--accent) 16%, #ffffff);
 }
 
 body {

@@ -1,17 +1,51 @@
-/* Mellifluous */
+/* Mellifluous Light — light */
+html[data-theme='mellifluous'][data-color-mode='light'] {
+  --bg-app: #e7e7e7;
+  --bg-sidebar: #e7e7e7;
+  --bg-panel: #fafafa;
+  --bg-elevated: #d0d0d0;
+  --bg-input: #e7e7e7;
+  --bg-hover: #d5d5d5;
+  --bg-popover: #e4e4e4;
+  --bg-subtle: #fafafa;
+  --border: #cacaca;
+  --text-primary: #383a42;
+  --text-secondary: #383a42;
+  --text-muted: #828997;
+  --text-on-accent: #f0f0f0;
+  --accent: #5a6599;
+  --accent-hover: #626ca2;
+  --accent-subtle: rgba(90, 101, 153, 0.071);
+  --success: #828040;
+  --warning: #c98f54;
+  --danger: #c95954;
+  --user-bubble: #5a6599;
+  --assistant-bubble: #d0d0d0;
+  --settings-nav-active: rgba(90, 101, 153, 0.071);
+}
+
+/* Mellifluous Dark — dark */
 html[data-theme='mellifluous'][data-color-mode='dark'] {
-  --bg-app: #1a1820;
-  --bg-sidebar: #141218;
-  --bg-panel: #252230;
-  --bg-elevated: #302c3c;
-  --bg-input: #141218;
-  --border: #3c3848;
-  --text-primary: #e0dce8;
-  --text-secondary: #c4a7e7;
-  --text-muted: #9088a0;
-  --accent: #c4a7e7;
-  --accent-subtle: #302c3c;
-  --user-bubble: #a080c0;
-  --assistant-bubble: #302c3c;
-  --settings-nav-active: #302c3c;
+  --bg-app: #1a1a1a;
+  --bg-sidebar: #171717;
+  --bg-panel: #282c34;
+  --bg-elevated: #292929;
+  --bg-input: #1a1a1a;
+  --bg-hover: #292929;
+  --bg-popover: #1a1a1a;
+  --bg-subtle: #282c34;
+  --border: #444444;
+  --text-primary: #abb2bf;
+  --text-secondary: #abb2bf;
+  --text-muted: #828997;
+  --text-on-accent: #ecedf4;
+  --accent: #5a6599;
+  --accent-hover: #626ca2;
+  --accent-subtle: rgba(90, 101, 153, 0.133);
+  --success: #828040;
+  --warning: #c98d54;
+  --danger: #c95954;
+  --user-bubble: #5a6599;
+  --assistant-bubble: #292929;
+  --settings-nav-active: rgba(90, 101, 153, 0.133);
 }
