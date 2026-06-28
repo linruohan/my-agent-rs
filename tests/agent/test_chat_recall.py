@@ -1,8 +1,6 @@
 from __future__ import annotations
 
 from memory.chat_recall import (
-    ChatHistoryStore,
-    find_cached_answer,
     normalize_question,
     question_similarity,
     should_skip_history_recall,
@@ -19,11 +17,15 @@ def test_normalize_and_similarity():
 
 def test_chat_history_recall(tmp_path, monkeypatch):
     monkeypatch.setenv("AGENT_DATA_DIR", str(tmp_path))
-    store = ChatHistoryStore(db_path=tmp_path / "chat_history.db")
+    import memory.chat_recall as cr
+
+    cr._store = None
+    store = cr.get_chat_history_store()
     store.record("t1", "Python 是什么", "Python 是一种编程语言。")
 
     monkeypatch.setattr(
-        "memory.chat_recall.get_memory_settings",
+        cr,
+        "get_memory_settings",
         lambda: {
             "history_recall": True,
             "history_similarity_min": 0.6,
@@ -31,7 +33,7 @@ def test_chat_history_recall(tmp_path, monkeypatch):
         },
     )
 
-    hit = find_cached_answer("python 是什么")
+    hit = cr.find_cached_answer("python 是什么")
     assert hit is not None
     assert "编程语言" in hit["answer"]
 
