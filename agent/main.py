@@ -118,6 +118,14 @@ def build_app(port: int = 8765) -> FastAPI:
         app.state.registry = registry
         runner.graph = create_agent_graph(registry, checkpointer)
 
+        from api.broadcast import configure_broadcast, set_main_event_loop
+
+        loop = asyncio.get_running_loop()
+        set_main_event_loop(loop)
+        configure_broadcast(
+            lambda msg: asyncio.run_coroutine_threadsafe(manager.broadcast(msg), loop)
+        )
+
         get_scheduler()
 
         from tools.task import TaskReminderService, TaskStore, migrate_legacy_todos_json

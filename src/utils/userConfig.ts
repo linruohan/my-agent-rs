@@ -131,3 +131,21 @@ export function applyUserConfigToStore(store: SettingsStore, cfg: UserAppConfig)
     }
   }
 }
+
+let userConfigHydrated = false;
+
+/** Load Sidecar user_settings.yaml into Pinia once per session (Sidecar is source of truth). */
+export async function hydrateUserConfigFromSidecar(port: number): Promise<boolean> {
+  if (userConfigHydrated || !port) return false;
+  const cfg = await loadUserConfigFromSidecar(port);
+  if (!cfg) return false;
+  userConfigHydrated = true;
+  const { useSettingsStore } = await import('@/stores/settings');
+  applyUserConfigToStore(useSettingsStore(), cfg);
+  return true;
+}
+
+/** Reset hydration flag (tests or Sidecar restart). */
+export function resetUserConfigHydration() {
+  userConfigHydrated = false;
+}

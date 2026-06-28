@@ -8,7 +8,6 @@ from typing_extensions import TypedDict
 
 class AgentState(TypedDict):
     messages: Annotated[list, add_messages]
-    pending_action: dict | None
     task_plan: list[str] | None
     retrieved_docs: list | None
     fresh_search_results: str | None

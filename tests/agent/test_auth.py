@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import os
 import sys
 from pathlib import Path
 
@@ -24,3 +25,9 @@ def test_verify_token():
 
 def test_auth_required():
     assert auth_required() is True
+
+
+def test_auth_disabled(monkeypatch):
+    monkeypatch.setenv("SIDECAR_AUTH_DISABLED", "true")
+    assert auth_required() is False
+    monkeypatch.delenv("SIDECAR_AUTH_DISABLED", raising=False)

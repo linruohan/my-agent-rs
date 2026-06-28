@@ -9,10 +9,11 @@ from langchain_core.language_models.fake_chat_models import FakeListChatModel
 from langchain_core.messages import HumanMessage, ToolMessage
 from langgraph.checkpoint.base import BaseCheckpointSaver
 
+from agent.constants import MAX_TOOL_ROUNDS
 from agent.planner import format_plan_for_prompt, generate_task_plan, needs_planning
 from agent.state import AgentState
 from agent.pa_middleware import create_pa_middleware
-from infra.config import get_data_dir, load_effective_tools_config
+from infra.config import get_data_dir, load_app_config, load_effective_tools_config
 from infra.time_context import (
     format_current_time_context,
     format_user_turn_time_hint,
@@ -23,8 +24,6 @@ from llm.fallback import _provider_available, create_llm_with_fallback
 from memory.rag import RagStore, is_knowledge_query
 from memory.store import get_user_preferences
 from tools.registry import ToolRegistry
-
-MAX_TOOL_ROUNDS = 6
 
 _TOOL_FAILURE_MARKERS = (
     "Error executing",
@@ -75,21 +74,35 @@ def _get_rag_store() -> RagStore:
     return _rag_store
 
 
+_DEFAULT_AGENT_ROLE = (
+    "You are a helpful personal assistant agent with access to local tools."
+)
+_DEFAULT_TOOL_USE_HINTS = (
+    "Tool use: Do not call the same tool with the same arguments repeatedly. "
+    "If web_fetch already returned page content, answer the user immediately. "
+    "If web_search failed, try web_fetch on one known official URL once, then answer. "
+    "For image/photo/picture requests (especially 百度图片), use baidu_image_search once, "
+    "then show results using the Markdown image URLs returned — do not call web_search for images. "
+    "For local code/files use glob to find paths, grep to search contents, list_dir to browse, "
+    "and text_editor or read_file to read or edit. "
+    "External CLI tools (git, jq, tree, bat, pandoc, ffmpeg, etc.) are available when installed on PATH."
+)
+
+
+def _agent_prompt_parts() -> tuple[str, str]:
+    agent_cfg = load_app_config().get("agent") or {}
+    role = str(agent_cfg.get("role") or _DEFAULT_AGENT_ROLE).strip()
+    hints = str(agent_cfg.get("tool_use_hints") or _DEFAULT_TOOL_USE_HINTS).strip()
+    return role, hints
+
+
 def _build_system_prompt(state: AgentState) -> str:
     prefs = get_user_preferences()
+    role, tool_hints = _agent_prompt_parts()
     parts = [
         format_current_time_context(),
-        "You are a helpful personal assistant agent with access to local tools.",
-        (
-            "Tool use: Do not call the same tool with the same arguments repeatedly. "
-            "If web_fetch already returned page content, answer the user immediately. "
-            "If web_search failed, try web_fetch on one known official URL once, then answer. "
-            "For image/photo/picture requests (especially 百度图片), use baidu_image_search once, "
-            "then show results using the Markdown image URLs returned — do not call web_search for images. "
-            "For local code/files use glob to find paths, grep to search contents, list_dir to browse, "
-            "and text_editor or read_file to read or edit. "
-            "External CLI tools (git, jq, tree, bat, pandoc, ffmpeg, etc.) are available when installed on PATH."
-        ),
+        role,
+        tool_hints,
     ]
 
     meta = state.get("metadata") or {}

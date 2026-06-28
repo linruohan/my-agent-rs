@@ -34,5 +34,15 @@ def verify_token(provided: str) -> bool:
     return secrets.compare_digest(provided, expected)
 
 
+def _auth_disabled() -> bool:
+    return os.environ.get("SIDECAR_AUTH_DISABLED", "").strip().lower() in (
+        "1",
+        "true",
+        "yes",
+    )
+
+
 def auth_required() -> bool:
+    if _auth_disabled():
+        return False
     return bool(get_or_create_token())

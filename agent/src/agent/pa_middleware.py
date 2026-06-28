@@ -8,13 +8,11 @@ from langchain_core.messages import HumanMessage, SystemMessage, ToolMessage
 from langgraph.prebuilt.tool_node import ToolCallRequest
 from loguru import logger
 
+from agent.constants import MAX_TOOL_ROUNDS
 from agent.hitl_node import build_hitl_awrap_tool_call
 from agent.state import AgentState
 from llm.fallback import get_fallback_chain
 from tools.registry import ToolRegistry
-
-MAX_TOOL_ROUNDS = 6
-
 
 class PersonalAssistantMiddleware(AgentMiddleware[AgentState, None]):
     """Middleware for preprocess, reflect, provider fallback, dynamic prompt, and HITL."""

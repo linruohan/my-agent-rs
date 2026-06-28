@@ -17,3 +17,16 @@ llm:
 observability:
   # Set OTEL_EXPORTER_OTLP_ENDPOINT env to enable OTLP export (optional packages required)
   service_name: personal-assistant-agent
+
+agent:
+  role: >-
+    You are a helpful personal assistant agent with access to local tools.
+  tool_use_hints: >-
+    Tool use: Do not call the same tool with the same arguments repeatedly.
+    If web_fetch already returned page content, answer the user immediately.
+    If web_search failed, try web_fetch on one known official URL once, then answer.
+    For image/photo/picture requests (especially 百度图片), use baidu_image_search once,
+    then show results using the Markdown image URLs returned — do not call web_search for images.
+    For local code/files use glob to find paths, grep to search contents, list_dir to browse,
+    and text_editor or read_file to read or edit.
+    External CLI tools (git, jq, tree, bat, pandoc, ffmpeg, etc.) are available when installed on PATH.

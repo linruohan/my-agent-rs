@@ -6,7 +6,6 @@ import { useSettingsStore } from '@/stores/settings';
 import { useKnowledgeStore } from '@/stores/knowledge';
 import { useTasksStore } from '@/stores/tasks';
 import { useMemoryStore } from '@/stores/memory';
-import type { ToolCall } from '@/types';
 import { logStartupMilestone } from '@/utils/startupTiming';
 import {
   archiveSessionRest,
@@ -35,34 +34,25 @@ import {
   requestSyncFromLeader,
   tryClaimLeader,
 } from '@/utils/wsLeader';
+import {
+  canUseRestRead,
+  canUseRestWrite,
+  closeSidecarWs,
+  isSidecarWsOpen,
+  openSidecarWs,
+  resetSidecarWsReconnectAttempt,
+  scheduleSidecarWsReconnect,
+  sendSidecarWsRaw,
+} from '@/utils/sidecarWsConnection';
+import { createSidecarWsMessageHandler } from '@/utils/sidecarWsHandler';
 
-const RECONNECT_DELAYS = [1000, 2000, 4000, 8000, 16000];
-const TOKEN_FLUSH_MS = 50;
-
-const WRITE_MSG_TYPES = new Set([
-  'chat.send',
-  'chat.stop',
-  'chat.resume',
-  'session.create',
-  'session.delete',
-  'session.archive',
-  'session.unarchive',
-  'rag.ingest',
-  'rag.delete',
-  'memory.set',
-]);
-
-let ws: WebSocket | null = null;
-let reconnectAttempt = 0;
-let reconnectTimer: ReturnType<typeof setTimeout> | null = null;
 let pendingCreateTitle: string | undefined;
 let initialSessionBootstrapped = false;
-let tokenBuffer = '';
-let tokenFlushTimer: ReturnType<typeof setTimeout> | null = null;
 let dispatchWsMessage: ((msg: Record<string, unknown>) => void) | null = null;
 let leaderHooksReady = false;
 let channelHandlerReady = false;
 let chatAbortController: AbortController | null = null;
+let pendingHistoryLoads = new Map<string, number>();
 
 async function tryRestFollowerSync(
   sessionStore: ReturnType<typeof useSessionStore>,
@@ -118,8 +108,7 @@ function scheduleFollowerSync(sessionStore: ReturnType<typeof useSessionStore>) 
     }
     if (settings.wsReadOnly) {
       const needsSessions = sessionStore.sessions.length === 0;
-      const needsHistory =
-        !!tid && sessionStore.messages.length === 0;
+      const needsHistory = !!tid && sessionStore.messages.length === 0;
       if (needsSessions || needsHistory) {
         void tryRestFollowerSync(sessionStore, settings);
       }
@@ -158,49 +147,19 @@ function setupChannelHandler(sessionStore: ReturnType<typeof useSessionStore>) {
     }
     if (data.type === 'sync.request' && isWsLeader()) {
       if (!data.historyOnly) {
-        sendRaw({ type: 'session.list' });
-        sendRaw({ type: 'session.archived' });
+        sendSidecarWsRaw({ type: 'session.list' });
+        sendSidecarWsRaw({ type: 'session.archived' });
       }
       const threadId = data.threadId as string | null | undefined;
       if (threadId) {
-        sendRaw({ type: 'session.history', thread_id: threadId });
+        sendSidecarWsRaw({ type: 'session.history', thread_id: threadId });
       }
     }
   });
 }
 
-let pendingHistoryLoads = new Map<string, number>();
-
-async function fetchAuthToken(port: number): Promise<string | null> {
-  return fetchSidecarAuthToken(port);
-}
-
-function flushTokenBuffer(sessionStore: ReturnType<typeof useSessionStore>) {
-  if (tokenBuffer) {
-    sessionStore.appendToLastAssistant(tokenBuffer);
-    tokenBuffer = '';
-  }
-  tokenFlushTimer = null;
-}
-
-function sendRaw(data: Record<string, unknown>) {
-  const pinia = getActivePinia();
-  if (pinia) {
-    const settings = useSettingsStore(pinia);
-    const msgType = data.type as string | undefined;
-    if (settings.wsReadOnly && msgType && WRITE_MSG_TYPES.has(msgType)) {
-      return false;
-    }
-  }
-  if (ws?.readyState === WebSocket.OPEN) {
-    ws.send(JSON.stringify(data));
-    return true;
-  }
-  return false;
-}
-
 registerWsResumeHandler((threadId, decision, editedArgs) => {
-  sendRaw({
+  sendSidecarWsRaw({
     type: 'chat.resume',
     thread_id: threadId,
     decision,
@@ -216,6 +175,119 @@ export function useAgentWs() {
   const memoryStore = useMemoryStore();
   const connectionError = ref('');
 
+  function restReadOk() {
+    return canUseRestRead(settingsStore.sidecarStatus);
+  }
+
+  function restWriteOk() {
+    return canUseRestWrite(settingsStore.sidecarStatus, settingsStore.wsReadOnly);
+  }
+
+  function applySessionCreated(session: {
+    thread_id: string;
+    title: string;
+    created_at: string;
+  }) {
+    sessionStore.sessions.unshift({
+      thread_id: session.thread_id,
+      title: session.title || '新会话',
+      created_at: session.created_at || new Date().toISOString(),
+    });
+    sessionStore.setCurrentThread(session.thread_id);
+    sessionStore.bumpInputFocus();
+  }
+
+  function applySessionDeleted(threadId: string) {
+    sessionStore.sessions = sessionStore.sessions.filter(
+      (s) => s.thread_id !== threadId
+    );
+    sessionStore.removePreview(threadId);
+  }
+
+  function bootstrapInitialSession() {
+    if (sessionStore.currentThreadId || initialSessionBootstrapped) return;
+    initialSessionBootstrapped = true;
+
+    if (settingsStore.wsReadOnly) {
+      bootstrapFollowerSession(sessionStore);
+      return;
+    }
+
+    if (sessionStore.sessions.length > 0) {
+      const latest = sessionStore.sessions[0];
+      sessionStore.setCurrentThread(latest.thread_id);
+      loadSessionHistory(latest.thread_id);
+      sessionStore.bumpInputFocus();
+    } else {
+      createSession('新会话');
+    }
+  }
+
+  function listSessions() {
+    if (sendSidecarWsRaw({ type: 'session.list' })) return;
+    if (!restReadOk()) return;
+    void fetchSessionsRest(settingsStore.sidecarPort)
+      .then((sessions) => {
+        sessionStore.sessions = sessions;
+        if (settingsStore.wsReadOnly) {
+          bootstrapFollowerSession(sessionStore);
+        } else {
+          bootstrapInitialSession();
+        }
+      })
+      .catch(() => {});
+  }
+
+  function listArchivedSessions() {
+    if (sendSidecarWsRaw({ type: 'session.archived' })) return;
+    if (!restReadOk()) return;
+    void fetchArchivedSessionsRest(settingsStore.sidecarPort)
+      .then((sessions) => {
+        sessionStore.archivedSessions = sessions;
+      })
+      .catch(() => {});
+  }
+
+  function listRagSourcesImpl() {
+    knowledgeStore.isLoading = true;
+    if (sendSidecarWsRaw({ type: 'rag.list' })) return;
+    if (!restReadOk()) {
+      knowledgeStore.isLoading = false;
+      return;
+    }
+    void listRagSourcesRest(settingsStore.sidecarPort)
+      .then((sources) => handleMessage({ type: 'rag.list', sources }))
+      .catch(() => {
+        knowledgeStore.isLoading = false;
+      });
+  }
+
+  let handleMessage: (msg: Record<string, unknown>) => void;
+  handleMessage = createSidecarWsMessageHandler({
+    sessionStore,
+    settingsStore,
+    knowledgeStore,
+    tasksStore,
+    memoryStore,
+    connectionError,
+    pendingHistoryLoads,
+    pendingCreateTitle: {
+      get: () => pendingCreateTitle,
+      set: (v) => {
+        pendingCreateTitle = v;
+      },
+    },
+    fetchAuthToken: fetchSidecarAuthToken,
+    sendRaw: sendSidecarWsRaw,
+    listSessions,
+    listArchivedSessions,
+    listRagSources: listRagSourcesImpl,
+    bootstrapInitialSession,
+    bootstrapFollowerSession: () => bootstrapFollowerSession(sessionStore),
+  });
+
+  dispatchWsMessage = handleMessage;
+
   if (!leaderHooksReady) {
     leaderHooksReady = true;
     setupChannelHandler(sessionStore);
@@ -229,7 +301,7 @@ export function useAgentWs() {
         settingsStore.setWsReadOnly(true);
         settingsStore.setWsConnected(false);
         connectionError.value = '已在其他标签页打开，当前为只读模式';
-        disconnectInternal();
+        closeSidecarWs();
         scheduleFollowerSync(sessionStore);
       },
     });
@@ -239,264 +311,6 @@ export function useAgentWs() {
   function wsUrl() {
     return sidecarWsUrl(settingsStore.sidecarPort);
   }
-
-  function isConnected() {
-    return ws?.readyState === WebSocket.OPEN;
-  }
-
-  function handleMessage(msg: Record<string, unknown>) {
-    const type = msg.type as string;
-
-    switch (type) {
-      case 'connected':
-        if (msg.port) settingsStore.setSidecarPort(msg.port as number);
-        settingsStore.setWsConnected(true);
-        connectionError.value = '';
-        if (msg.auth_required) {
-          void (async () => {
-            const port = (msg.port as number) || settingsStore.sidecarPort;
-            const token = await fetchAuthToken(port);
-            if (token) sendRaw({ type: 'auth', token });
-          })();
-        }
-        listSessions();
-        if (pendingCreateTitle !== undefined) {
-          sendRaw({ type: 'session.create', title: pendingCreateTitle });
-          pendingCreateTitle = undefined;
-        }
-        break;
-
-      case 'auth.ok':
-        break;
-
-      case 'tool_progress': {
-        const toolName = msg.tool_name as string;
-        const toolCallId = msg.tool_call_id as string | undefined;
-        sessionStore.updateToolProgress(toolName, toolCallId, msg.status as string);
-        break;
-      }
-
-      case 'token':
-        tokenBuffer += (msg.content as string) || '';
-        if (!tokenFlushTimer) {
-          tokenFlushTimer = setTimeout(
-            () => flushTokenBuffer(sessionStore),
-            TOKEN_FLUSH_MS
-          );
-        }
-        break;
-
-      case 'tool_start': {
-        const toolCallId = (msg.tool_call_id as string) || crypto.randomUUID();
-        const tc: ToolCall = {
-          id: toolCallId,
-          name: msg.name as string,
-          args: (msg.args as Record<string, unknown>) || {},
-          category: msg.category as string,
-          status: 'running',
-        };
-        sessionStore.addPendingToolCall(tc);
-        sessionStore.addMessage({
-          id: toolCallId,
-          role: 'tool',
-          content: `调用工具: ${tc.name}`,
-          toolName: tc.name,
-          category: tc.category,
-        });
-        break;
-      }
-
-      case 'tool_end':
-        sessionStore.resolveToolCall(
-          msg.name as string,
-          msg.result as string,
-          msg.tool_call_id as string | undefined,
-          msg.citations as Array<{ title: string; url: string }> | undefined
-        );
-        break;
-
-      case 'interrupt':
-        sessionStore.interruptQueue.push({
-          thread_id: msg.thread_id as string,
-          action: msg.action as string,
-          preview: msg.preview as string,
-          args: (msg.args as Record<string, unknown>) || {},
-        });
-        break;
-
-      case 'interrupt_timeout_warning':
-        sessionStore.addMessage({
-          id: crypto.randomUUID(),
-          role: 'assistant',
-          content: `⚠️ 操作确认将在 ${msg.seconds_left} 秒后自动拒绝，请尽快确认。`,
-        });
-        break;
-
-      case 'done': {
-        flushTokenBuffer(sessionStore);
-        sessionStore.isStreaming = false;
-        postChannelMessage({ type: 'streaming.end' });
-        const metadata = msg.metadata as {
-          duration_ms?: number;
-          task_data_changed?: boolean;
-          token_usage?: {
-            prompt_tokens?: number;
-            completion_tokens?: number;
-            total_tokens?: number;
-          };
-        } | undefined;
-        if (metadata?.duration_ms != null) {
-          settingsStore.setLastTurnDuration(metadata.duration_ms);
-          sessionStore.setLastAssistantDuration(metadata.duration_ms);
-        }
-        if (metadata?.token_usage?.total_tokens) {
-          settingsStore.setLastTokenUsage({
-            prompt_tokens: metadata.token_usage.prompt_tokens ?? 0,
-            completion_tokens: metadata.token_usage.completion_tokens ?? 0,
-            total_tokens: metadata.token_usage.total_tokens ?? 0,
-          });
-        }
-        if (metadata?.task_data_changed) {
-          void tasksStore.refreshIfRunning();
-        }
-        void memoryStore.refreshAfterConversationTurn();
-        break;
-      }
-
-      case 'scheduler.reminder': {
-        const title = (msg.title as string) || '提醒';
-        const body = (msg.message as string) || '';
-        sessionStore.addMessage({
-          id: crypto.randomUUID(),
-          role: 'assistant',
-          content: `🔔 ${title}: ${body}`,
-        });
-        void tasksStore.refreshReminders();
-        if (!settingsStore.notificationPrefs.desktopEnabled) break;
-        import('@tauri-apps/plugin-notification')
-          .then(({ sendNotification, isPermissionGranted, requestPermission }) => {
-            isPermissionGranted().then((granted) => {
-              if (!granted) requestPermission();
-              sendNotification({ title, body });
-            });
-          })
-          .catch(() => {
-            /* web-only mode */
-          });
-        break;
-      }
-
-      case 'session.archived':
-        sessionStore.archivedSessions =
-          (msg.sessions as typeof sessionStore.archivedSessions) || [];
-        break;
-
-      case 'session.archived_one':
-        if (msg.ok) {
-          listSessions();
-          listArchivedSessions();
-        }
-        break;
-
-      case 'session.unarchived_one':
-        if (msg.ok) {
-          listSessions();
-          listArchivedSessions();
-        }
-        break;
-
-      case 'error':
-        sessionStore.isStreaming = false;
-        sessionStore.addMessage({
-          id: crypto.randomUUID(),
-          role: 'assistant',
-          content: `错误: ${msg.message}`,
-        });
-        break;
-
-      case 'session.list':
-        sessionStore.sessions = (msg.sessions as typeof sessionStore.sessions) || [];
-        if (settingsStore.wsReadOnly) {
-          bootstrapFollowerSession(sessionStore);
-        } else {
-          bootstrapInitialSession();
-        }
-        break;
-
-      case 'session.created': {
-        const threadId = msg.thread_id as string;
-        sessionStore.sessions.unshift({
-          thread_id: threadId,
-          title: (msg.title as string) || '新会话',
-          created_at: (msg.created_at as string) || new Date().toISOString(),
-        });
-        sessionStore.setCurrentThread(threadId);
-        sessionStore.bumpInputFocus();
-        break;
-      }
-
-      case 'session.deleted': {
-        const deletedId = msg.thread_id as string;
-        sessionStore.sessions = sessionStore.sessions.filter(
-          (s) => s.thread_id !== deletedId
-        );
-        sessionStore.removePreview(deletedId);
-        break;
-      }
-
-      case 'session.history': {
-        const threadId = msg.thread_id as string;
-        const expectedGen = pendingHistoryLoads.get(threadId);
-        pendingHistoryLoads.delete(threadId);
-        if (
-          threadId === sessionStore.currentThreadId &&
-          expectedGen === sessionStore.historyLoadGeneration
-        ) {
-          sessionStore.loadHistory(
-            (msg.messages as Array<{
-              role: string;
-              content: string;
-              tool_name?: string;
-            }>) || [],
-            expectedGen
-          );
-        }
-        break;
-      }
-
-      case 'pong':
-        break;
-
-      case 'rag.list':
-        knowledgeStore.setSources((msg.sources as string[]) || []);
-        knowledgeStore.isLoading = false;
-        break;
-
-      case 'rag.ingest':
-        knowledgeStore.setIngestResult((msg.result as string) || '完成');
-        knowledgeStore.isLoading = false;
-        listRagSources();
-        break;
-
-      case 'rag.search':
-        knowledgeStore.setSearchResults(
-          (msg.results as Array<{ source: string; content: string; score: number }>) || []
-        );
-        knowledgeStore.isLoading = false;
-        break;
-
-      case 'rag.deleted':
-        knowledgeStore.isLoading = false;
-        listRagSources();
-        break;
-    }
-
-    if (isWsLeader() && type !== 'pong') {
-      postChannelMessage({ type: 'ws.forward', msg });
-    }
-  }
-
-  dispatchWsMessage = handleMessage;
 
   function connectInternal() {
     if (settingsStore.sidecarStatus === 'starting') {
@@ -508,39 +322,26 @@ export function useAgentWs() {
       return;
     }
 
-    const url = wsUrl();
-    const state = ws?.readyState;
-    if (state === WebSocket.OPEN && ws!.url === url) return;
-    if (state === WebSocket.CONNECTING && ws!.url === url) return;
-
-    ws?.close();
-    ws = new WebSocket(url);
-
-    ws.onopen = () => {
-      reconnectAttempt = 0;
-      settingsStore.setWsConnected(true);
-      settingsStore.setWsReadOnly(false);
-      connectionError.value = '';
-      logStartupMilestone('WebSocket connected — loading complete');
-    };
-
-    ws.onmessage = (e) => {
-      try {
-        handleMessage(JSON.parse(e.data));
-      } catch {
-        console.error('Failed to parse WS message');
-      }
-    };
-
-    ws.onclose = () => {
-      settingsStore.setWsConnected(false);
-      if (isWsLeader()) scheduleReconnect();
-    };
-
-    ws.onerror = () => {
-      settingsStore.setWsConnected(false);
-      connectionError.value = `无法连接 Sidecar (port ${settingsStore.sidecarPort})`;
-    };
+    openSidecarWs(wsUrl(), {
+      onOpen: () => {
+        resetSidecarWsReconnectAttempt();
+        settingsStore.setWsConnected(true);
+        settingsStore.setWsReadOnly(false);
+        connectionError.value = '';
+        logStartupMilestone('WebSocket connected — loading complete');
+      },
+      onMessage: handleMessage,
+      onClose: () => {
+        settingsStore.setWsConnected(false);
+        if (isWsLeader()) {
+          scheduleSidecarWsReconnect(connect, () => settingsStore.sidecarStatus === 'running');
+        }
+      },
+      onError: () => {
+        settingsStore.setWsConnected(false);
+        connectionError.value = `无法连接 Sidecar (port ${settingsStore.sidecarPort})`;
+      },
+    });
   }
 
   function connect() {
@@ -556,22 +357,8 @@ export function useAgentWs() {
     connectInternal();
   }
 
-  function disconnectInternal() {
-    if (reconnectTimer) clearTimeout(reconnectTimer);
-    reconnectTimer = null;
-    ws?.close();
-    ws = null;
-  }
-
-  function scheduleReconnect() {
-    if (reconnectAttempt >= RECONNECT_DELAYS.length) return;
-    if (settingsStore.sidecarStatus !== 'running') return;
-    const delay = RECONNECT_DELAYS[reconnectAttempt++];
-    reconnectTimer = setTimeout(connect, delay);
-  }
-
   function disconnect() {
-    disconnectInternal();
+    closeSidecarWs();
   }
 
   function beginChatTurn(content: string, threadId: string, attachments?: ChatAttachment[]) {
@@ -593,7 +380,7 @@ export function useAgentWs() {
   function send(content: string, threadId: string, attachments?: ChatAttachment[]) {
     beginChatTurn(content, threadId, attachments);
     if (
-      sendRaw({
+      sendSidecarWsRaw({
         type: 'chat.send',
         thread_id: threadId,
         content,
@@ -602,7 +389,7 @@ export function useAgentWs() {
     ) {
       return;
     }
-    if (!canUseRestWrite()) return;
+    if (!restWriteOk()) return;
 
     chatAbortController?.abort();
     chatAbortController = new AbortController();
@@ -628,13 +415,13 @@ export function useAgentWs() {
   }
 
   function stop(threadId: string) {
-    if (sendRaw({ type: 'chat.stop', thread_id: threadId })) {
+    if (sendSidecarWsRaw({ type: 'chat.stop', thread_id: threadId })) {
       sessionStore.isStreaming = false;
       return;
     }
     chatAbortController?.abort();
     chatAbortController = null;
-    if (canUseRestWrite()) {
+    if (restWriteOk()) {
       void stopChatRest(settingsStore.sidecarPort, threadId).catch(() => {});
     }
     sessionStore.isStreaming = false;
@@ -647,7 +434,7 @@ export function useAgentWs() {
   ) {
     sessionStore.isStreaming = true;
     if (
-      sendRaw({
+      sendSidecarWsRaw({
         type: 'chat.resume',
         thread_id: threadId,
         decision,
@@ -656,7 +443,7 @@ export function useAgentWs() {
     ) {
       return;
     }
-    if (!canUseRestWrite()) return;
+    if (!restWriteOk()) return;
 
     chatAbortController?.abort();
     chatAbortController = new AbortController();
@@ -681,63 +468,9 @@ export function useAgentWs() {
     });
   }
 
-  function canUseRestRead() {
-    return settingsStore.sidecarStatus === 'running';
-  }
-
-  function canUseRestWrite() {
-    return !settingsStore.wsReadOnly && settingsStore.sidecarStatus === 'running';
-  }
-
-  function applySessionCreated(session: {
-    thread_id: string;
-    title: string;
-    created_at: string;
-  }) {
-    sessionStore.sessions.unshift({
-      thread_id: session.thread_id,
-      title: session.title || '新会话',
-      created_at: session.created_at || new Date().toISOString(),
-    });
-    sessionStore.setCurrentThread(session.thread_id);
-    sessionStore.bumpInputFocus();
-  }
-
-  function applySessionDeleted(threadId: string) {
-    sessionStore.sessions = sessionStore.sessions.filter(
-      (s) => s.thread_id !== threadId
-    );
-    sessionStore.removePreview(threadId);
-  }
-
-  function listSessions() {
-    if (sendRaw({ type: 'session.list' })) return;
-    if (!canUseRestRead()) return;
-    void fetchSessionsRest(settingsStore.sidecarPort)
-      .then((sessions) => {
-        sessionStore.sessions = sessions;
-        if (settingsStore.wsReadOnly) {
-          bootstrapFollowerSession(sessionStore);
-        } else {
-          bootstrapInitialSession();
-        }
-      })
-      .catch(() => {});
-  }
-
-  function listArchivedSessions() {
-    if (sendRaw({ type: 'session.archived' })) return;
-    if (!canUseRestRead()) return;
-    void fetchArchivedSessionsRest(settingsStore.sidecarPort)
-      .then((sessions) => {
-        sessionStore.archivedSessions = sessions;
-      })
-      .catch(() => {});
-  }
-
   function archiveSession(threadId: string) {
-    if (sendRaw({ type: 'session.archive', thread_id: threadId })) return;
-    if (!canUseRestWrite()) return;
+    if (sendSidecarWsRaw({ type: 'session.archive', thread_id: threadId })) return;
+    if (!restWriteOk()) return;
     void archiveSessionRest(settingsStore.sidecarPort, threadId)
       .then(() => {
         listSessions();
@@ -747,8 +480,8 @@ export function useAgentWs() {
   }
 
   function unarchiveSession(threadId: string) {
-    if (sendRaw({ type: 'session.unarchive', thread_id: threadId })) return;
-    if (!canUseRestWrite()) return;
+    if (sendSidecarWsRaw({ type: 'session.unarchive', thread_id: threadId })) return;
+    if (!restWriteOk()) return;
     void unarchiveSessionRest(settingsStore.sidecarPort, threadId)
       .then(() => {
         listSessions();
@@ -757,29 +490,10 @@ export function useAgentWs() {
       .catch(() => {});
   }
 
-  function bootstrapInitialSession() {
-    if (sessionStore.currentThreadId || initialSessionBootstrapped) return;
-    initialSessionBootstrapped = true;
-
-    if (settingsStore.wsReadOnly) {
-      bootstrapFollowerSession(sessionStore);
-      return;
-    }
-
-    if (sessionStore.sessions.length > 0) {
-      const latest = sessionStore.sessions[0];
-      sessionStore.setCurrentThread(latest.thread_id);
-      loadSessionHistory(latest.thread_id);
-      sessionStore.bumpInputFocus();
-    } else {
-      createSession('新会话');
-    }
-  }
-
   function createSession(title?: string): boolean {
     if (settingsStore.wsReadOnly) return false;
-    if (sendRaw({ type: 'session.create', title })) return true;
-    if (canUseRestWrite()) {
+    if (sendSidecarWsRaw({ type: 'session.create', title })) return true;
+    if (restWriteOk()) {
       void createSessionRest(settingsStore.sidecarPort, title)
         .then((session) => applySessionCreated(session))
         .catch(() => {
@@ -795,8 +509,8 @@ export function useAgentWs() {
 
   function deleteSession(threadId: string) {
     if (settingsStore.wsReadOnly) return;
-    if (sendRaw({ type: 'session.delete', thread_id: threadId })) return;
-    if (!canUseRestWrite()) return;
+    if (sendSidecarWsRaw({ type: 'session.delete', thread_id: threadId })) return;
+    if (!restWriteOk()) return;
     void deleteSessionRest(settingsStore.sidecarPort, threadId)
       .then(() => applySessionDeleted(threadId))
       .catch(() => {});
@@ -821,47 +535,33 @@ export function useAgentWs() {
     pendingHistoryLoads.set(threadId, sessionStore.historyLoadGeneration);
     if (settingsStore.wsReadOnly) {
       requestSyncFromLeader(threadId, { historyOnly: true });
-      if (canUseRestRead()) {
+      if (restReadOk()) {
         void applyHistoryFromRest(threadId);
       }
       window.setTimeout(() => {
         if (
           threadId === sessionStore.currentThreadId &&
           sessionStore.messages.length === 0 &&
-          canUseRestRead()
+          restReadOk()
         ) {
           void applyHistoryFromRest(threadId);
         }
       }, 800);
       return;
     }
-    if (sendRaw({ type: 'session.history', thread_id: threadId })) return;
-    if (!canUseRestRead()) return;
+    if (sendSidecarWsRaw({ type: 'session.history', thread_id: threadId })) return;
+    if (!restReadOk()) return;
     void applyHistoryFromRest(threadId);
   }
 
   function ping() {
-    sendRaw({ type: 'ping' });
-  }
-
-  function listRagSources() {
-    knowledgeStore.isLoading = true;
-    if (sendRaw({ type: 'rag.list' })) return;
-    if (!canUseRestRead()) {
-      knowledgeStore.isLoading = false;
-      return;
-    }
-    void listRagSourcesRest(settingsStore.sidecarPort)
-      .then((sources) => handleMessage({ type: 'rag.list', sources }))
-      .catch(() => {
-        knowledgeStore.isLoading = false;
-      });
+    sendSidecarWsRaw({ type: 'ping' });
   }
 
   function ingestRagContent(source: string, content: string) {
     knowledgeStore.isLoading = true;
-    if (sendRaw({ type: 'rag.ingest', source, content })) return;
-    if (!canUseRestWrite()) {
+    if (sendSidecarWsRaw({ type: 'rag.ingest', source, content })) return;
+    if (!restWriteOk()) {
       knowledgeStore.isLoading = false;
       return;
     }
@@ -877,8 +577,8 @@ export function useAgentWs() {
 
   function searchRag(query: string, topK = 6) {
     knowledgeStore.isLoading = true;
-    if (sendRaw({ type: 'rag.search', query, top_k: topK })) return;
-    if (!canUseRestRead()) {
+    if (sendSidecarWsRaw({ type: 'rag.search', query, top_k: topK })) return;
+    if (!restReadOk()) {
       knowledgeStore.isLoading = false;
       return;
     }
@@ -891,8 +591,8 @@ export function useAgentWs() {
 
   function deleteRagSource(source: string) {
     knowledgeStore.isLoading = true;
-    if (sendRaw({ type: 'rag.delete', source })) return;
-    if (!canUseRestWrite()) {
+    if (sendSidecarWsRaw({ type: 'rag.delete', source })) return;
+    if (!restWriteOk()) {
       knowledgeStore.isLoading = false;
       return;
     }
@@ -918,10 +618,10 @@ export function useAgentWs() {
     deleteSession,
     loadSessionHistory,
     ping,
-    listRagSources,
+    listRagSources: listRagSourcesImpl,
     ingestRagContent,
     searchRag,
     deleteRagSource,
-    isConnected,
+    isConnected: isSidecarWsOpen,
   };
 }

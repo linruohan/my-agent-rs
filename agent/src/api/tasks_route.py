@@ -1,11 +1,24 @@
 from __future__ import annotations
 
+import functools
 from typing import Any
 
 from fastapi import APIRouter, HTTPException
 from pydantic import BaseModel
 
+from api.broadcast import notify_tasks_changed
+
 router = APIRouter(prefix="/tasks", tags=["tasks"])
+
+
+def _after_tasks_mutation(func):
+    @functools.wraps(func)
+    def wrapper(*args, **kwargs):
+        result = func(*args, **kwargs)
+        notify_tasks_changed(func.__name__)
+        return result
+
+    return wrapper
 
 
 class TodoCreateBody(BaseModel):
@@ -201,6 +214,7 @@ def get_project_api(project_id: int) -> dict[str, Any]:
 
 
 @router.post("/projects")
+@_after_tasks_mutation
 def create_project_api(body: ProjectCreateBody) -> dict[str, Any]:
     from tools.business.project import create_project_record
 
@@ -218,6 +232,7 @@ def create_project_api(body: ProjectCreateBody) -> dict[str, Any]:
 
 
 @router.patch("/projects/{project_id}")
+@_after_tasks_mutation
 def patch_project_api(project_id: int, body: ProjectPatchBody) -> dict[str, Any]:
     from tools.business.project import update_project_record
 
@@ -238,6 +253,7 @@ def patch_project_api(project_id: int, body: ProjectPatchBody) -> dict[str, Any]
 
 
 @router.delete("/projects/{project_id}")
+@_after_tasks_mutation
 def delete_project_api(project_id: int) -> dict[str, Any]:
     from tools.business.project import delete_project_record, get_project_record
 
@@ -262,6 +278,7 @@ def list_sections_api(project_id: int, status: str = "") -> dict[str, Any]:
 
 
 @router.post("/projects/{project_id}/sections")
+@_after_tasks_mutation
 def create_section_api(project_id: int, body: SectionCreateBody) -> dict[str, Any]:
     from tools.business.project import create_section_record, get_project_record
 
@@ -297,6 +314,7 @@ def get_section_api(section_id: int) -> dict[str, Any]:
 
 
 @router.patch("/sections/{section_id}")
+@_after_tasks_mutation
 def patch_section_api(section_id: int, body: SectionPatchBody) -> dict[str, Any]:
     from tools.business.project import update_section_record
 
@@ -318,6 +336,7 @@ def patch_section_api(section_id: int, body: SectionPatchBody) -> dict[str, Any]
 
 
 @router.delete("/sections/{section_id}")
+@_after_tasks_mutation
 def delete_section_api(section_id: int) -> dict[str, Any]:
     from tools.business.project import delete_section_record, get_section_record
 
@@ -338,6 +357,7 @@ def list_section_summaries_api(section_id: int) -> dict[str, Any]:
 
 
 @router.post("/sections/{section_id}/summaries")
+@_after_tasks_mutation
 def upsert_section_summary_api(section_id: int, body: SectionSummaryBody) -> dict[str, Any]:
     from tools.business.project import get_section_record, upsert_section_summary_record
 
@@ -358,6 +378,7 @@ def upsert_section_summary_api(section_id: int, body: SectionSummaryBody) -> dic
 
 
 @router.post("/projects/{project_id}/docs")
+@_after_tasks_mutation
 def add_project_doc_api(project_id: int, body: ProjectDocBody) -> dict[str, Any]:
     from tools.business.project import add_project_doc_record
 
@@ -390,6 +411,7 @@ def list_todos_api(
 
 
 @router.post("/todos")
+@_after_tasks_mutation
 def create_todo_api(body: TodoCreateBody) -> dict[str, Any]:
     from tools.business.todo import create_todo_record
 
@@ -410,6 +432,7 @@ def create_todo_api(body: TodoCreateBody) -> dict[str, Any]:
 
 
 @router.patch("/todos/{todo_id}")
+@_after_tasks_mutation
 def patch_todo_api(todo_id: int, body: TodoPatchBody) -> dict[str, Any]:
     from tools.business.todo import update_todo_record
 
@@ -432,6 +455,7 @@ def patch_todo_api(todo_id: int, body: TodoPatchBody) -> dict[str, Any]:
 
 
 @router.delete("/todos/{todo_id}")
+@_after_tasks_mutation
 def delete_todo_api(todo_id: int) -> dict[str, Any]:
     from tools.business.todo import delete_todo_record, get_todo_record
 
@@ -443,6 +467,7 @@ def delete_todo_api(todo_id: int) -> dict[str, Any]:
 
 
 @router.put("/todos/{todo_id}/reminder")
+@_after_tasks_mutation
 def set_todo_reminder_api(todo_id: int, body: ReminderBody) -> dict[str, Any]:
     from tools.business.todo import update_todo_record
 
@@ -463,6 +488,7 @@ def list_labels_api() -> dict[str, Any]:
 
 
 @router.post("/labels")
+@_after_tasks_mutation
 def create_label_api(body: LabelCreateBody) -> dict[str, Any]:
     from tools.task.label_store import create_label_record
 
@@ -474,6 +500,7 @@ def create_label_api(body: LabelCreateBody) -> dict[str, Any]:
 
 
 @router.patch("/labels/{label_id}")
+@_after_tasks_mutation
 def patch_label_api(label_id: int, body: LabelPatchBody) -> dict[str, Any]:
     from tools.task.label_store import update_label_record
 
@@ -487,6 +514,7 @@ def patch_label_api(label_id: int, body: LabelPatchBody) -> dict[str, Any]:
 
 
 @router.delete("/labels/{label_id}")
+@_after_tasks_mutation
 def delete_label_api(label_id: int) -> dict[str, Any]:
     from tools.task.label_store import delete_label_record
 
@@ -496,6 +524,7 @@ def delete_label_api(label_id: int) -> dict[str, Any]:
 
 
 @router.put("/projects/{project_id}/reminder")
+@_after_tasks_mutation
 def set_project_reminder_api(project_id: int, body: ReminderBody) -> dict[str, Any]:
     from tools.business.project import update_project_record
 

@@ -2,98 +2,53 @@ import { ref } from 'vue';
 import { defineStore } from 'pinia';
 import { localDatetimeToIso } from '@/utils/dateTime';
 import { useSettingsStore } from '@/stores/settings';
-import { sidecarBaseUrl } from '@/utils/sidecarFetch';
-import { fetchTaskRemindersRest } from '@/utils/sidecarTasks';
+import type {
+  LabelItem,
+  ProjectDoc,
+  ProjectItem,
+  SectionItem,
+  SectionSummary,
+  TaskReminderRow,
+  TodoItem,
+} from '@/types/tasks';
+import {
+  addProjectDocRest,
+  createLabelRest,
+  createProjectRest,
+  createSectionRest,
+  createTodoRest,
+  deleteLabelRest,
+  deleteProjectRest,
+  deleteSectionRest,
+  deleteTodoRest,
+  fetchProjectDetailRest,
+  fetchProjectSectionsRest,
+  fetchSectionDetailRest,
+  fetchTaskRemindersRest,
+  fetchTasksSnapshot,
+  patchLabelRest,
+  patchProjectRest,
+  patchSectionRest,
+  patchTodoRest,
+  saveSectionSummaryRest,
+  setProjectReminderRest,
+} from '@/utils/sidecarTasks';
 
-export type ProjectStats = {
-  total: number;
-  completed: number;
-  by_priority: Record<string, number>;
-  by_status?: Record<string, number>;
-};
-
-export type SectionItem = {
-  id: number;
-  project_id: number;
-  name: string;
-  start_at: string;
-  end_at: string;
-  owner: string;
-  goals: string;
-  status: string;
-  stats?: ProjectStats;
-};
-
-export type SectionSummary = {
-  id: number;
-  section_id: number;
-  summary_date: string;
-  progress: string;
-  risks: string;
-  challenges: string;
-  notes: string;
-};
-
-export type ProjectDoc = {
-  id: number;
-  project_id: number;
-  title: string;
-  file_path: string;
-  note: string;
-  rag_ingest?: string;
-};
-
-export type ProjectItem = {
-  id: number;
-  name: string;
-  description: string;
-  status: string;
-  start_at?: string;
-  end_at?: string;
-  due_date: string;
-  owner?: string;
-  is_inbox?: boolean;
-  stats?: ProjectStats;
-  doc_count?: number;
-  remind_at?: string;
-};
-
-export type TodoItem = {
-  id: number;
-  title: string;
-  due_date: string;
-  priority: string;
-  completed: boolean;
-  project_id: number | null;
-  section_id?: number | null;
-  description: string;
-  remind_at?: string;
-  owner?: string;
-  status?: string;
-  tags?: string[];
-  attachments?: Array<{ type: string; value: string }>;
-};
-
-export type LabelItem = {
-  id: number;
-  name: string;
-  color: string;
-  created_at?: string;
-  updated_at?: string;
-};
+export type {
+  LabelItem,
+  ProjectDoc,
+  ProjectItem,
+  ProjectStats,
+  SectionItem,
+  SectionSummary,
+  TodoItem,
+} from '@/types/tasks';
 
 export type TaskViewMode = 'filter' | 'project';
 
 export type TaskFilterId = import('@/utils/taskFilters').TaskFilterId;
 
-export type ReminderItem = {
-  job_id: string;
-  run_at: string;
-  title: string;
-  message: string;
-  entity_type: string;
-  entity_id?: number;
-};
+export type ReminderItem = TaskReminderRow;
 
 export const useTasksStore = defineStore('tasks', () => {
   const projects = ref<ProjectItem[]>([]);
@@ -184,9 +139,7 @@ export const useTasksStore = defineStore('tasks', () => {
     loading.value = true;
     error.value = '';
     try {
-      const res = await fetch(`${sidecarBaseUrl(port)}/tasks/snapshot?include_completed=true`);
-      if (!res.ok) throw new Error(await res.text());
-      const data = await res.json();
+      const data = await fetchTasksSnapshot(port);
       inbox.value = data.inbox ?? null;
       projects.value = (data.projects ?? []).filter((p: ProjectItem) => !p.is_inbox);
       allTodos.value = data.todos ?? [];
@@ -196,12 +149,9 @@ export const useTasksStore = defineStore('tasks', () => {
       bumpRevision();
 
       if (viewMode.value === 'project' && selectedProjectId.value != null) {
-        const detail = await fetch(`${sidecarBaseUrl(port)}/tasks/projects/${selectedProjectId.value}`);
-        if (detail.ok) {
-          const pj = await detail.json();
-          sections.value = pj.sections ?? [];
-          projectDocs.value = pj.docs ?? [];
-        }
+        const pj = await fetchProjectDetailRest(port, selectedProjectId.value);
+        sections.value = pj.sections ?? [];
+        projectDocs.value = pj.docs ?? [];
       } else if (viewMode.value === 'project' && selectedProjectId.value == null) {
         sections.value = [];
       } else {
@@ -283,38 +233,25 @@ export const useTasksStore = defineStore('tasks', () => {
   }
 
   async function loadSections(port: number, projectId: number) {
-    const res = await fetch(`${sidecarBaseUrl(port)}/tasks/projects/${projectId}/sections`);
-    if (!res.ok) throw new Error(await res.text());
-    const data = await res.json();
-    sections.value = data.sections ?? [];
+    sections.value = await fetchProjectSectionsRest(port, projectId);
   }
 
   async function fetchProjectDetail(port: number, projectId: number) {
-    const res = await fetch(`${sidecarBaseUrl(port)}/tasks/projects/${projectId}`);
-    if (!res.ok) throw new Error(await res.text());
-    const data = await res.json();
+    const data = await fetchProjectDetailRest(port, projectId);
     projectDocs.value = data.docs ?? [];
     sections.value = data.sections ?? [];
     return data;
   }
 
   async function fetchSectionDetail(port: number, sectionId: number) {
-    const res = await fetch(`${sidecarBaseUrl(port)}/tasks/sections/${sectionId}`);
-    if (!res.ok) throw new Error(await res.text());
-    const data = await res.json();
+    const data = await fetchSectionDetailRest(port, sectionId);
     sectionSummaries.value = data.summaries ?? [];
     return data;
   }
 
   async function toggleTodoComplete(port: number, todo: TodoItem) {
-    const res = await fetch(`${sidecarBaseUrl(port)}/tasks/todos/${todo.id}`, {
-      method: 'PATCH',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ completed: !todo.completed }),
-    });
-    if (!res.ok) throw new Error(await res.text());
-    const data = await res.json();
-    if (data.todo) mergeTodo(data.todo as TodoItem);
+    const data = await patchTodoRest(port, todo.id, { completed: !todo.completed });
+    if (data.todo) mergeTodo(data.todo);
     await refresh(port);
   }
 
@@ -336,16 +273,10 @@ export const useTasksStore = defineStore('tasks', () => {
       due_date: payload.due_date ? toIsoDatetime(payload.due_date) : '',
       remind_at: payload.remind_at ? toIsoDatetime(payload.remind_at) : '',
     };
-    const res = await fetch(`${sidecarBaseUrl(port)}/tasks/todos`, {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify(body),
-    });
-    if (!res.ok) throw new Error(await res.text());
-    const data = await res.json();
-    if (data.todo) mergeTodo(data.todo as TodoItem);
+    const data = await createTodoRest(port, body);
+    if (data.todo) mergeTodo(data.todo);
     await refresh(port);
-    return data.todo as TodoItem | undefined;
+    return data.todo;
   }
 
   async function updateTodo(
@@ -371,14 +302,8 @@ export const useTasksStore = defineStore('tasks', () => {
     if (payload.remind_at !== undefined) {
       body.remind_at = payload.remind_at ? toIsoDatetime(payload.remind_at) : '';
     }
-    const res = await fetch(`${sidecarBaseUrl(port)}/tasks/todos/${todoId}`, {
-      method: 'PATCH',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify(body),
-    });
-    if (!res.ok) throw new Error(await res.text());
-    const data = await res.json();
-    if (data.todo) mergeTodo(data.todo as TodoItem);
+    const data = await patchTodoRest(port, todoId, body);
+    if (data.todo) mergeTodo(data.todo);
     await refresh(port);
   }
 
@@ -394,27 +319,21 @@ export const useTasksStore = defineStore('tasks', () => {
       remind_at?: string;
     }
   ) {
-    const res = await fetch(`${sidecarBaseUrl(port)}/tasks/projects`, {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({
-        name: payload.name,
-        description: payload.description ?? '',
-        status: payload.status ?? 'active',
-        start_at: payload.start_at ? toIsoDate(payload.start_at) : '',
-        end_at: payload.end_at ? toIsoDate(payload.end_at) : '',
-        due_date: payload.end_at ? toIsoDate(payload.end_at) : '',
-        owner: payload.owner ?? '',
-        remind_at: payload.remind_at ? toIsoDatetime(payload.remind_at) : '',
-      }),
+    const data = await createProjectRest(port, {
+      name: payload.name,
+      description: payload.description ?? '',
+      status: payload.status ?? 'active',
+      start_at: payload.start_at ? toIsoDate(payload.start_at) : '',
+      end_at: payload.end_at ? toIsoDate(payload.end_at) : '',
+      due_date: payload.end_at ? toIsoDate(payload.end_at) : '',
+      owner: payload.owner ?? '',
+      remind_at: payload.remind_at ? toIsoDatetime(payload.remind_at) : '',
     });
-    if (!res.ok) throw new Error(await res.text());
-    const data = await res.json();
     if (data.project) {
-      mergeProject(data.project as ProjectItem);
+      mergeProject(data.project);
     }
     await refresh(port);
-    return data.project as ProjectItem | undefined;
+    return data.project;
   }
 
   /** @deprecated 使用 createProject(port, { name, ... }) */
@@ -457,12 +376,7 @@ export const useTasksStore = defineStore('tasks', () => {
     if (payload.remind_at !== undefined) {
       body.remind_at = payload.remind_at ? toIsoDatetime(payload.remind_at) : '';
     }
-    const res = await fetch(`${sidecarBaseUrl(port)}/tasks/projects/${projectId}`, {
-      method: 'PATCH',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify(body),
-    });
-    if (!res.ok) throw new Error(await res.text());
+    await patchProjectRest(port, projectId, body);
     await refresh(port);
     if (selectedProjectId.value === projectId) {
       await fetchProjectDetail(port, projectId);
@@ -488,12 +402,7 @@ export const useTasksStore = defineStore('tasks', () => {
     if (payload.end_at !== undefined) {
       body.end_at = payload.end_at ? toIsoDate(payload.end_at) : '';
     }
-    const res = await fetch(`${sidecarBaseUrl(port)}/tasks/sections/${sectionId}`, {
-      method: 'PATCH',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify(body),
-    });
-    if (!res.ok) throw new Error(await res.text());
+    await patchSectionRest(port, sectionId, body);
     const pid = selectedProjectId.value;
     if (pid != null) await loadSections(port, pid);
     await refresh(port);
@@ -511,19 +420,14 @@ export const useTasksStore = defineStore('tasks', () => {
       status?: string;
     }
   ) {
-    const res = await fetch(`${sidecarBaseUrl(port)}/tasks/projects/${projectId}/sections`, {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({
-        name: payload.name,
-        goals: payload.goals ?? '',
-        owner: payload.owner ?? '',
-        status: payload.status ?? 'active',
-        start_at: payload.start_at ? toIsoDate(payload.start_at) : '',
-        end_at: payload.end_at ? toIsoDate(payload.end_at) : '',
-      }),
+    await createSectionRest(port, projectId, {
+      name: payload.name,
+      goals: payload.goals ?? '',
+      owner: payload.owner ?? '',
+      status: payload.status ?? 'active',
+      start_at: payload.start_at ? toIsoDate(payload.start_at) : '',
+      end_at: payload.end_at ? toIsoDate(payload.end_at) : '',
     });
-    if (!res.ok) throw new Error(await res.text());
     await loadSections(port, projectId);
     await refresh(port);
   }
@@ -539,22 +443,12 @@ export const useTasksStore = defineStore('tasks', () => {
       notes?: string;
     }
   ) {
-    const res = await fetch(`${sidecarBaseUrl(port)}/tasks/sections/${sectionId}/summaries`, {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify(payload),
-    });
-    if (!res.ok) throw new Error(await res.text());
+    await saveSectionSummaryRest(port, sectionId, payload);
     await fetchSectionDetail(port, sectionId);
   }
 
   async function updateProjectStatus(port: number, projectId: number, status: string) {
-    const res = await fetch(`${sidecarBaseUrl(port)}/tasks/projects/${projectId}`, {
-      method: 'PATCH',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ status }),
-    });
-    if (!res.ok) throw new Error(await res.text());
+    await patchProjectRest(port, projectId, { status });
     await refresh(port);
   }
 
@@ -563,13 +457,7 @@ export const useTasksStore = defineStore('tasks', () => {
     projectId: number,
     payload: { title: string; file_path?: string; note?: string }
   ) {
-    const res = await fetch(`${sidecarBaseUrl(port)}/tasks/projects/${projectId}/docs`, {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ ...payload, auto_ingest: true }),
-    });
-    if (!res.ok) throw new Error(await res.text());
-    const data = await res.json();
+    const data = await addProjectDocRest(port, projectId, { ...payload, auto_ingest: true });
     lastDocMessage.value = data.doc?.rag_ingest ?? '文档已添加';
     await fetchProjectDetail(port, projectId);
     await refresh(port);
@@ -582,32 +470,28 @@ export const useTasksStore = defineStore('tasks', () => {
   }
 
   async function setProjectReminder(port: number, projectId: number, remindAt: string) {
-    const res = await fetch(`${sidecarBaseUrl(port)}/tasks/projects/${projectId}/reminder`, {
-      method: 'PUT',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ remind_at: remindAt ? toIsoDatetime(remindAt) : '' }),
-    });
-    if (!res.ok) throw new Error(await res.text());
+    await setProjectReminderRest(
+      port,
+      projectId,
+      remindAt ? toIsoDatetime(remindAt) : ''
+    );
     await refresh(port);
   }
 
   async function deleteTodo(port: number, todoId: number) {
-    const res = await fetch(`${sidecarBaseUrl(port)}/tasks/todos/${todoId}`, { method: 'DELETE' });
-    if (!res.ok) throw new Error(await res.text());
+    await deleteTodoRest(port, todoId);
     removeTodoLocal(todoId);
     await refresh(port);
   }
 
   async function deleteProject(port: number, projectId: number) {
-    const res = await fetch(`${sidecarBaseUrl(port)}/tasks/projects/${projectId}`, { method: 'DELETE' });
-    if (!res.ok) throw new Error(await res.text());
+    await deleteProjectRest(port, projectId);
     removeProjectLocal(projectId);
     await refresh(port);
   }
 
   async function deleteSection(port: number, sectionId: number) {
-    const res = await fetch(`${sidecarBaseUrl(port)}/tasks/sections/${sectionId}`, { method: 'DELETE' });
-    if (!res.ok) throw new Error(await res.text());
+    await deleteSectionRest(port, sectionId);
     removeSectionLocal(sectionId);
     const pid = selectedProjectId.value;
     if (pid != null) await loadSections(port, pid);
@@ -615,14 +499,9 @@ export const useTasksStore = defineStore('tasks', () => {
   }
 
   async function createLabel(port: number, payload: { name: string; color: string }) {
-    const res = await fetch(`${sidecarBaseUrl(port)}/tasks/labels`, {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify(payload),
-    });
-    if (!res.ok) throw new Error(await res.text());
+    const data = await createLabelRest(port, payload);
     await refresh(port);
-    return (await res.json()).label as LabelItem;
+    return data.label;
   }
 
   async function updateLabel(
@@ -630,19 +509,13 @@ export const useTasksStore = defineStore('tasks', () => {
     labelId: number,
     payload: { name?: string; color?: string }
   ) {
-    const res = await fetch(`${sidecarBaseUrl(port)}/tasks/labels/${labelId}`, {
-      method: 'PATCH',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify(payload),
-    });
-    if (!res.ok) throw new Error(await res.text());
+    const data = await patchLabelRest(port, labelId, payload);
     await refresh(port);
-    return (await res.json()).label as LabelItem;
+    return data.label;
   }
 
   async function deleteLabel(port: number, labelId: number) {
-    const res = await fetch(`${sidecarBaseUrl(port)}/tasks/labels/${labelId}`, { method: 'DELETE' });
-    if (!res.ok) throw new Error(await res.text());
+    await deleteLabelRest(port, labelId);
     if (activeLabel.value) {
       const deleted = labels.value.find((l) => l.id === labelId);
       if (deleted && activeLabel.value === deleted.name) {
