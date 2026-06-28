@@ -34,7 +34,9 @@ Import `observability/grafana/personal-assistant-dashboard.json`:
 | Latency p95 | `turn_duration_ms_p95`, `tool_call_duration_ms_p95` |
 | Tool Calls Success | `tool_calls_success` |
 | Tool Call Errors | `tool_calls_error` |
+| RAG Ingest Requests | `rag_ingest_requests` |
 | RAG Ingest Rate Limited | `rag_ingest_rate_limited` |
+| RAG Ingest Throughput | `rate(rag_ingest_requests[5m])`, `rate(rag_ingest_rate_limited[5m])` |
 
 ## OpenTelemetry (optional)
 

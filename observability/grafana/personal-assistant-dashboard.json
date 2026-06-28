@@ -159,6 +159,65 @@
       ],
       "title": "RAG Ingest Rate Limited",
       "type": "stat"
+    },
+    {
+      "datasource": { "type": "prometheus", "uid": "${DS_PROMETHEUS}" },
+      "fieldConfig": {
+        "defaults": {
+          "color": { "mode": "thresholds" },
+          "unit": "short"
+        },
+        "overrides": []
+      },
+      "gridPos": { "h": 8, "w": 8, "x": 0, "y": 16 },
+      "id": 6,
+      "options": {
+        "colorMode": "value",
+        "graphMode": "area",
+        "justifyMode": "auto",
+        "orientation": "auto",
+        "reduceOptions": { "calcs": ["lastNotNull"], "fields": "", "values": false },
+        "textMode": "auto"
+      },
+      "targets": [
+        {
+          "expr": "rag_ingest_requests",
+          "legendFormat": "requests",
+          "refId": "A"
+        }
+      ],
+      "title": "RAG Ingest Requests",
+      "type": "stat"
+    },
+    {
+      "datasource": { "type": "prometheus", "uid": "${DS_PROMETHEUS}" },
+      "fieldConfig": {
+        "defaults": {
+          "color": { "mode": "palette-classic" },
+          "unit": "short"
+        },
+        "overrides": []
+      },
+      "gridPos": { "h": 8, "w": 16, "x": 8, "y": 16 },
+      "id": 7,
+      "options": {
+        "legend": { "displayMode": "list", "placement": "bottom" },
+        "tooltip": { "mode": "single" }
+      },
+      "targets": [
+        {
+          "expr": "rate(rag_ingest_requests[5m])",
+          "legendFormat": "requests/s",
+          "refId": "A"
+        },
+        {
+          "expr": "rate(rag_ingest_rate_limited[5m])",
+          "legendFormat": "limited/s",
+          "refId": "B"
+        }
+      ],
+      "title": "RAG Ingest Throughput",
+      "type": "timeseries"
     }
   ],
   "refresh": "10s",
