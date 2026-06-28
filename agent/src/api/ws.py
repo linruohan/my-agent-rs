@@ -17,6 +17,43 @@ VERSION = "0.1.0"
 
 _thread_emitters: dict[str, Any] = {}
 _authenticated_ws: set[int] = set()
+_hitl_callbacks_registered = False
+
+
+def set_thread_emitter(thread_id: str, emit: Any) -> None:
+    _thread_emitters[thread_id] = emit
+
+
+def clear_thread_emitter(thread_id: str) -> None:
+    _thread_emitters.pop(thread_id, None)
+
+
+def _register_hitl_callbacks(runner: AgentRunner) -> None:
+    global _hitl_callbacks_registered
+    if _hitl_callbacks_registered:
+        return
+    _hitl_callbacks_registered = True
+
+    async def auto_hitl_resume(thread_id: str, decision: str, edited_args: dict | None):
+        emitter = _thread_emitters.get(thread_id)
+        if emitter is None:
+            return
+        await runner.resume(thread_id, decision, edited_args, emitter)
+
+    async def hitl_notify(thread_id: str, seconds_left: int):
+        emitter = _thread_emitters.get(thread_id)
+        if emitter is None:
+            return
+        await emitter(
+            {
+                "type": "interrupt_timeout_warning",
+                "thread_id": thread_id,
+                "seconds_left": seconds_left,
+            }
+        )
+
+    hitl_timeout_manager.set_resume_callback(auto_hitl_resume)
+    hitl_timeout_manager.set_notify_callback(hitl_notify)
 
 PROTECTED_MSG_TYPES = frozenset(
     {
@@ -65,6 +102,7 @@ def create_ws_router(
     port: int,
 ) -> APIRouter:
     ws_router = APIRouter()
+    _register_hitl_callbacks(runner)
 
     @ws_router.websocket("/ws")
     async def websocket_endpoint(ws: WebSocket):
@@ -76,23 +114,6 @@ def create_ws_router(
 
         def is_authenticated() -> bool:
             return not auth_required() or ws_id in _authenticated_ws
-
-        async def auto_hitl_resume(thread_id: str, decision: str, edited_args: dict | None):
-            emitter = _thread_emitters.get(thread_id, emit)
-            await runner.resume(thread_id, decision, edited_args, emitter)
-
-        hitl_timeout_manager.set_resume_callback(auto_hitl_resume)
-
-        async def hitl_notify(thread_id: str, seconds_left: int):
-            await emit(
-                {
-                    "type": "interrupt_timeout_warning",
-                    "thread_id": thread_id,
-                    "seconds_left": seconds_left,
-                }
-            )
-
-        hitl_timeout_manager.set_notify_callback(hitl_notify)
 
         try:
             await ws.send_json(
@@ -172,7 +193,18 @@ def create_ws_router(
 
                 if msg_type == "session.delete":
                     thread_id = data.get("thread_id", "")
-                    ok = session_store.delete(thread_id)
+                    ok = session_store.delete(thread_id) if thread_id else False
+                    if ok and thread_id:
+                        checkpointer = getattr(
+                            getattr(runner, "graph", None), "checkpointer", None
+                        )
+                        from infra.session_lifecycle import purge_thread_data
+
+                        await purge_thread_data(
+                            thread_id,
+                            runner=runner,
+                            checkpointer=checkpointer,
+                        )
                     await ws.send_json(
                         {"type": "session.deleted", "thread_id": thread_id, "ok": ok}
                     )
@@ -222,7 +254,7 @@ def create_ws_router(
                         )
                         continue
                     session_store.touch(thread_id)
-                    _thread_emitters[thread_id] = emit
+                    set_thread_emitter(thread_id, emit)
                     asyncio.create_task(
                         runner.run(thread_id, content, emit, attachments=attachments or None)
                     )
@@ -240,6 +272,8 @@ def create_ws_router(
                     thread_id = data.get("thread_id", "")
                     decision = data.get("decision", "reject")
                     edited_args = data.get("edited_args")
+                    if thread_id:
+                        set_thread_emitter(thread_id, emit)
                     asyncio.create_task(
                         runner.resume(thread_id, decision, edited_args, emit)
                     )

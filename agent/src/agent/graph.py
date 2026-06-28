@@ -9,6 +9,7 @@ from langgraph.checkpoint.base import BaseCheckpointSaver
 from langgraph.graph import END, START, StateGraph
 from langgraph.prebuilt import tools_condition
 from langgraph.types import interrupt, RunnableConfig
+from loguru import logger
 
 from agent.planner import format_plan_for_prompt, generate_task_plan, needs_planning
 from agent.state import AgentState
@@ -19,7 +20,7 @@ from infra.time_context import (
     is_fresh_info_query,
 )
 from llm.factory import get_default_provider
-from llm.fallback import create_llm_with_fallback, invoke_with_fallback
+from llm.fallback import _provider_available, create_llm_with_fallback, get_fallback_chain
 from memory.rag import RagStore, is_knowledge_query
 from memory.store import get_user_preferences
 from tools.registry import ToolRegistry
@@ -471,6 +472,16 @@ class _LazyLlm:
         self._provider_name: str | None = self._primary if llm else None
         self._llm_with_tools: BaseChatModel | None = None
 
+    def reset(self, primary: str | None = None) -> None:
+        if primary is not None:
+            self._primary = primary
+        self._llm = None
+        self._llm_with_tools = None
+        self._provider_name = None
+
+    def invalidate_tools(self) -> None:
+        self._llm_with_tools = None
+
     def get(self) -> BaseChatModel:
         if self._llm is None:
             self._llm, self._provider_name = create_llm_with_fallback(self._primary)
@@ -497,19 +508,37 @@ def create_agent_graph(
         messages = _messages_for_llm(state)
         meta = _state_metadata(state)
         force_answer = meta.get("force_answer") or meta.get("tool_rounds", 0) >= MAX_TOOL_ROUNDS
-
         tools = registry.get_enabled_tools()
 
-        def invoke(llm: BaseChatModel):
-            if force_answer or not tools:
-                return llm.invoke(messages)
-            return llm.bind_tools(tools).invoke(messages)
+        chain = get_fallback_chain()
+        primary = lazy_llm._primary
+        if primary and primary not in chain:
+            chain = [primary, *[p for p in chain if p != primary]]
 
-        response, provider_name = invoke_with_fallback(
-            invoke, primary=lazy_llm._primary
-        )
-        lazy_llm._provider_name = provider_name
-        return {"messages": [response]}
+        last_error: Exception | None = None
+        for name in chain:
+            if not _provider_available(name):
+                continue
+            try:
+                lazy_llm.reset(name)
+                llm = lazy_llm.with_tools() if tools and not force_answer else lazy_llm.get()
+                response = llm.invoke(messages)
+                lazy_llm._provider_name = name
+                return {"messages": [response]}
+            except (TimeoutError, ConnectionError, OSError) as exc:
+                last_error = exc
+                logger.warning("Provider {} request failed: {}", name, exc)
+            except Exception as exc:
+                err_name = type(exc).__name__
+                if err_name in ("APITimeoutError", "RateLimitError", "APIConnectionError"):
+                    last_error = exc
+                    logger.warning("Provider {} API error: {}", name, exc)
+                    continue
+                raise
+
+        if last_error:
+            raise RuntimeError(f"All LLM providers unavailable: {last_error}") from last_error
+        raise RuntimeError("All LLM providers unavailable (no API keys configured)")
 
     workflow = StateGraph(AgentState)
     workflow.add_node("preprocess", create_preprocess_node(lazy_llm.get))

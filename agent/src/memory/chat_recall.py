@@ -220,6 +220,15 @@ class ChatHistoryStore:
             )
             conn.commit()
 
+    def delete_by_thread_id(self, thread_id: str) -> int:
+        with sqlite3.connect(self.db_path) as conn:
+            cur = conn.execute(
+                "DELETE FROM chat_history WHERE thread_id = ?",
+                (thread_id,),
+            )
+            conn.commit()
+            return cur.rowcount
+
     def stats(self) -> dict[str, Any]:
         with sqlite3.connect(self.db_path) as conn:
             total = conn.execute("SELECT COUNT(*) FROM chat_history").fetchone()[0]

@@ -27,10 +27,7 @@ def test_client(monkeypatch, tmp_path):
         "agent.graph.create_llm_with_fallback",
         lambda *a, **k: (mock_llm, "mock"),
     )
-    monkeypatch.setattr(
-        "agent.graph.invoke_with_fallback",
-        lambda fn, **k: (fn(mock_llm), "mock"),
-    )
+    monkeypatch.setattr("agent.graph._provider_available", lambda _name: True)
 
     from main import build_app
 

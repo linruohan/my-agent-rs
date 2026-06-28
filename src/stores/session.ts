@@ -1,7 +1,7 @@
 import { ref } from 'vue';
 import { defineStore } from 'pinia';
 import type { InterruptEvent, Message, ToolCall } from '@/types';
-import { useAgentWs } from '@/composables/useAgentWs';
+import { wsResume } from '@/utils/wsBridge';
 
 const PINNED_KEY = 'pa-pinned-sessions';
 const PREVIEW_KEY = 'pa-session-previews';
@@ -44,6 +44,7 @@ export const useSessionStore = defineStore('session', () => {
   const sessionPreviews = ref<Record<string, string>>(loadPreviews());
   const inputFocusGeneration = ref(0);
   const historyLoadedGeneration = ref(0);
+  const historyLoadGeneration = ref(0);
 
   function bumpInputFocus() {
     inputFocusGeneration.value += 1;
@@ -133,8 +134,15 @@ export const useSessionStore = defineStore('session', () => {
       content: string;
       tool_name?: string;
       citations?: Array<{ title: string; url: string }>;
-    }>
+    }>,
+    loadGeneration?: number
   ) {
+    if (
+      loadGeneration !== undefined &&
+      loadGeneration !== historyLoadGeneration.value
+    ) {
+      return;
+    }
     messages.value = historyMessages.map((m) => ({
       id: crypto.randomUUID(),
       role: m.role as Message['role'],
@@ -148,13 +156,14 @@ export const useSessionStore = defineStore('session', () => {
 
   function setCurrentThread(threadId: string | null) {
     currentThreadId.value = threadId;
+    historyLoadGeneration.value += 1;
     clearMessages();
   }
 
   function resolveInterrupt(decision: 'approve' | 'reject' | 'edit', editedArgs?: Record<string, unknown>) {
     const event = interruptQueue.value.shift();
     if (event) {
-      useAgentWs().resume(event.thread_id, decision, editedArgs);
+      wsResume(event.thread_id, decision, editedArgs);
     }
   }
 
@@ -181,6 +190,14 @@ export const useSessionStore = defineStore('session', () => {
     return sessionPreviews.value[threadId] || '';
   }
 
+  function removePreview(threadId: string) {
+    if (!sessionPreviews.value[threadId]) return;
+    const next = { ...sessionPreviews.value };
+    delete next[threadId];
+    sessionPreviews.value = next;
+    savePreviews(next);
+  }
+
   return {
     currentThreadId,
     pendingToolCalls,
@@ -193,6 +210,7 @@ export const useSessionStore = defineStore('session', () => {
     sessionPreviews,
     inputFocusGeneration,
     historyLoadedGeneration,
+    historyLoadGeneration,
     bumpInputFocus,
     bumpHistoryLoaded,
     addMessage,
@@ -208,5 +226,6 @@ export const useSessionStore = defineStore('session', () => {
     togglePin,
     isPinned,
     getPreview,
+    removePreview,
   };
 });

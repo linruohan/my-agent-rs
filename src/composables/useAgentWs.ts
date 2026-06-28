@@ -6,6 +6,7 @@ import { useKnowledgeStore } from '@/stores/knowledge';
 import { useTasksStore } from '@/stores/tasks';
 import type { ToolCall } from '@/types';
 import { logStartupMilestone } from '@/utils/startupTiming';
+import { registerWsResumeHandler } from '@/utils/wsBridge';
 
 const RECONNECT_DELAYS = [1000, 2000, 4000, 8000, 16000];
 const TOKEN_FLUSH_MS = 50;
@@ -33,6 +34,8 @@ function initBroadcastChannel(sessionStore: ReturnType<typeof useSessionStore>) 
     }
   };
 }
+
+let pendingHistoryLoads = new Map<string, number>();
 
 const AUTH_STORAGE_KEY = 'pa-sidecar-auth-token';
 
@@ -66,6 +69,23 @@ function flushTokenBuffer(sessionStore: ReturnType<typeof useSessionStore>) {
   }
   tokenFlushTimer = null;
 }
+
+function sendRaw(data: Record<string, unknown>) {
+  if (ws?.readyState === WebSocket.OPEN) {
+    ws.send(JSON.stringify(data));
+    return true;
+  }
+  return false;
+}
+
+registerWsResumeHandler((threadId, decision, editedArgs) => {
+  sendRaw({
+    type: 'chat.resume',
+    thread_id: threadId,
+    decision,
+    edited_args: editedArgs,
+  });
+});
 
 export function useAgentWs() {
   const sessionStore = useSessionStore();
@@ -269,23 +289,34 @@ export function useAgentWs() {
         break;
       }
 
-      case 'session.deleted':
+      case 'session.deleted': {
+        const deletedId = msg.thread_id as string;
         sessionStore.sessions = sessionStore.sessions.filter(
-          (s) => s.thread_id !== msg.thread_id
+          (s) => s.thread_id !== deletedId
         );
+        sessionStore.removePreview(deletedId);
         break;
+      }
 
-      case 'session.history':
-        if (msg.thread_id === sessionStore.currentThreadId) {
+      case 'session.history': {
+        const threadId = msg.thread_id as string;
+        const expectedGen = pendingHistoryLoads.get(threadId);
+        pendingHistoryLoads.delete(threadId);
+        if (
+          threadId === sessionStore.currentThreadId &&
+          expectedGen === sessionStore.historyLoadGeneration
+        ) {
           sessionStore.loadHistory(
             (msg.messages as Array<{
               role: string;
               content: string;
               tool_name?: string;
-            }>) || []
+            }>) || [],
+            expectedGen
           );
         }
         break;
+      }
 
       case 'pong':
         break;
@@ -372,14 +403,6 @@ export function useAgentWs() {
     ws = null;
   }
 
-  function sendRaw(data: Record<string, unknown>) {
-    if (ws?.readyState === WebSocket.OPEN) {
-      ws.send(JSON.stringify(data));
-      return true;
-    }
-    return false;
-  }
-
   function send(content: string, threadId: string, attachments?: ChatAttachment[]) {
     sessionStore.isStreaming = true;
     bc?.postMessage({ type: 'streaming.start', threadId });
@@ -459,6 +482,7 @@ export function useAgentWs() {
   }
 
   function loadSessionHistory(threadId: string) {
+    pendingHistoryLoads.set(threadId, sessionStore.historyLoadGeneration);
     sendRaw({ type: 'session.history', thread_id: threadId });
   }
 

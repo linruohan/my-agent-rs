@@ -26,6 +26,24 @@ class AgentRunner:
         self.registry = registry
         self._active: dict[str, asyncio.Task] = {}
         self._turn_usage: dict[str, dict[str, int]] = {}
+        self._running_threads: set[str] = set()
+        self._thread_guard = asyncio.Lock()
+
+    def clear_thread_state(self, thread_id: str) -> None:
+        self._active.pop(thread_id, None)
+        self._turn_usage.pop(thread_id, None)
+        self._running_threads.discard(thread_id)
+
+    async def _try_claim_thread(self, thread_id: str) -> bool:
+        async with self._thread_guard:
+            if thread_id in self._running_threads:
+                return False
+            self._running_threads.add(thread_id)
+            return True
+
+    async def _release_thread(self, thread_id: str) -> None:
+        async with self._thread_guard:
+            self._running_threads.discard(thread_id)
 
     async def run(
         self,
@@ -34,6 +52,17 @@ class AgentRunner:
         emit: EventCallback,
         attachments: list[dict[str, Any]] | None = None,
     ) -> None:
+        if not await self._try_claim_thread(thread_id):
+            await emit(
+                {
+                    "type": "error",
+                    "thread_id": thread_id,
+                    "message": "该会话正在处理中，请稍候或停止当前任务",
+                    "code": "THREAD_BUSY",
+                }
+            )
+            return
+
         config = self._make_config(thread_id, emit)
         start = time.monotonic()
 
@@ -154,6 +183,7 @@ class AgentRunner:
         finally:
             self._active.pop(thread_id, None)
             self._turn_usage.pop(thread_id, None)
+            await self._release_thread(thread_id)
 
     async def _handle_event(
         self, event: dict[str, Any], thread_id: str, emit: EventCallback
@@ -201,39 +231,6 @@ class AgentRunner:
                     bucket["completion_tokens"] = bucket.get("completion_tokens", 0) + int(completion)
                     bucket["total_tokens"] = bucket.get("total_tokens", 0) + int(total)
 
-        elif kind == "on_tool_start":
-            tool_name = event.get("name", "")
-            meta = self.registry.get_meta(tool_name)
-            await emit(
-                {
-                    "type": "tool_start",
-                    "thread_id": thread_id,
-                    "name": tool_name,
-                    "args": event.get("data", {}).get("input", {}),
-                    "category": meta.get("category", "capability"),
-                }
-            )
-
-        elif kind == "on_tool_end":
-            tool_name = event.get("name", "")
-            meta = self.registry.get_meta(tool_name)
-            output = event.get("data", {}).get("output", "")
-            if hasattr(output, "content"):
-                output = output.content
-            citations = []
-            if tool_name in ("web_search", "baidu_image_search") and isinstance(output, str):
-                citations = _extract_citations(output)
-            await emit(
-                {
-                    "type": "tool_end",
-                    "thread_id": thread_id,
-                    "name": tool_name,
-                    "result": str(output)[:2000],
-                    "category": meta.get("category", "capability"),
-                    "citations": citations,
-                }
-            )
-
         elif kind == "on_chain_stream":
             chunk = event.get("data", {}).get("chunk")
             if isinstance(chunk, dict) and "__interrupt__" in chunk:
@@ -267,6 +264,17 @@ class AgentRunner:
         edited_args: dict | None,
         emit: EventCallback,
     ) -> None:
+        if not await self._try_claim_thread(thread_id):
+            await emit(
+                {
+                    "type": "error",
+                    "thread_id": thread_id,
+                    "message": "该会话正在处理中，请稍候",
+                    "code": "THREAD_BUSY",
+                }
+            )
+            return
+
         config = self._make_config(thread_id, emit)
         resume_value: dict[str, Any] = {"decision": decision}
         if edited_args:
@@ -302,6 +310,8 @@ class AgentRunner:
                     "code": "PROVIDER_ERROR",
                 }
             )
+        finally:
+            await self._release_thread(thread_id)
 
 
     def _make_config(self, thread_id: str, emit: EventCallback) -> dict[str, Any]:
@@ -479,12 +489,3 @@ class AgentRunner:
 def _ocr_timeout_sec() -> float:
     cfg = load_tools_config().get("capability", {}).get("ocr", {})
     return float(cfg.get("timeout_sec", 180))
-
-
-def _extract_citations(text: str) -> list[dict[str, str]]:
-    citations = []
-    for line in text.split("\n"):
-        if line.strip().startswith("Source:"):
-            url = line.split("Source:", 1)[1].strip()
-            citations.append({"url": url, "title": url})
-    return citations
