@@ -94,6 +94,17 @@ def build_app(port: int = 8765) -> FastAPI:
         set_notify_callback(
             lambda title, message: asyncio.create_task(_scheduler_notify(title, message))
         )
+
+        ws_cfg = tools_cfg.get("capability", {}).get("web_search", {})
+        if ws_cfg.get("enabled") and ws_cfg.get("benchmark_on_startup", True):
+            from tools.capability.web_search_selector import warm_search_backends
+
+            try:
+                chosen = await asyncio.to_thread(warm_search_backends, ws_cfg)
+                logger.info("Web search warm-up selected backend: {}", chosen)
+            except Exception as exc:
+                logger.warning("Web search warm-up skipped: {}", exc)
+
         mcp_cfg = tools_cfg.get("mcp_servers", {})
         if any(v.get("enabled") for v in mcp_cfg.values()):
             tools = await registry.resolve_all(include_mcp=True)

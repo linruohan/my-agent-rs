@@ -9,22 +9,26 @@ if str(AGENT_SRC) not in sys.path:
 
 from tools.capability.web_search import (
     MockSearchBackend,
+    SearchRequest,
+    SearchResult,
     format_results_with_citations,
     get_search_backend,
+    register_search_backend,
     run_web_search,
 )
+from infra.search_context import enrich_search_query
 
 
 def test_mock_search_backend():
     backend = MockSearchBackend()
-    results = backend.search("Rust programming", max_results=3)
+    results = backend.search(SearchRequest(query="Rust programming", max_results=3))
     assert len(results) == 1
     assert "Rust programming" in results[0].title
 
 
 def test_format_results_with_citations():
     backend = MockSearchBackend()
-    results = backend.search("test query")
+    results = backend.search(SearchRequest(query="test query"))
     text, citations = format_results_with_citations(results)
     assert "test query" in text
     assert len(citations) == 1
@@ -37,9 +41,42 @@ def test_get_search_backend_mock():
 
 
 def test_run_web_search_uses_mock_backend():
-    from tools.capability import web_search as ws_mod
-
-    ws_mod.register_search_backend("mock_chain", MockSearchBackend())
-    results = run_web_search("Rust", {"backend": "mock_chain", "max_results": 2})
+    mock = MockSearchBackend()
+    register_search_backend("mock_chain", mock)
+    results = run_web_search("Rust", {"backend": "mock_chain", "max_results": 2, "region": "cn-zh"})
     assert len(results) == 1
     assert "Rust" in results[0].title
+    assert mock.requests[0].region == "cn-zh"
+
+
+def test_run_web_search_official_first_with_mock():
+    enriched = enrich_search_query("python 3.14 新特性")
+    site_query = f"site:python.org {enriched}"
+    mock = MockSearchBackend(
+        {
+            site_query: [
+                SearchResult(
+                    "Python 3.14.0",
+                    "https://www.python.org/downloads/release/python-3140/",
+                    "Official release page",
+                )
+            ],
+            enriched: [
+                SearchResult(
+                    "Blog post",
+                    "https://example.com/python-314",
+                    "Third-party blog",
+                )
+            ],
+        }
+    )
+    register_search_backend("mock_official", mock)
+
+    results = run_web_search(
+        "python 3.14 新特性",
+        {"backend": "mock_official", "max_results": 3, "region": "cn-zh"},
+    )
+
+    assert results
+    assert "python.org" in results[0].url
+    assert any("site:python.org" in req.query for req in mock.requests)

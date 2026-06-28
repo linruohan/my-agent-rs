@@ -5,8 +5,22 @@ capability:
   web_search:
     enabled: true
     risk: low
-    backend: duckduckgo
+    # auto = benchmark free providers and pick the fastest
+    backend: auto
+    free_backends:
+      - duckduckgo
+      - brave
+      - google
+      - bing
+      - startpage
+      - mojeek
     fallback_backends: []
+    benchmark_on_startup: true
+    benchmark_ttl_sec: 3600
+    benchmark_query: hello world
+    benchmark_timeout_sec: 10
+    # Search region; defaults from app.yaml timezone (Asia/Shanghai -> cn-zh)
+    region: cn-zh
     max_results: 5
     allowed_domains: []
   web_fetch:
@@ -29,7 +43,8 @@ capability:
     risk: high
     requires_confirmation: true
     timeout_sec: 30
-    allowed_commands: [dir, type, findstr, git, python, echo, cat, ls, grep, find]
+    allowed_commands:
+      [dir, type, findstr, git, python, echo, cat, ls, grep, find]
   computer:
     enabled: false
     risk: high
