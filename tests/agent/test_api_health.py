@@ -13,7 +13,6 @@ def test_app(monkeypatch, tmp_path):
     config_dir = AGENT_DIR / "config"
     monkeypatch.setenv("AGENT_DATA_DIR", str(tmp_path))
     monkeypatch.setenv("AGENT_CONFIG_DIR", str(config_dir))
-    monkeypatch.setattr("tools.business.todo.DB_PATH", tmp_path / "todos.db")
     monkeypatch.setattr("tools.business.calendar.DB_PATH", tmp_path / "calendar.db")
 
     from langgraph.checkpoint.memory import MemorySaver
