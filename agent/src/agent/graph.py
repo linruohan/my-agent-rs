@@ -117,6 +117,13 @@ def _build_system_prompt(state: AgentState) -> str:
 
 
 def _prefetch_web_context(query: str) -> str | None:
+    from infra.weather_context import fetch_weather_for_query, is_weather_query
+
+    if is_weather_query(query):
+        weather = fetch_weather_for_query(query)
+        if weather:
+            return weather
+
     tools_cfg = load_effective_tools_config()
     ws_cfg = tools_cfg.get("capability", {}).get("web_search", {})
     if not ws_cfg.get("enabled", True):
@@ -184,12 +191,21 @@ def create_preprocess_node(
         if needs_planning(content):
             updates["task_plan"] = generate_task_plan(content, _resolve_llm())
 
-        if is_fresh_info_query(content):
-            updates["task_plan"] = [
-                "确认系统提示中的当前日期",
-                "使用 web_search 或预检索结果获取最新信息",
-                "结合检索结果回答用户",
-            ]
+        from infra.weather_context import is_weather_query
+
+        if is_weather_query(content) or is_fresh_info_query(content):
+            if is_weather_query(content):
+                updates["task_plan"] = [
+                    "确认系统提示中的当前日期",
+                    "使用预抓取的中国天气网数据回答用户",
+                    "若预抓取数据不足，再调用 web_fetch 补充",
+                ]
+            else:
+                updates["task_plan"] = [
+                    "确认系统提示中的当前日期",
+                    "使用 web_search 或预检索结果获取最新信息",
+                    "结合检索结果回答用户",
+                ]
             prefetched = _prefetch_web_context(content)
             updates["fresh_search_results"] = prefetched
         else:

@@ -63,11 +63,10 @@ async function loadLlmConfig() {
 async function loadSidecarInfo() {
   const base = `http://127.0.0.1:${settings.sidecarPort}`;
   try {
-    const [health, tools, mcp] = await Promise.all([
-      fetch(`${base}/health`).then((r) => r.json()),
-      fetch(`${base}/tools`).then((r) => r.json()),
-      fetch(`${base}/mcp/status`).then((r) => r.json()),
-    ]);
+    const data = await fetch(`${base}/bootstrap`).then((r) => r.json());
+    const health = data.health ?? {};
+    const tools = data.tools ?? {};
+    const mcp = data.mcp ?? null;
     sidecarVersion.value = health.version ?? '';
     sidecarVersionOk.value =
       typeof health.version_ok === 'boolean' ? health.version_ok : null;

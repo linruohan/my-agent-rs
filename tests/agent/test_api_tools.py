@@ -33,6 +33,21 @@ def test_app(monkeypatch, tmp_path):
 
 
 @pytest.mark.asyncio
+async def test_bootstrap_endpoint(test_app):
+    from httpx import ASGITransport, AsyncClient
+
+    transport = ASGITransport(app=test_app)
+    async with AsyncClient(transport=transport, base_url="http://test") as client:
+        resp = await client.get("/bootstrap")
+        assert resp.status_code == 200
+        data = resp.json()
+        assert data["health"]["status"] == "ok"
+        assert "tools" in data["tools"]
+        assert "count" in data["tools"]
+        assert "configured" in data["mcp"]
+
+
+@pytest.mark.asyncio
 async def test_tools_endpoint(test_app):
     from httpx import ASGITransport, AsyncClient
 

@@ -359,7 +359,15 @@ def create_web_search_tool(config: dict[str, Any]):
         Races multiple free search providers in parallel and uses the first response,
         applies the user's timezone region, enriches time-sensitive queries with the
         current year, and prioritizes official websites for release/feature questions.
+        Weather queries are fetched directly from weather.com.cn when possible.
         """
+        from infra.weather_context import fetch_weather_for_query, is_weather_query
+
+        if is_weather_query(query):
+            weather = fetch_weather_for_query(query)
+            if weather:
+                return weather
+
         limit = max_results_override or max_results
         try:
             results = run_web_search(query, config, max_results=limit)

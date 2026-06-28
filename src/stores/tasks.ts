@@ -113,9 +113,27 @@ export const useTasksStore = defineStore('tasks', () => {
   }
 
   async function refresh(port: number) {
-    await fetchProjects(port);
-    await fetchTodos(port, selectedProjectId.value);
-    await fetchReminders(port);
+    loading.value = true;
+    error.value = '';
+    try {
+      const params = new URLSearchParams({ include_completed: 'true' });
+      if (selectedProjectId.value != null) {
+        params.set('project_id', String(selectedProjectId.value));
+      }
+      const res = await fetch(`${sidecarBase(port)}/tasks/snapshot?${params}`);
+      if (!res.ok) throw new Error(await res.text());
+      const data = await res.json();
+      projects.value = data.projects ?? [];
+      todos.value = data.todos ?? [];
+      reminders.value = data.reminders ?? [];
+    } catch (e) {
+      error.value = e instanceof Error ? e.message : String(e);
+      projects.value = [];
+      todos.value = [];
+      reminders.value = [];
+    } finally {
+      loading.value = false;
+    }
   }
 
   function selectProject(id: number | null) {

@@ -1,55 +1,38 @@
 <script setup lang="ts">
-import { ref } from 'vue';
 import { useSessionStore } from '@/stores/session';
 import { useAgentWs } from '@/composables/useAgentWs';
 import ToolCallCard from '@/components/ToolCallCard.vue';
+import ChatInputBar from '@/components/ChatInputBar.vue';
+import { renderMarkdown } from '@/utils/markdown';
 
 const sessionStore = useSessionStore();
-const { send, stop } = useAgentWs();
-const input = ref('');
-const pendingAttachments = ref<Array<{ type: string; name: string; content: string }>>([]);
+const { send } = useAgentWs();
 
-const ATTACH_ACCEPT = '.md,.txt,.markdown,.pdf,.json,.csv';
-
-async function handleFileSelect(e: Event) {
-  const inputEl = e.target as HTMLInputElement;
-  if (!inputEl.files?.length) return;
-  for (const file of Array.from(inputEl.files)) {
-    const content = await file.text();
-    pendingAttachments.value.push({ type: 'text', name: file.name, content });
-  }
-  inputEl.value = '';
-}
-
-function removeAttachment(index: number) {
-  pendingAttachments.value.splice(index, 1);
-}
-
-function handleSend() {
-  const text = input.value.trim();
-  if (!text || !sessionStore.currentThreadId) return;
-  const attachments =
-    pendingAttachments.value.length > 0 ? [...pendingAttachments.value] : undefined;
+function handleSend(
+  text: string,
+  attachments?: Array<{ type: string; name: string; content: string }>
+) {
+  if (!sessionStore.currentThreadId) return;
   send(text, sessionStore.currentThreadId, attachments);
-  input.value = '';
-  pendingAttachments.value = [];
-}
-
-function handleStop() {
-  if (sessionStore.currentThreadId) {
-    stop(sessionStore.currentThreadId);
-  }
-}
-
-function handleKeydown(e: KeyboardEvent) {
-  if (e.key === 'Enter' && !e.shiftKey) {
-    e.preventDefault();
-    handleSend();
-  }
 }
 
 const runningTools = () =>
   [...sessionStore.pendingToolCalls.values()].filter((t) => t.status === 'running');
+
+function isStreamingPlaceholder(msg: { role: string; content: string }, index: number) {
+  return (
+    msg.role === 'assistant' &&
+    !msg.content.trim() &&
+    sessionStore.isStreaming &&
+    index === sessionStore.messages.length - 1
+  );
+}
+
+function shouldShowMessage(msg: { role: string; content: string }, index: number) {
+  if (msg.role !== 'assistant') return true;
+  if (msg.content.trim()) return true;
+  return isStreamingPlaceholder(msg, index);
+}
 </script>
 
 <template>
@@ -60,8 +43,9 @@ const runningTools = () =>
       </div>
       <template v-else>
         <div
-          v-for="msg in sessionStore.messages"
+          v-for="(msg, index) in sessionStore.messages"
           :key="msg.id"
+          v-show="shouldShowMessage(msg, index)"
           :class="['message', msg.role]"
         >
           <div v-if="msg.role === 'tool'" class="tool-wrapper">
@@ -72,6 +56,17 @@ const runningTools = () =>
               :citations="msg.citations"
             />
           </div>
+          <div
+            v-else-if="isStreamingPlaceholder(msg, index)"
+            class="bubble typing-indicator"
+          >
+            正在生成…
+          </div>
+          <div
+            v-else-if="msg.role === 'assistant'"
+            class="bubble markdown-body"
+            v-html="renderMarkdown(msg.content)"
+          />
           <div v-else class="bubble">{{ msg.content }}</div>
         </div>
         <ToolCallCard
@@ -85,42 +80,7 @@ const runningTools = () =>
       </template>
     </div>
     <div class="input-area">
-      <div v-if="pendingAttachments.length" class="attachments">
-        <span
-          v-for="(att, i) in pendingAttachments"
-          :key="i"
-          class="attachment-chip"
-        >
-          📎 {{ att.name }}
-          <button type="button" class="remove-att" @click="removeAttachment(i)">×</button>
-        </span>
-      </div>
-      <textarea
-        v-model="input"
-        placeholder="输入消息… (Enter 发送, Shift+Enter 换行)"
-        :disabled="!sessionStore.currentThreadId"
-        @keydown="handleKeydown"
-      />
-      <div class="actions">
-        <label class="btn-attach">
-          附件
-          <input type="file" :accept="ATTACH_ACCEPT" multiple hidden @change="handleFileSelect" />
-        </label>
-        <button
-          v-if="sessionStore.isStreaming"
-          class="btn-stop"
-          @click="handleStop"
-        >
-          停止
-        </button>
-        <button
-          class="btn-send"
-          :disabled="!input.trim() || !sessionStore.currentThreadId || sessionStore.isStreaming"
-          @click="handleSend"
-        >
-          发送
-        </button>
-      </div>
+      <ChatInputBar @send="handleSend" />
     </div>
   </div>
 </template>
@@ -164,14 +124,110 @@ const runningTools = () =>
   white-space: pre-wrap;
 }
 
+.message.assistant {
+  display: flex;
+  justify-content: flex-start;
+}
+
 .message.assistant .bubble {
   background: #1f2128;
-  max-width: 70%;
-  padding: 10px 14px;
+  max-width: 85%;
+  padding: 12px 16px;
   border-radius: 12px 12px 12px 4px;
   font-size: 14px;
-  line-height: 1.5;
-  white-space: pre-wrap;
+  line-height: 1.6;
+  color: #e4e4e7;
+  word-break: break-word;
+}
+
+.message.assistant .bubble.markdown-body :deep(p) {
+  margin: 0.4em 0;
+}
+
+.message.assistant .bubble.markdown-body :deep(p:first-child) {
+  margin-top: 0;
+}
+
+.message.assistant .bubble.markdown-body :deep(p:last-child) {
+  margin-bottom: 0;
+}
+
+.message.assistant .bubble.markdown-body :deep(ul),
+.message.assistant .bubble.markdown-body :deep(ol) {
+  margin: 0.4em 0;
+  padding-left: 1.4em;
+}
+
+.message.assistant .bubble.markdown-body :deep(li) {
+  margin: 0.25em 0;
+}
+
+.message.assistant .bubble.markdown-body :deep(h1),
+.message.assistant .bubble.markdown-body :deep(h2),
+.message.assistant .bubble.markdown-body :deep(h3) {
+  margin: 0.6em 0 0.3em;
+  font-size: 1em;
+  font-weight: 600;
+  color: #f4f4f5;
+}
+
+.message.assistant .bubble.markdown-body :deep(h1:first-child),
+.message.assistant .bubble.markdown-body :deep(h2:first-child),
+.message.assistant .bubble.markdown-body :deep(h3:first-child) {
+  margin-top: 0;
+}
+
+.message.assistant .bubble.markdown-body :deep(strong) {
+  font-weight: 600;
+  color: #f4f4f5;
+}
+
+.message.assistant .bubble.markdown-body :deep(a) {
+  color: #60a5fa;
+  text-decoration: none;
+}
+
+.message.assistant .bubble.markdown-body :deep(a:hover) {
+  text-decoration: underline;
+}
+
+.message.assistant .bubble.markdown-body :deep(code) {
+  background: #0f1117;
+  border-radius: 4px;
+  padding: 0.1em 0.35em;
+  font-size: 0.9em;
+  font-family: ui-monospace, 'Cascadia Code', monospace;
+}
+
+.message.assistant .bubble.markdown-body :deep(pre) {
+  background: #0f1117;
+  border-radius: 6px;
+  padding: 10px 12px;
+  overflow-x: auto;
+  margin: 0.5em 0;
+}
+
+.message.assistant .bubble.markdown-body :deep(pre code) {
+  background: none;
+  padding: 0;
+}
+
+.message.assistant .bubble.markdown-body :deep(blockquote) {
+  margin: 0.5em 0;
+  padding-left: 12px;
+  border-left: 3px solid #3b82f6;
+  color: #a1a1aa;
+}
+
+.message.assistant .bubble.markdown-body :deep(hr) {
+  border: none;
+  border-top: 1px solid #2a2d35;
+  margin: 0.8em 0;
+}
+
+.typing-indicator {
+  color: #71717a;
+  font-style: italic;
 }
 
 .tool-wrapper {
@@ -181,96 +237,5 @@ const runningTools = () =>
 .input-area {
   border-top: 1px solid #2a2d35;
   padding: 16px;
-  display: flex;
-  flex-direction: column;
-  gap: 8px;
-}
-
-textarea {
-  width: 100%;
-  min-height: 60px;
-  max-height: 160px;
-  background: #16181d;
-  border: 1px solid #2a2d35;
-  border-radius: 8px;
-  color: #e4e4e7;
-  padding: 10px 12px;
-  font-size: 14px;
-  resize: vertical;
-  font-family: inherit;
-}
-
-textarea:focus {
-  outline: none;
-  border-color: #3b82f6;
-}
-
-.actions {
-  display: flex;
-  justify-content: flex-end;
-  gap: 8px;
-}
-
-.btn-send {
-  background: #3b82f6;
-  color: white;
-  border: none;
-  padding: 8px 20px;
-  border-radius: 6px;
-  cursor: pointer;
-  font-size: 13px;
-}
-
-.btn-send:disabled {
-  opacity: 0.5;
-  cursor: not-allowed;
-}
-
-.btn-stop {
-  background: #ef4444;
-  color: white;
-  border: none;
-  padding: 8px 16px;
-  border-radius: 6px;
-  cursor: pointer;
-  font-size: 13px;
-}
-
-.attachments {
-  display: flex;
-  flex-wrap: wrap;
-  gap: 6px;
-}
-
-.attachment-chip {
-  background: #1f2128;
-  border: 1px solid #2a2d35;
-  border-radius: 6px;
-  padding: 4px 8px;
-  font-size: 12px;
-  color: #a1a1aa;
-  display: inline-flex;
-  align-items: center;
-  gap: 4px;
-}
-
-.remove-att {
-  background: none;
-  border: none;
-  color: #71717a;
-  cursor: pointer;
-  font-size: 14px;
-  padding: 0 2px;
-}
-
-.btn-attach {
-  background: #374151;
-  color: #e4e4e7;
-  border: none;
-  padding: 8px 14px;
-  border-radius: 6px;
-  cursor: pointer;
-  font-size: 13px;
-  margin-right: auto;
 }
 </style>

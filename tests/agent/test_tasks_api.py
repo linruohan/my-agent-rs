@@ -98,3 +98,17 @@ def test_tasks_api_flow(tasks_client):
 
     deleted = tasks_client.delete(f"/tasks/todos/{todo_id}")
     assert deleted.status_code == 200
+
+
+def test_tasks_snapshot(tasks_client):
+    tasks_client.post("/tasks/projects", json={"name": "Snap", "status": "active"})
+    tasks_client.post("/tasks/todos", json={"title": "Snap todo", "priority": "normal"})
+
+    resp = tasks_client.get("/tasks/snapshot?include_completed=true")
+    assert resp.status_code == 200
+    data = resp.json()
+    assert "projects" in data
+    assert "todos" in data
+    assert "reminders" in data
+    assert len(data["projects"]) >= 1
+    assert len(data["todos"]) >= 1

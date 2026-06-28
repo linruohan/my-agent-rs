@@ -15,6 +15,30 @@ from tools.registry import ToolRegistry
 router = APIRouter()
 
 
+def build_tools_payload(registry: ToolRegistry) -> dict[str, Any]:
+    tools = registry.list_all()
+    enabled = [t for t in tools if t.get("enabled")]
+    return {"tools": tools, "count": len(tools), "enabled_count": len(enabled)}
+
+
+def build_mcp_payload(registry: ToolRegistry) -> dict[str, Any]:
+    cfg = registry.config.get("mcp_servers", {})
+    mcp_tools = [t for t in registry.list_all() if t.get("category") == "mcp"]
+    return {
+        "version": get_version(),
+        "configured": {
+            name: {
+                "enabled": server.get("enabled", False),
+                "transport": server.get("transport", "stdio"),
+            }
+            for name, server in cfg.items()
+        },
+        "any_enabled": any_mcp_enabled(cfg),
+        "loaded_count": len(mcp_tools),
+        "tools": mcp_tools,
+    }
+
+
 def create_tools_router(registry: ToolRegistry, runner: AgentRunner) -> APIRouter:
     tools_router = APIRouter()
 
@@ -23,11 +47,19 @@ def create_tools_router(registry: ToolRegistry, runner: AgentRunner) -> APIRoute
         if checkpointer is not None:
             runner.graph = create_agent_graph(registry, checkpointer)
 
+    @tools_router.get("/bootstrap")
+    async def bootstrap():
+        from api.health import build_health_payload
+
+        return {
+            "health": build_health_payload(),
+            "tools": build_tools_payload(registry),
+            "mcp": build_mcp_payload(registry),
+        }
+
     @tools_router.get("/tools")
     async def list_tools():
-        tools = registry.list_all()
-        enabled = [t for t in tools if t.get("enabled")]
-        return {"tools": tools, "count": len(tools), "enabled_count": len(enabled)}
+        return build_tools_payload(registry)
 
     @tools_router.get("/providers")
     async def list_providers():
@@ -43,21 +75,7 @@ def create_tools_router(registry: ToolRegistry, runner: AgentRunner) -> APIRoute
 
     @tools_router.get("/mcp/status")
     async def mcp_status():
-        cfg = registry.config.get("mcp_servers", {})
-        mcp_tools = [t for t in registry.list_all() if t.get("category") == "mcp"]
-        return {
-            "version": get_version(),
-            "configured": {
-                name: {
-                    "enabled": server.get("enabled", False),
-                    "transport": server.get("transport", "stdio"),
-                }
-                for name, server in cfg.items()
-            },
-            "any_enabled": any_mcp_enabled(cfg),
-            "loaded_count": len(mcp_tools),
-            "tools": mcp_tools,
-        }
+        return build_mcp_payload(registry)
 
     @tools_router.post("/tools/reload")
     async def reload_tools(request: Request):

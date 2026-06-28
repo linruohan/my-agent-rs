@@ -46,8 +46,7 @@ def llm_key_status() -> dict[str, object]:
 VERSION = get_version()
 
 
-@router.get("/health")
-async def health():
+def build_health_payload() -> dict[str, object]:
     api_version = get_api_version()
     expected = get_expected_version()
     return {
@@ -59,6 +58,11 @@ async def health():
         "auth_required": auth_required(),
         **llm_key_status(),
     }
+
+
+@router.get("/health")
+async def health():
+    return build_health_payload()
 
 
 @router.get("/auth/token")

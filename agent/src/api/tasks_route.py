@@ -57,6 +57,29 @@ def list_reminders_api() -> dict[str, Any]:
     return {"reminders": list_entity_reminders()}
 
 
+@router.get("/snapshot")
+def tasks_snapshot_api(
+    project_id: int | None = None,
+    include_completed: bool = True,
+    sort_by: str = "priority",
+    status: str = "",
+) -> dict[str, Any]:
+    from tools.business.project import list_project_docs, list_project_records
+    from tools.business.reminders import list_entity_reminders
+    from tools.business.todo import get_todo_stats_for_project, list_todo_records
+
+    projects = list_project_records(status)
+    for project in projects:
+        project["stats"] = get_todo_stats_for_project(project["id"])
+        project["doc_count"] = len(list_project_docs(project["id"]))
+
+    return {
+        "projects": projects,
+        "todos": list_todo_records(include_completed, project_id, sort_by),
+        "reminders": list_entity_reminders(),
+    }
+
+
 @router.get("/projects")
 def list_projects_api(status: str = "") -> dict[str, Any]:
     from tools.business.project import list_project_docs, list_project_records
