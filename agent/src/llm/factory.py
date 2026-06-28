@@ -52,6 +52,8 @@ def create_llm(provider_cfg: dict[str, Any] | None = None, **kwargs: Any) -> Bas
         "model": model,
         "api_key": api_key,
         "temperature": temperature,
+        "timeout": cfg.get("timeout_sec", 60),
+        "max_retries": cfg.get("max_retries", 2),
         **kwargs,
     }
     if base_url:

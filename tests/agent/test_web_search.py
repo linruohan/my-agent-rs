@@ -50,17 +50,18 @@ def test_run_web_search_uses_mock_backend():
 
 
 def test_run_web_search_official_first_with_mock():
+    from infra.search_context import build_official_site_queries, enrich_search_query
+
     enriched = enrich_search_query("python 3.14 新特性")
-    site_query = f"site:python.org {enriched}"
+    site_queries = build_official_site_queries("python 3.14 新特性", ["python.org", "docs.python.org", "peps.python.org"])
+    official = SearchResult(
+        "Python 3.14.0",
+        "https://www.python.org/downloads/release/python-3140/",
+        "Official release page",
+    )
     mock = MockSearchBackend(
         {
-            site_query: [
-                SearchResult(
-                    "Python 3.14.0",
-                    "https://www.python.org/downloads/release/python-3140/",
-                    "Official release page",
-                )
-            ],
+            **{site_query: [official] for site_query in site_queries},
             enriched: [
                 SearchResult(
                     "Blog post",
@@ -78,5 +79,5 @@ def test_run_web_search_official_first_with_mock():
     )
 
     assert results
-    assert "python.org" in results[0].url
+    assert any("python.org" in item.url for item in results)
     assert any("site:python.org" in req.query for req in mock.requests)

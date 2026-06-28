@@ -118,8 +118,17 @@ def invoke_with_fallback(
             err_name = type(e).__name__
             if err_name in ("APITimeoutError", "RateLimitError", "APIConnectionError"):
                 last_error = e
-                logger.warning("Provider {} API error: {}", name, e)
+                base_url = cfg.get("base_url", "")
+                logger.warning(
+                    "Provider {} API error: {} (base_url={})",
+                    name,
+                    e,
+                    base_url or "default",
+                )
                 continue
             raise
 
-    raise RuntimeError(f"All LLM providers unavailable: {last_error}")
+    hint = ""
+    if primary == "custom" or (chain and chain[0] == "custom"):
+        hint = " 请检查设置中的自定义 API 网关地址、模型名与密钥是否正确。"
+    raise RuntimeError(f"All LLM providers unavailable: {last_error}.{hint}")

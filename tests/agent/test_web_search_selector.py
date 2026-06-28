@@ -24,32 +24,30 @@ class _LatencyMockBackend(MockSearchBackend):
         return super().search(request)
 
 
-def test_resolve_search_backend_uses_cached_value(monkeypatch):
-    selector.reset_search_backend_cache()
-    calls = {"count": 0}
-
-    def fake_benchmark(config):
-        calls["count"] += 1
-        return "brave"
-
-    monkeypatch.setattr(selector, "benchmark_free_backends", fake_benchmark)
-    cfg = {"backend": "auto", "benchmark_ttl_sec": 3600}
-
-    assert selector.resolve_search_backend(cfg) == "brave"
-    assert selector.resolve_search_backend(cfg) == "brave"
-    assert calls["count"] == 1
-
-
-def test_benchmark_free_backends_picks_fastest(monkeypatch):
-    register_search_backend("fast_mock", _LatencyMockBackend(0.01))
-    register_search_backend("slow_mock", _LatencyMockBackend(0.2))
-
-    chosen = selector.benchmark_free_backends(
+def test_active_backend_list_race_mode():
+    names = selector.active_backend_list(
         {
-            "free_backends": ["slow_mock", "fast_mock"],
-            "benchmark_query": "latency test",
-            "benchmark_timeout_sec": 5,
-            "region": "cn-zh",
+            "backend": "race",
+            "free_backends": ["duckduckgo", "mojeek"],
         }
     )
-    assert chosen == "fast_mock"
+    assert names == ["duckduckgo", "mojeek"]
+
+
+def test_race_search_backends_uses_first_finished():
+    register_search_backend("race_fast", _LatencyMockBackend(0.05))
+    register_search_backend("race_slow", _LatencyMockBackend(0.5))
+
+    request = SearchRequest(query="latency test", max_results=1, region="cn-zh")
+    results, errors, winner = selector.race_search_backends(
+        request,
+        {
+            "backend": "race",
+            "free_backends": ["race_slow", "race_fast"],
+            "search_timeout_sec": 5,
+        },
+    )
+
+    assert winner == "race_fast"
+    assert len(results) == 1
+    assert not errors or all("no results" not in err for err in errors)

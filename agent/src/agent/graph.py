@@ -24,6 +24,27 @@ from memory.rag import RagStore, is_knowledge_query
 from memory.store import get_user_preferences
 from tools.registry import ToolRegistry
 
+MAX_TOOL_ROUNDS = 6
+
+_TOOL_FAILURE_MARKERS = (
+    "Error executing",
+    "Web search failed",
+    "No results found.",
+    "用户拒绝了工具",
+    "Tool not found",
+)
+
+
+def _state_metadata(state: AgentState) -> dict[str, Any]:
+    return dict(state.get("metadata") or {})
+
+
+def _is_usable_tool_output(content: str) -> bool:
+    if not content or len(content) < 120:
+        return False
+    lower = content.lower()
+    return not any(marker.lower() in lower for marker in _TOOL_FAILURE_MARKERS)
+
 
 async def create_sqlite_checkpointer():
     """Create AsyncSqliteSaver on the running event loop (required for astream_events)."""
@@ -59,7 +80,19 @@ def _build_system_prompt(state: AgentState) -> str:
     parts = [
         format_current_time_context(),
         "You are a helpful personal assistant agent with access to local tools.",
+        (
+            "Tool use: Do not call the same tool with the same arguments repeatedly. "
+            "If web_fetch already returned page content, answer the user immediately. "
+            "If web_search failed, try web_fetch on one known official URL once, then answer."
+        ),
     ]
+
+    meta = state.get("metadata") or {}
+    if meta.get("force_answer"):
+        parts.append(
+            "IMPORTANT: Stop calling tools. Answer the user now using tool results "
+            "already in this conversation."
+        )
 
     if prefs:
         parts.append(f"User preferences:\n{json.dumps(prefs, ensure_ascii=False)}")
@@ -75,7 +108,8 @@ def _build_system_prompt(state: AgentState) -> str:
     fresh = state.get("fresh_search_results")
     if fresh:
         parts.append(
-            "Pre-fetched web search results for this question (prefer over training memory):\n"
+            "Pre-fetched web search results for this question (prefer over training memory). "
+            "Do NOT call web_search again — answer using these results:\n"
             f"{fresh}"
         )
 
@@ -161,6 +195,15 @@ def create_preprocess_node(
         else:
             updates["fresh_search_results"] = None
 
+        meta = _state_metadata(state)
+        meta.update(
+            {
+                "tool_rounds": 0,
+                "force_answer": False,
+                "has_tool_content": False,
+            }
+        )
+        updates["metadata"] = meta
         return updates
 
     return preprocess
@@ -312,7 +355,14 @@ def create_hitl_tools_node(registry: ToolRegistry):
                         }
                     )
 
-        return {"messages": result_messages}
+        meta = _state_metadata(state)
+        meta["tool_rounds"] = meta.get("tool_rounds", 0) + 1
+        for tm in result_messages:
+            if _is_usable_tool_output(str(tm.content or "")):
+                meta["has_tool_content"] = True
+                break
+
+        return {"messages": result_messages, "metadata": meta}
 
     return hitl_tools
 
@@ -329,25 +379,18 @@ def _extract_tool_citations(tool_name: str, output: str) -> list[dict[str, str]]
 
 
 def create_reflect_node():
-    """Lightweight reflection when tools return errors."""
+    """Update metadata after tools; avoid injecting messages that cause retry loops."""
 
     def reflect(state: AgentState) -> dict[str, Any]:
-        messages = state.get("messages", [])
-        for msg in reversed(messages[-4:]):
-            if isinstance(msg, ToolMessage):
-                content = msg.content or ""
-                if content.startswith("Error") or "失败" in content:
-                    return {
-                        "messages": [
-                            HumanMessage(
-                                content=(
-                                    "[Reflection] 上一步工具执行出现问题。"
-                                    "请向用户说明情况并尝试替代方案。"
-                                )
-                            )
-                        ]
-                    }
-        return {}
+        meta = _state_metadata(state)
+        rounds = meta.get("tool_rounds", 0)
+
+        if meta.get("has_tool_content"):
+            meta["force_answer"] = True
+        elif rounds >= MAX_TOOL_ROUNDS:
+            meta["force_answer"] = True
+
+        return {"metadata": meta}
 
     return reflect
 
@@ -391,12 +434,15 @@ def create_agent_graph(
 
     def call_model(state: AgentState) -> dict[str, Any]:
         messages = _messages_for_llm(state)
+        meta = _state_metadata(state)
+        force_answer = meta.get("force_answer") or meta.get("tool_rounds", 0) >= MAX_TOOL_ROUNDS
 
         tools = registry.get_enabled_tools()
 
         def invoke(llm: BaseChatModel):
-            bound = llm.bind_tools(tools) if tools else llm
-            return bound.invoke(messages)
+            if force_answer or not tools:
+                return llm.invoke(messages)
+            return llm.bind_tools(tools).invoke(messages)
 
         response, provider_name = invoke_with_fallback(
             invoke, primary=lazy_llm._primary

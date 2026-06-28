@@ -193,7 +193,10 @@ class AgentRunner:
         async def _emit(msg: dict[str, Any]) -> None:
             await emit(msg)
 
-        return {"configurable": {"thread_id": thread_id, "_emit": _emit}}
+        return {
+            "configurable": {"thread_id": thread_id, "_emit": _emit},
+            "recursion_limit": 40,
+        }
 
     async def _emit_pending_interrupts(
         self, thread_id: str, config: dict[str, Any], emit: EventCallback

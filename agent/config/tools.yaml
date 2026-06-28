@@ -5,20 +5,17 @@ capability:
   web_search:
     enabled: true
     risk: low
-    # auto = benchmark free providers and pick the fastest
-    backend: auto
+    # auto/race = query all free_backends in parallel, first success wins
+    backend: race
     free_backends:
-      - duckduckgo
-      - brave
-      - google
+      - mojeek
       - bing
       - startpage
-      - mojeek
+      - brave
+      - duckduckgo
+      - google
     fallback_backends: []
-    benchmark_on_startup: true
-    benchmark_ttl_sec: 3600
-    benchmark_query: hello world
-    benchmark_timeout_sec: 10
+    search_timeout_sec: 15
     # Search region; defaults from app.yaml timezone (Asia/Shanghai -> cn-zh)
     region: cn-zh
     max_results: 5

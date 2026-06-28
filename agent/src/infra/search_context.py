@@ -99,6 +99,9 @@ def infer_official_domains(query: str) -> list[str]:
 
 def enrich_search_query(query: str) -> str:
     """Add current-year context for time-sensitive searches."""
+    # Specific version numbers (e.g. Python 3.12) are historical; don't append current year.
+    if re.search(r"\b\d+\.\d+\b", query):
+        return query
     now = get_current_datetime()
     year = str(now.year)
     if (is_fresh_info_query(query) or is_official_priority_query(query)) and year not in query:

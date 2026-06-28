@@ -13,7 +13,7 @@ from infra.search_context import (
     is_official_priority_query,
     merge_results_prefer_official,
 )
-from tools.capability.web_search_selector import resolve_search_backend
+from tools.capability.web_search_selector import race_search_backends
 
 FREE_DDGS_ENGINES = frozenset(
     {"duckduckgo", "brave", "google", "bing", "startpage", "mojeek", "yandex", "wikipedia"}
@@ -216,25 +216,7 @@ def get_search_backend(name: str, config: dict[str, Any] | None = None) -> Searc
     return _backends[name]
 
 
-def _backend_chain(config: dict[str, Any]) -> list[str]:
-    primary = resolve_search_backend(config)
-    fallbacks = config.get("fallback_backends") or []
-    chain: list[str] = []
-    for name in [primary, *fallbacks]:
-        if name and name not in chain and name not in {"auto", "fastest"}:
-            chain.append(name)
-
-    if config.get("backend") in {"auto", "fastest"}:
-        for name in config.get("free_backends") or []:
-            if name and name not in chain and name not in {"auto", "fastest"}:
-                chain.append(name)
-
-    if os.environ.get("TAVILY_API_KEY"):
-        chain.append("tavily")
-    return chain
-
-
-def _search_with_backend_chain(
+def _search_with_race(
     query: str,
     cfg: dict[str, Any],
     *,
@@ -243,28 +225,15 @@ def _search_with_backend_chain(
     region: str,
     timelimit: str | None,
 ) -> tuple[list[SearchResult], list[str]]:
-    errors: list[str] = []
-
-    for backend_name in _backend_chain(cfg):
-        if backend_name == "tavily" and not os.environ.get("TAVILY_API_KEY"):
-            continue
-        request = SearchRequest(
-            query=query,
-            max_results=limit,
-            allowed_domains=allowed_domains,
-            region=region,
-            timelimit=timelimit,
-            ddgs_backend=backend_name if backend_name in FREE_DDGS_ENGINES else None,
-        )
-        try:
-            backend = get_search_backend(backend_name, cfg)
-            results = backend.search(request)
-            if results:
-                return results, errors
-        except Exception as exc:
-            errors.append(f"{backend_name}: {exc}")
-
-    return [], errors
+    request = SearchRequest(
+        query=query,
+        max_results=limit,
+        allowed_domains=allowed_domains,
+        region=region,
+        timelimit=timelimit,
+    )
+    results, errors, _winner = race_search_backends(request, cfg)
+    return results, errors
 
 
 def _dedupe_results(results: list[SearchResult]) -> list[SearchResult]:
@@ -296,9 +265,11 @@ def run_web_search(
         official_domains = infer_official_domains(query)
         if official_domains:
             official_results: list[SearchResult] = []
-            for site_query in build_official_site_queries(query, official_domains):
+            site_queries = build_official_site_queries(query, official_domains)
+
+            for site_query in site_queries:
                 domain = site_query.split("site:", 1)[1].split(" ", 1)[0]
-                results, attempt_errors = _search_with_backend_chain(
+                results, attempt_errors = _search_with_race(
                     site_query,
                     cfg,
                     limit=limit,
@@ -308,12 +279,11 @@ def run_web_search(
                 )
                 errors.extend(attempt_errors)
                 official_results.extend(results)
+                official_results = _dedupe_results(official_results)
+                if len(official_results) >= min(2, limit):
+                    return official_results[:limit]
 
-            official_results = _dedupe_results(official_results)
-            if len(official_results) >= min(2, limit):
-                return official_results[:limit]
-
-            general_results, attempt_errors = _search_with_backend_chain(
+            general_results, attempt_errors = _search_with_race(
                 enriched_query,
                 cfg,
                 limit=limit,
@@ -331,7 +301,7 @@ def run_web_search(
             if merged:
                 return merged
 
-    results, attempt_errors = _search_with_backend_chain(
+    results, attempt_errors = _search_with_race(
         enriched_query,
         cfg,
         limit=limit,
@@ -344,8 +314,25 @@ def run_web_search(
         return results
 
     if errors:
-        raise RuntimeError("; ".join(errors))
+        raise RuntimeError(_summarize_search_errors(errors))
     return []
+
+
+def _summarize_search_errors(errors: list[str], *, max_items: int = 3) -> str:
+    if not errors:
+        return "all backends returned no results"
+    unique: list[str] = []
+    seen: set[str] = set()
+    for err in errors:
+        key = err.strip()
+        if not key or key in seen:
+            continue
+        seen.add(key)
+        unique.append(key)
+    if len(unique) <= max_items:
+        return "; ".join(unique)
+    extra = len(unique) - max_items
+    return "; ".join(unique[:max_items]) + f" (+{extra} more backend errors)"
 
 
 def format_results_with_citations(results: list[SearchResult]) -> tuple[str, list[dict[str, str]]]:
@@ -369,9 +356,9 @@ def create_web_search_tool(config: dict[str, Any]):
     def web_search(query: str, max_results_override: int = 0) -> str:
         """Search the web for current information.
 
-        Auto-selects the fastest free search provider, uses the user's timezone region,
-        enriches time-sensitive queries with the current year, and prioritizes official
-        websites for release/feature questions.
+        Races multiple free search providers in parallel and uses the first response,
+        applies the user's timezone region, enriches time-sensitive queries with the
+        current year, and prioritizes official websites for release/feature questions.
         """
         limit = max_results_override or max_results
         try:
@@ -379,7 +366,9 @@ def create_web_search_tool(config: dict[str, Any]):
         except Exception as exc:
             return (
                 f"Web search failed for query '{query}'. "
-                f"Try web_fetch on a known official URL instead. Details: {exc}"
+                "All search backends returned no results or connection errors. "
+                "Use web_fetch once on a known official URL, then answer the user. "
+                f"Summary: {exc}"
             )
         text, _ = format_results_with_citations(results)
         return text

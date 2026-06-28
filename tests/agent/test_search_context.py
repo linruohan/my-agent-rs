@@ -34,14 +34,16 @@ def test_infer_official_domains_for_python():
 
 
 def test_enrich_search_query_adds_current_year():
-    from datetime import datetime
-    from zoneinfo import ZoneInfo
-
     from infra.time_context import get_current_datetime
 
     now = get_current_datetime()
-    enriched = enrich_search_query("python 3.14 新特性")
+    enriched = enrich_search_query("python latest release notes")
     assert str(now.year) in enriched
+
+
+def test_enrich_search_query_skips_year_for_specific_version():
+    query = "Python 3.12 release date features official"
+    assert enrich_search_query(query) == query
 
 
 def test_build_official_site_queries():
