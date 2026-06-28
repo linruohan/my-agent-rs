@@ -158,6 +158,36 @@ def _register_capability(registry: ToolRegistry, config: dict[str, Any]) -> None
             {"risk": cfg.get("risk", "low")},
         )
 
+    if cap.get("glob", {}).get("enabled"):
+        from tools.capability.fs_tools import create_glob_tool
+
+        cfg = cap["glob"]
+        registry.register(
+            create_glob_tool(cfg),
+            "capability",
+            {"risk": cfg.get("risk", "low")},
+        )
+
+    if cap.get("grep", {}).get("enabled"):
+        from tools.capability.fs_tools import create_grep_tool
+
+        cfg = cap["grep"]
+        registry.register(
+            create_grep_tool(cfg),
+            "capability",
+            {"risk": cfg.get("risk", "low")},
+        )
+
+    if cap.get("list_dir", {}).get("enabled"):
+        from tools.capability.fs_tools import create_list_dir_tool
+
+        cfg = cap["list_dir"]
+        registry.register(
+            create_list_dir_tool(cfg),
+            "capability",
+            {"risk": cfg.get("risk", "low")},
+        )
+
 
 def _register_business(registry: ToolRegistry, config: dict[str, Any]) -> None:
     from tools.business.calendar import create_calendar_tools

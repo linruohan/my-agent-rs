@@ -83,7 +83,9 @@ def _build_system_prompt(state: AgentState) -> str:
         (
             "Tool use: Do not call the same tool with the same arguments repeatedly. "
             "If web_fetch already returned page content, answer the user immediately. "
-            "If web_search failed, try web_fetch on one known official URL once, then answer."
+            "If web_search failed, try web_fetch on one known official URL once, then answer. "
+            "For local code/files use glob to find paths, grep to search contents, list_dir to browse, "
+            "and text_editor or read_file to read or edit."
         ),
     ]
 

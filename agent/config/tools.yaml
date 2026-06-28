@@ -52,6 +52,26 @@ capability:
     enabled: true
     risk: low
     max_results: 5
+  glob:
+    enabled: true
+    risk: low
+    max_results: 200
+    timeout_sec: 30
+    prefer_fd: true
+    exclude_dirs: [.git, node_modules, __pycache__, .venv, target, dist, build]
+  grep:
+    enabled: true
+    risk: low
+    max_results: 100
+    max_line_length: 500
+    timeout_sec: 30
+    prefer_rg: true
+    exclude_dirs: [.git, node_modules, __pycache__, .venv, target, dist, build]
+  list_dir:
+    enabled: true
+    risk: low
+    max_entries: 200
+    exclude_dirs: [.git, node_modules, __pycache__, .venv, target, dist, build]
 
 business:
   create_todo:
