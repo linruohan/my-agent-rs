@@ -2,6 +2,7 @@ import { computed, onMounted, ref } from 'vue';
 import { useSettingsStore } from '@/stores/settings';
 import { buildLlmConfigPayload, isUserCustomProviderId } from '@/utils/llmConfig';
 import { fetchOpenAiCompatibleModels } from '@/utils/providerModels';
+import { fetchProviderModelsRest, fetchSidecarProviders } from '@/utils/sidecarConfig';
 import { sidecarJson } from '@/utils/sidecarFetch';
 import { isTauriEnv } from '@/utils/tauri';
 
@@ -50,12 +51,8 @@ export function useChatInputModels() {
   async function fetchProviders() {
     loading.value = true;
     try {
-      const base = `http://127.0.0.1:${settings.sidecarPort}`;
-      const resp = await fetch(`${base}/providers`);
-      if (resp.ok) {
-        const data = (await resp.json()) as { providers?: ProviderInfo[] };
-        providerList.value = data.providers || [];
-      }
+      const data = await fetchSidecarProviders(settings.sidecarPort);
+      providerList.value = data?.providers || [];
     } catch {
       providerList.value = [];
     } finally {
@@ -100,12 +97,9 @@ export function useChatInputModels() {
     } catch {
       if (!test && settings.sidecarStatus === 'running') {
         try {
-          const resp = await fetch(
-            `http://127.0.0.1:${settings.sidecarPort}/providers/${encodeURIComponent(providerId)}/models`
-          );
-          if (resp.ok) {
-            const data = (await resp.json()) as { models?: string[] };
-            return { models: data.models || [] };
+          const data = await fetchProviderModelsRest(settings.sidecarPort, providerId);
+          if (data?.models?.length) {
+            return { models: data.models };
           }
         } catch {
           /* ignore */
@@ -153,15 +147,8 @@ export function useChatInputModels() {
         }
       }
 
-      const base = `http://127.0.0.1:${settings.sidecarPort}`;
-      const url = `${base}/providers/${encodeURIComponent(providerId)}/models${test ? '?test=true' : ''}`;
-      const resp = await fetch(url);
-      if (resp.ok) {
-        const data = (await resp.json()) as {
-          models?: string[];
-          tests?: Record<string, ModelTestResult>;
-          source?: string;
-        };
+      const data = await fetchProviderModelsRest(settings.sidecarPort, providerId, test);
+      if (data) {
         let models = data.models || [];
 
         if (

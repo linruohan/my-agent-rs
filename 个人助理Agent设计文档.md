@@ -108,7 +108,7 @@ sequenceDiagram
 |------|------|------|
 | 模型集成 | LangChain | LLM 接口、Tool、Prompt、RAG |
 | 编排 | LangGraph | 有状态图、Checkpoint、HITL |
-| Agent | `create_react_agent` | ReAct 循环 |
+| Agent | `langchain.agents.create_agent` + middleware | ReAct 循环（`PersonalAssistantMiddleware`） |
 | 持久化 | `SqliteSaver` | 会话状态、断点恢复 |
 
 **选型理由**
@@ -294,7 +294,7 @@ graph TD
 
 | 节点 | 实现 | 说明 |
 |------|------|------|
-| ReAct Agent | `create_react_agent(model, tools, checkpointer=...)` | 标准推理-行动循环 |
+| ReAct Agent | `create_agent(model, tools, middleware=[...], checkpointer=...)` | 标准推理-行动循环 |
 | ToolNode | `langgraph.prebuilt.ToolNode(tools)` | 批量执行工具调用 |
 | Human-in-the-loop | `langgraph.types.interrupt()` | 敏感操作暂停，等待 UI 确认 |
 | Checkpoint | `SqliteSaver` | 会话持久化，支持多轮恢复 |
@@ -485,7 +485,7 @@ Claude、OpenAI 等厂商在云端提供的 Agent 工具（网页搜索、网页
 └────────────────────────────┬─────────────────────────────────┘
                              │ 全部本地 ToolNode 执行
 ┌────────────────────────────▼─────────────────────────────────┐
-│  LangGraph create_react_agent(model.bind_tools(all_tools))   │
+│  LangGraph create_agent(model, tools, middleware, checkpointer) │
 └──────────────────────────────────────────────────────────────┘
 ```
 
@@ -722,10 +722,15 @@ class ToolRegistry:
         # 实际项目中从磁盘重新读取 tools.yaml 并更新 self.config
         pass
 
-def create_agent(registry: ToolRegistry, checkpointer) -> Runnable:
-    tools = registry.get_enabled_tools()  # 同步部分
-    llm = create_llm(load_provider(get_default_provider())).bind_tools(tools)
-    return create_react_agent(llm, tools, checkpointer=checkpointer)
+def create_agent_graph(registry: ToolRegistry, checkpointer) -> Runnable:
+    lazy_llm = _LazyLlm(registry)
+    middleware = create_pa_middleware(registry, lazy_llm)
+    return create_agent(
+        model=lazy_llm.get(),
+        tools=registry.get_enabled_tools(),
+        middleware=[middleware],
+        checkpointer=checkpointer,
+    )
 ```
 
 #### 4.2.7 WebSocket 工具事件

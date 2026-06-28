@@ -14,6 +14,7 @@ import {
 } from '@/utils/chatCommands';
 import { openWorkspaceFolder as openWorkspaceFolderNative, pickWorkspaceFolderPath } from '@/utils/nativeOpen';
 import { loadWorkspaceFromSidecar } from '@/utils/workspaceConfig';
+import { fetchSidecarBootstrap } from '@/utils/sidecarConfig';
 
 const DEFAULT_WORKSPACE = '~/AssistantWorkspace';
 
@@ -198,12 +199,8 @@ async function openWorkspaceFolder() {
 
 async function loadSkills() {
   try {
-    const base = `http://127.0.0.1:${settings.sidecarPort}`;
-    const resp = await fetch(`${base}/bootstrap`);
-    if (!resp.ok) return;
-    const data = (await resp.json()) as {
-      tools?: { tools?: Array<{ name: string; description?: string; enabled?: boolean }> };
-    };
+    const data = await fetchSidecarBootstrap(settings.sidecarPort);
+    if (!data) return;
     const tools = data.tools?.tools || [];
     skills.value = tools
       .filter((t) => t.enabled !== false)

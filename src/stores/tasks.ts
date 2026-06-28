@@ -2,6 +2,8 @@ import { ref } from 'vue';
 import { defineStore } from 'pinia';
 import { localDatetimeToIso } from '@/utils/dateTime';
 import { useSettingsStore } from '@/stores/settings';
+import { sidecarBaseUrl } from '@/utils/sidecarFetch';
+import { fetchTaskRemindersRest } from '@/utils/sidecarTasks';
 
 export type ProjectStats = {
   total: number;
@@ -93,10 +95,6 @@ export type ReminderItem = {
   entity_id?: number;
 };
 
-function sidecarBase(port: number) {
-  return `http://127.0.0.1:${port}`;
-}
-
 export const useTasksStore = defineStore('tasks', () => {
   const projects = ref<ProjectItem[]>([]);
   const sections = ref<SectionItem[]>([]);
@@ -186,7 +184,7 @@ export const useTasksStore = defineStore('tasks', () => {
     loading.value = true;
     error.value = '';
     try {
-      const res = await fetch(`${sidecarBase(port)}/tasks/snapshot?include_completed=true`);
+      const res = await fetch(`${sidecarBaseUrl(port)}/tasks/snapshot?include_completed=true`);
       if (!res.ok) throw new Error(await res.text());
       const data = await res.json();
       inbox.value = data.inbox ?? null;
@@ -198,7 +196,7 @@ export const useTasksStore = defineStore('tasks', () => {
       bumpRevision();
 
       if (viewMode.value === 'project' && selectedProjectId.value != null) {
-        const detail = await fetch(`${sidecarBase(port)}/tasks/projects/${selectedProjectId.value}`);
+        const detail = await fetch(`${sidecarBaseUrl(port)}/tasks/projects/${selectedProjectId.value}`);
         if (detail.ok) {
           const pj = await detail.json();
           sections.value = pj.sections ?? [];
@@ -221,6 +219,15 @@ export const useTasksStore = defineStore('tasks', () => {
     const p = port ?? settings.sidecarPort;
     if (settings.sidecarStatus !== 'running') return;
     await refresh(p);
+  }
+
+  /** Lightweight refresh for Todos「即将提醒」banner (uses `/tasks/reminders`, includes scheduler jobs). */
+  async function refreshReminders(port?: number) {
+    const settings = useSettingsStore();
+    const p = port ?? settings.sidecarPort;
+    if (settings.sidecarStatus !== 'running' || !p) return;
+    reminders.value = await fetchTaskRemindersRest(p);
+    bumpRevision();
   }
 
   function selectFilter(filter: TaskFilterId) {
@@ -276,14 +283,14 @@ export const useTasksStore = defineStore('tasks', () => {
   }
 
   async function loadSections(port: number, projectId: number) {
-    const res = await fetch(`${sidecarBase(port)}/tasks/projects/${projectId}/sections`);
+    const res = await fetch(`${sidecarBaseUrl(port)}/tasks/projects/${projectId}/sections`);
     if (!res.ok) throw new Error(await res.text());
     const data = await res.json();
     sections.value = data.sections ?? [];
   }
 
   async function fetchProjectDetail(port: number, projectId: number) {
-    const res = await fetch(`${sidecarBase(port)}/tasks/projects/${projectId}`);
+    const res = await fetch(`${sidecarBaseUrl(port)}/tasks/projects/${projectId}`);
     if (!res.ok) throw new Error(await res.text());
     const data = await res.json();
     projectDocs.value = data.docs ?? [];
@@ -292,7 +299,7 @@ export const useTasksStore = defineStore('tasks', () => {
   }
 
   async function fetchSectionDetail(port: number, sectionId: number) {
-    const res = await fetch(`${sidecarBase(port)}/tasks/sections/${sectionId}`);
+    const res = await fetch(`${sidecarBaseUrl(port)}/tasks/sections/${sectionId}`);
     if (!res.ok) throw new Error(await res.text());
     const data = await res.json();
     sectionSummaries.value = data.summaries ?? [];
@@ -300,7 +307,7 @@ export const useTasksStore = defineStore('tasks', () => {
   }
 
   async function toggleTodoComplete(port: number, todo: TodoItem) {
-    const res = await fetch(`${sidecarBase(port)}/tasks/todos/${todo.id}`, {
+    const res = await fetch(`${sidecarBaseUrl(port)}/tasks/todos/${todo.id}`, {
       method: 'PATCH',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({ completed: !todo.completed }),
@@ -329,7 +336,7 @@ export const useTasksStore = defineStore('tasks', () => {
       due_date: payload.due_date ? toIsoDatetime(payload.due_date) : '',
       remind_at: payload.remind_at ? toIsoDatetime(payload.remind_at) : '',
     };
-    const res = await fetch(`${sidecarBase(port)}/tasks/todos`, {
+    const res = await fetch(`${sidecarBaseUrl(port)}/tasks/todos`, {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify(body),
@@ -364,7 +371,7 @@ export const useTasksStore = defineStore('tasks', () => {
     if (payload.remind_at !== undefined) {
       body.remind_at = payload.remind_at ? toIsoDatetime(payload.remind_at) : '';
     }
-    const res = await fetch(`${sidecarBase(port)}/tasks/todos/${todoId}`, {
+    const res = await fetch(`${sidecarBaseUrl(port)}/tasks/todos/${todoId}`, {
       method: 'PATCH',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify(body),
@@ -387,7 +394,7 @@ export const useTasksStore = defineStore('tasks', () => {
       remind_at?: string;
     }
   ) {
-    const res = await fetch(`${sidecarBase(port)}/tasks/projects`, {
+    const res = await fetch(`${sidecarBaseUrl(port)}/tasks/projects`, {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({
@@ -450,7 +457,7 @@ export const useTasksStore = defineStore('tasks', () => {
     if (payload.remind_at !== undefined) {
       body.remind_at = payload.remind_at ? toIsoDatetime(payload.remind_at) : '';
     }
-    const res = await fetch(`${sidecarBase(port)}/tasks/projects/${projectId}`, {
+    const res = await fetch(`${sidecarBaseUrl(port)}/tasks/projects/${projectId}`, {
       method: 'PATCH',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify(body),
@@ -481,7 +488,7 @@ export const useTasksStore = defineStore('tasks', () => {
     if (payload.end_at !== undefined) {
       body.end_at = payload.end_at ? toIsoDate(payload.end_at) : '';
     }
-    const res = await fetch(`${sidecarBase(port)}/tasks/sections/${sectionId}`, {
+    const res = await fetch(`${sidecarBaseUrl(port)}/tasks/sections/${sectionId}`, {
       method: 'PATCH',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify(body),
@@ -504,7 +511,7 @@ export const useTasksStore = defineStore('tasks', () => {
       status?: string;
     }
   ) {
-    const res = await fetch(`${sidecarBase(port)}/tasks/projects/${projectId}/sections`, {
+    const res = await fetch(`${sidecarBaseUrl(port)}/tasks/projects/${projectId}/sections`, {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({
@@ -532,7 +539,7 @@ export const useTasksStore = defineStore('tasks', () => {
       notes?: string;
     }
   ) {
-    const res = await fetch(`${sidecarBase(port)}/tasks/sections/${sectionId}/summaries`, {
+    const res = await fetch(`${sidecarBaseUrl(port)}/tasks/sections/${sectionId}/summaries`, {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify(payload),
@@ -542,7 +549,7 @@ export const useTasksStore = defineStore('tasks', () => {
   }
 
   async function updateProjectStatus(port: number, projectId: number, status: string) {
-    const res = await fetch(`${sidecarBase(port)}/tasks/projects/${projectId}`, {
+    const res = await fetch(`${sidecarBaseUrl(port)}/tasks/projects/${projectId}`, {
       method: 'PATCH',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({ status }),
@@ -556,7 +563,7 @@ export const useTasksStore = defineStore('tasks', () => {
     projectId: number,
     payload: { title: string; file_path?: string; note?: string }
   ) {
-    const res = await fetch(`${sidecarBase(port)}/tasks/projects/${projectId}/docs`, {
+    const res = await fetch(`${sidecarBaseUrl(port)}/tasks/projects/${projectId}/docs`, {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({ ...payload, auto_ingest: true }),
@@ -575,7 +582,7 @@ export const useTasksStore = defineStore('tasks', () => {
   }
 
   async function setProjectReminder(port: number, projectId: number, remindAt: string) {
-    const res = await fetch(`${sidecarBase(port)}/tasks/projects/${projectId}/reminder`, {
+    const res = await fetch(`${sidecarBaseUrl(port)}/tasks/projects/${projectId}/reminder`, {
       method: 'PUT',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({ remind_at: remindAt ? toIsoDatetime(remindAt) : '' }),
@@ -585,21 +592,21 @@ export const useTasksStore = defineStore('tasks', () => {
   }
 
   async function deleteTodo(port: number, todoId: number) {
-    const res = await fetch(`${sidecarBase(port)}/tasks/todos/${todoId}`, { method: 'DELETE' });
+    const res = await fetch(`${sidecarBaseUrl(port)}/tasks/todos/${todoId}`, { method: 'DELETE' });
     if (!res.ok) throw new Error(await res.text());
     removeTodoLocal(todoId);
     await refresh(port);
   }
 
   async function deleteProject(port: number, projectId: number) {
-    const res = await fetch(`${sidecarBase(port)}/tasks/projects/${projectId}`, { method: 'DELETE' });
+    const res = await fetch(`${sidecarBaseUrl(port)}/tasks/projects/${projectId}`, { method: 'DELETE' });
     if (!res.ok) throw new Error(await res.text());
     removeProjectLocal(projectId);
     await refresh(port);
   }
 
   async function deleteSection(port: number, sectionId: number) {
-    const res = await fetch(`${sidecarBase(port)}/tasks/sections/${sectionId}`, { method: 'DELETE' });
+    const res = await fetch(`${sidecarBaseUrl(port)}/tasks/sections/${sectionId}`, { method: 'DELETE' });
     if (!res.ok) throw new Error(await res.text());
     removeSectionLocal(sectionId);
     const pid = selectedProjectId.value;
@@ -608,7 +615,7 @@ export const useTasksStore = defineStore('tasks', () => {
   }
 
   async function createLabel(port: number, payload: { name: string; color: string }) {
-    const res = await fetch(`${sidecarBase(port)}/tasks/labels`, {
+    const res = await fetch(`${sidecarBaseUrl(port)}/tasks/labels`, {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify(payload),
@@ -623,7 +630,7 @@ export const useTasksStore = defineStore('tasks', () => {
     labelId: number,
     payload: { name?: string; color?: string }
   ) {
-    const res = await fetch(`${sidecarBase(port)}/tasks/labels/${labelId}`, {
+    const res = await fetch(`${sidecarBaseUrl(port)}/tasks/labels/${labelId}`, {
       method: 'PATCH',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify(payload),
@@ -634,7 +641,7 @@ export const useTasksStore = defineStore('tasks', () => {
   }
 
   async function deleteLabel(port: number, labelId: number) {
-    const res = await fetch(`${sidecarBase(port)}/tasks/labels/${labelId}`, { method: 'DELETE' });
+    const res = await fetch(`${sidecarBaseUrl(port)}/tasks/labels/${labelId}`, { method: 'DELETE' });
     if (!res.ok) throw new Error(await res.text());
     if (activeLabel.value) {
       const deleted = labels.value.find((l) => l.id === labelId);
@@ -666,6 +673,7 @@ export const useTasksStore = defineStore('tasks', () => {
     error,
     refresh,
     refreshIfRunning,
+    refreshReminders,
     mergeTodo,
     mergeProject,
     selectFilter,

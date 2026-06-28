@@ -18,13 +18,14 @@ export async function ingestRagRest(
   port: number,
   source: string,
   content: string,
-  token?: string | null
+  token?: string | null,
+  path?: string
 ): Promise<string> {
   const auth = token ?? (await fetchSidecarAuthToken(port));
   const resp = await fetch(`${sidecarBaseUrl(port)}/rag/ingest`, {
     method: 'POST',
     headers: sidecarAuthHeaders(auth, { json: true }),
-    body: JSON.stringify({ source, content }),
+    body: JSON.stringify({ source, content, path: path ?? '' }),
   });
   if (!resp.ok) {
     const err = (await resp.json().catch(() => ({}))) as { detail?: { message?: string } };

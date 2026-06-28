@@ -22,10 +22,23 @@ import {
 } from '@/utils/toolsConfig';
 import { useSessionStore } from '@/stores/session';
 import { useAgentWs } from '@/composables/useAgentWs';
+import {
+  fetchSidecarBootstrap,
+  fetchSidecarHealth,
+  fetchSidecarProviders,
+  postSidecar,
+  putSidecarJson,
+} from '@/utils/sidecarConfig';
+import { listSchedulerJobsRest, type SchedulerJob } from '@/utils/sidecarScheduler';
+import { useTasksStore } from '@/stores/tasks';
+import { useMemoryStore } from '@/stores/memory';
+import { sidecarBaseUrl } from '@/utils/sidecarFetch';
 
 const settings = useSettingsStore();
 const navigation = useNavigationStore();
 const sessionStore = useSessionStore();
+const tasksStore = useTasksStore();
+const memoryStore = useMemoryStore();
 const { listArchivedSessions, unarchiveSession, archiveSession } = useAgentWs();
 
 const activeSection = ref<SettingsSectionId>('model');
@@ -39,10 +52,8 @@ const updateInstalling = ref(false);
 const sidecarVersion = ref('');
 const sidecarVersionOk = ref<boolean | null>(null);
 const sidecarKeyReady = ref<boolean | null>(null);
-const memorySummary = ref<{
-  preferences: Record<string, unknown>;
-  history_stats: { total_entries: number; total_hits: number };
-} | null>(null);
+const schedulerJobs = ref<SchedulerJob[]>([]);
+const schedulerLoading = ref(false);
 const toolStats = ref({ count: 0, enabled_count: 0 });
 const mcpToggles = ref<Record<string, boolean>>({});
 const mcpSaving = ref(false);
@@ -64,11 +75,19 @@ const currentProviderInfo = computed(() => providers.value.find((p) => p.id === 
 const isOllama = computed(() => settings.provider === 'ollama');
 const isUserCustom = computed(() => isUserCustomProviderId(settings.provider));
 
-const memoryPrefsPreview = computed(() => {
-  const prefs = memorySummary.value?.preferences;
-  if (!prefs || !Object.keys(prefs).length) return '';
-  return JSON.stringify(prefs, null, 2);
+const memoryPrefsModel = computed({
+  get: () => memoryStore.prefsJson,
+  set: (v: string) => memoryStore.markPrefsEdited(v),
 });
+
+function formatIsoLocal(iso: string) {
+  if (!iso) return '';
+  try {
+    return new Date(iso).toLocaleString();
+  } catch {
+    return iso;
+  }
+}
 
 const sectionTitle = computed(() => {
   for (const g of SETTINGS_NAV_GROUPS) {
@@ -92,15 +111,8 @@ function setToolKey(id: string, value: string) {
 }
 
 async function loadProviderList() {
-  try {
-    const base = `http://127.0.0.1:${settings.sidecarPort}`;
-    const resp = await fetch(`${base}/providers`);
-    if (!resp.ok) return;
-    const data = (await resp.json()) as { providers?: ProviderInfo[] };
-    providerList.value = data.providers || [];
-  } catch {
-    providerList.value = [];
-  }
+  const data = await fetchSidecarProviders(settings.sidecarPort);
+  providerList.value = data?.providers || [];
 }
 
 async function loadStoredProviders() {
@@ -125,7 +137,7 @@ async function loadLlmConfig() {
   } catch {
     /* HTTP fallback */
   }
-  const base = `http://127.0.0.1:${settings.sidecarPort}`;
+  const base = sidecarBaseUrl(settings.sidecarPort);
   try {
     const cfg = await fetch(`${base}/config/llm`).then((r) => r.json());
     settings.applyLlmConfig(cfg);
@@ -155,13 +167,13 @@ function onWorkspacePathBlur() {
 }
 
 async function loadSidecarInfo() {
-  const base = `http://127.0.0.1:${settings.sidecarPort}`;
   try {
-    const data = await fetch(`${base}/bootstrap`).then((r) => r.json());
+    const data = await fetchSidecarBootstrap(settings.sidecarPort);
+    if (!data) throw new Error('bootstrap unavailable');
     const health = data.health ?? {};
     const tools = data.tools ?? {};
     const mcp = data.mcp ?? null;
-    sidecarVersion.value = health.version ?? '';
+    sidecarVersion.value = String(health.version ?? '');
     sidecarVersionOk.value =
       typeof health.version_ok === 'boolean' ? health.version_ok : null;
     sidecarKeyReady.value =
@@ -170,7 +182,21 @@ async function loadSidecarInfo() {
       count: tools.count ?? tools.tools?.length ?? 0,
       enabled_count: tools.enabled_count ?? 0,
     };
-    mcpStatus.value = mcp;
+    mcpStatus.value = mcp
+      ? {
+          any_enabled: mcp.any_enabled ?? false,
+          loaded_count: mcp.loaded_count ?? 0,
+          configured: Object.fromEntries(
+            Object.entries(mcp.configured ?? {}).map(([name, server]) => [
+              name,
+              {
+                enabled: server.enabled ?? false,
+                transport: server.transport ?? '',
+              },
+            ])
+          ),
+        }
+      : null;
     if (mcp?.configured) {
       const toggles: Record<string, boolean> = {};
       for (const [name, server] of Object.entries(mcp.configured)) {
@@ -195,12 +221,7 @@ async function saveLlmConfig() {
   } catch {
     /* HTTP */
   }
-  const base = `http://127.0.0.1:${settings.sidecarPort}`;
-  const resp = await fetch(`${base}/config/llm`, {
-    method: 'PUT',
-    headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify(payload),
-  });
+  const resp = await putSidecarJson(settings.sidecarPort, '/config/llm', payload);
   if (!resp.ok) throw new Error('保存 LLM 配置失败');
 }
 
@@ -229,9 +250,9 @@ async function saveApiKey() {
       await loadStoredProviders();
     }
     await restartSidecar();
-    const base = `http://127.0.0.1:${settings.sidecarPort}`;
-    const health = await fetch(`${base}/health`).then((r) => r.json());
-    sidecarKeyReady.value = health.llm_key_configured ?? null;
+    const health = await fetchSidecarHealth(settings.sidecarPort);
+    sidecarKeyReady.value =
+      typeof health?.llm_key_configured === 'boolean' ? health.llm_key_configured : null;
     saveMessage.value = keyWasUpdated
       ? '配置与 API Key 已保存，Sidecar 已重启'
       : '配置已保存，Sidecar 已重启';
@@ -262,15 +283,39 @@ async function saveConversationSettings() {
 }
 
 async function loadMemorySummary() {
+  await memoryStore.refreshSummary();
+}
+
+async function loadMemoryPreferences() {
+  await memoryStore.refreshPreferences(undefined, true);
+}
+
+async function saveLearnedPreferences() {
+  saveMessage.value = '';
   try {
-    const base = `http://127.0.0.1:${settings.sidecarPort}`;
-    const data = await fetch(`${base}/memory/summary`).then((r) => r.json());
-    memorySummary.value = {
-      preferences: (data.preferences as Record<string, unknown>) ?? {},
-      history_stats: data.history_stats ?? { total_entries: 0, total_hits: 0 },
-    };
+    await memoryStore.savePreferences();
+    saveMessage.value = '已保存学习偏好';
+  } catch (e) {
+    saveMessage.value = `保存失败: ${e instanceof Error ? e.message : String(e)}`;
+  }
+}
+
+async function loadSchedulerDebug() {
+  if (settings.sidecarStatus !== 'running' || !settings.sidecarPort) {
+    schedulerJobs.value = [];
+    return;
+  }
+  schedulerLoading.value = true;
+  try {
+    const [jobs] = await Promise.all([
+      listSchedulerJobsRest(settings.sidecarPort),
+      tasksStore.refreshReminders(settings.sidecarPort),
+    ]);
+    schedulerJobs.value = jobs;
   } catch {
-    memorySummary.value = null;
+    schedulerJobs.value = [];
+  } finally {
+    schedulerLoading.value = false;
   }
 }
 
@@ -279,6 +324,7 @@ async function saveMemorySettings() {
   try {
     await saveUserAppConfig();
     await loadMemorySummary();
+    await loadMemoryPreferences();
     saveMessage.value = '记忆设置已保存';
   } catch (e) {
     saveMessage.value = `保存失败: ${e instanceof Error ? e.message : String(e)}`;
@@ -374,17 +420,12 @@ async function saveMcpConfig() {
   mcpSaving.value = true;
   saveMessage.value = '';
   try {
-    const base = `http://127.0.0.1:${settings.sidecarPort}`;
     const servers: Record<string, { enabled: boolean }> = {};
     for (const [name, enabled] of Object.entries(mcpToggles.value)) {
       servers[name] = { enabled };
     }
-    await fetch(`${base}/config/mcp`, {
-      method: 'PUT',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ servers }),
-    });
-    await fetch(`${base}/tools/reload`, { method: 'POST' });
+    await putSidecarJson(settings.sidecarPort, '/config/mcp', { servers });
+    await postSidecar(settings.sidecarPort, '/tools/reload');
     await restartSidecar();
     saveMessage.value = 'MCP 配置已保存，Sidecar 已重启';
   } catch (e) {
@@ -454,6 +495,12 @@ watch(
     if (section === 'tools' && settings.sidecarStatus === 'running') {
       void loadToolsConfig();
     }
+    if (section === 'memory' && settings.sidecarStatus === 'running') {
+      void loadMemoryPreferences();
+    }
+    if (section === 'task' && settings.sidecarStatus === 'running') {
+      void loadSchedulerDebug();
+    }
   }
 );
 
@@ -465,6 +512,7 @@ onMounted(async () => {
   await loadSidecarInfo();
   await loadWorkspaceConfig();
   await loadMemorySummary();
+  await loadMemoryPreferences();
   await loadToolsConfig();
   listArchivedSessions();
   applyNavigationSection(navigation.settingsSection);
@@ -595,15 +643,28 @@ onMounted(async () => {
               自动从对话提取偏好（「请记住…」「我喜欢…」等）
             </label>
           </div>
-          <p v-if="memorySummary" class="field-hint">
-            历史问答索引：{{ memorySummary.history_stats.total_entries }} 条，
-            命中 {{ memorySummary.history_stats.total_hits }} 次
+          <p v-if="memoryStore.summary" class="field-hint">
+            历史问答索引：{{ memoryStore.summary.history_stats.total_entries }} 条，
+            命中 {{ memoryStore.summary.history_stats.total_hits }} 次
           </p>
-          <pre v-if="memoryPrefsPreview" class="prefs-preview">{{ memoryPrefsPreview }}</pre>
-          <p v-else class="field-hint">暂无已学习的用户偏好</p>
+          <div class="field-row">
+            <label>LEARNED PREFERENCES (JSON)</label>
+            <textarea
+              v-model="memoryPrefsModel"
+              class="prefs-editor"
+              rows="10"
+              spellcheck="false"
+              placeholder='{"tone": "简洁"}'
+            />
+          </div>
+          <p v-if="memoryStore.prefsError" class="field-hint warn">{{ memoryStore.prefsError }}</p>
+          <p v-else class="field-hint">通过 REST 读写 user/preferences；自动学习与此处编辑共用同一存储</p>
           <div class="actions">
             <button type="button" @click="saveMemorySettings">保存记忆设置</button>
-            <button type="button" class="btn-secondary" @click="loadMemorySummary">刷新</button>
+            <button type="button" class="btn-secondary" @click="saveLearnedPreferences">保存学习偏好</button>
+            <button type="button" class="btn-secondary" @click="loadMemorySummary(); loadMemoryPreferences()">
+              刷新
+            </button>
           </div>
         </template>
 
@@ -805,6 +866,32 @@ onMounted(async () => {
           <div class="field-row">
             <label>DEFAULT REMIND OFFSET (H)</label>
             <input v-model.number="settings.taskPrefs.defaultRemindHours" type="number" min="0" max="168" />
+          </div>
+          <h3 class="subsection-title">即将提醒</h3>
+          <p class="field-hint">来自 GET /tasks/reminders（实体提醒 + 调度任务合并视图）</p>
+          <ul v-if="tasksStore.reminders.length" class="scheduler-list">
+            <li v-for="r in tasksStore.reminders.slice(0, 10)" :key="r.job_id">
+              <span class="mono">{{ formatIsoLocal(r.run_at) }}</span>
+              {{ r.title }} — {{ r.message }}
+              <span class="tag">{{ r.entity_type }}</span>
+            </li>
+          </ul>
+          <p v-else class="field-hint">暂无待触发提醒</p>
+          <h3 class="subsection-title">调度队列（调试）</h3>
+          <p class="field-hint">来自 GET /scheduler/jobs（APScheduler 原始 pending jobs）</p>
+          <ul v-if="schedulerJobs.length" class="scheduler-list">
+            <li v-for="j in schedulerJobs" :key="j.id">
+              <span class="mono">{{ formatIsoLocal(j.run_at) }}</span>
+              <span class="tag">{{ j.job_type }}</span>
+              <span class="mono">{{ j.id }}</span>
+              {{ j.payload }}
+            </li>
+          </ul>
+          <p v-else-if="!schedulerLoading" class="field-hint">队列为空或 Sidecar 未运行</p>
+          <div class="actions">
+            <button type="button" class="btn-secondary" :disabled="schedulerLoading" @click="loadSchedulerDebug">
+              {{ schedulerLoading ? '加载中…' : '刷新提醒与队列' }}
+            </button>
           </div>
         </template>
 
@@ -1189,5 +1276,58 @@ onMounted(async () => {
   line-height: 1.5;
   overflow-x: auto;
   max-height: 240px;
+}
+
+.prefs-editor {
+  width: 100%;
+  min-height: 180px;
+  margin-top: 8px;
+  padding: 12px;
+  background: var(--bg-input);
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  color: var(--text-primary);
+  font-size: 12px;
+  line-height: 1.5;
+  font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
+  resize: vertical;
+}
+
+.subsection-title {
+  margin: 20px 0 8px;
+  font-size: 13px;
+  font-weight: 600;
+  color: var(--text-secondary);
+}
+
+.scheduler-list {
+  list-style: none;
+  margin: 0 0 12px;
+  padding: 0;
+  font-size: 12px;
+  line-height: 1.6;
+}
+
+.scheduler-list li {
+  padding: 8px 10px;
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  margin-bottom: 6px;
+  background: var(--bg-input);
+}
+
+.scheduler-list .mono {
+  font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
+  color: var(--text-muted);
+  margin-right: 8px;
+}
+
+.scheduler-list .tag {
+  display: inline-block;
+  margin: 0 6px;
+  padding: 1px 6px;
+  border-radius: 4px;
+  background: var(--btn-secondary-bg);
+  font-size: 11px;
 }
 </style>

@@ -55,21 +55,6 @@ def _register_hitl_callbacks(runner: AgentRunner) -> None:
     hitl_timeout_manager.set_resume_callback(auto_hitl_resume)
     hitl_timeout_manager.set_notify_callback(hitl_notify)
 
-PROTECTED_MSG_TYPES = frozenset(
-    {
-        "chat.send",
-        "chat.stop",
-        "chat.resume",
-        "session.create",
-        "session.delete",
-        "session.archive",
-        "session.unarchive",
-        "rag.ingest",
-        "rag.delete",
-        "memory.set",
-    }
-)
-
 
 class ConnectionManager:
     def __init__(self):
@@ -145,7 +130,11 @@ def create_ws_router(
                         )
                     continue
 
-                if msg_type in PROTECTED_MSG_TYPES and not is_authenticated():
+                if msg_type == "ping":
+                    await ws.send_json({"type": "pong"})
+                    continue
+
+                if auth_required() and not is_authenticated():
                     await ws.send_json(
                         {
                             "type": "error",
@@ -153,10 +142,6 @@ def create_ws_router(
                             "code": "AUTH_FAILED",
                         }
                     )
-                    continue
-
-                if msg_type == "ping":
-                    await ws.send_json({"type": "pong"})
                     continue
 
                 if msg_type == "session.list":
@@ -186,7 +171,7 @@ def create_ws_router(
 
                     ok = set_session_archived(session_store, thread_id, False)
                     await ws.send_json(
-                        {"type": "session.unarchived", "thread_id": thread_id, "ok": ok}
+                        {"type": "session.unarchived_one", "thread_id": thread_id, "ok": ok}
                     )
                     continue
 

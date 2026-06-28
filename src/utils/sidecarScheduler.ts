@@ -12,6 +12,7 @@ export type SchedulerJob = {
   status: string;
 };
 
+/** Raw APScheduler pending jobs (debug/admin). UI reminders use `/tasks/reminders` via `sidecarTasks`. */
 export async function listSchedulerJobsRest(
   port: number,
   token?: string | null

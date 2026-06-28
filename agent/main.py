@@ -86,7 +86,7 @@ Personal Assistant Agent Sidecar API.
 
 ## WebSocket
 
-Primary real-time channel at `/ws` (auth, chat, sessions, RAG, scheduler).
+Primary real-time channel at `/ws`. When `auth_required`, all messages except `auth` and `ping` require a valid token (aligned with REST Bearer auth).
 REST endpoints mirror read/write paths for Leader-offline fallback.
 """
 

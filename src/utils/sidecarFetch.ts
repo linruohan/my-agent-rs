@@ -7,6 +7,10 @@ export function sidecarBaseUrl(port: number) {
   return `http://127.0.0.1:${port}`;
 }
 
+export function sidecarWsUrl(port: number) {
+  return `ws://127.0.0.1:${port}/ws`;
+}
+
 export async function fetchSidecarAuthToken(port: number): Promise<string | null> {
   if (isTauriEnv()) {
     try {
@@ -67,7 +71,7 @@ export async function sidecarRequest(path: string, options: RequestInit = {}): P
   if (settings.sidecarStatus !== 'running') {
     throw new Error('Sidecar 未就绪，请稍候再试');
   }
-  const url = `http://127.0.0.1:${settings.sidecarPort}${path}`;
+  const url = `${sidecarBaseUrl(settings.sidecarPort)}${path}`;
   try {
     return await fetch(url, options);
   } catch (e) {

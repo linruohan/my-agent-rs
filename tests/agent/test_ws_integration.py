@@ -33,6 +33,18 @@ def test_client(monkeypatch, tmp_path):
         yield client
 
 
+def test_ws_read_requires_auth(test_client):
+    with test_client.websocket_connect("/ws") as ws:
+        connected = ws.receive_json()
+        assert connected["type"] == "connected"
+        assert connected.get("auth_required") is True
+
+        ws.send_json({"type": "session.list"})
+        err = ws.receive_json()
+        assert err["type"] == "error"
+        assert err.get("code") == "AUTH_FAILED"
+
+
 def test_ws_auth_and_session_flow(test_client, monkeypatch):
     import os
 

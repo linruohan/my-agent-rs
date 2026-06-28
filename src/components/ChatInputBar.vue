@@ -23,6 +23,7 @@ import {
   attachmentFromFolderFiles,
 } from '@/utils/tauriFiles';
 import { openExternalUrl, openLocalPath } from '@/utils/nativeOpen';
+import { fetchSidecarBootstrap } from '@/utils/sidecarConfig';
 
 const emit = defineEmits<{
   send: [text: string, attachments?: ChatAttachment[]];
@@ -160,12 +161,8 @@ onUnmounted(() => {
 
 async function loadSkills() {
   try {
-    const base = `http://127.0.0.1:${settings.sidecarPort}`;
-    const resp = await fetch(`${base}/bootstrap`);
-    if (!resp.ok) return;
-    const data = (await resp.json()) as {
-      tools?: { tools?: Array<{ name: string; description?: string; enabled?: boolean }> };
-    };
+    const data = await fetchSidecarBootstrap(settings.sidecarPort);
+    if (!data) return;
     const tools = data.tools?.tools || [];
     skills.value = tools
       .filter((t) => t.enabled !== false)

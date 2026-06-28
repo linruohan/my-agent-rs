@@ -5,6 +5,7 @@ import type { ProviderInfo } from '@/composables/useChatInputModels';
 import { buildLlmConfigPayload, slugProviderId } from '@/utils/llmConfig';
 import { isTauriEnv } from '@/utils/tauri';
 import { sidecarJson } from '@/utils/sidecarFetch';
+import { waitSidecarHealthy } from '@/utils/sidecarConfig';
 import ProviderEditDialog, { type ProviderEditMode } from '@/components/ProviderEditDialog.vue';
 
 interface ProviderRow {
@@ -108,20 +109,6 @@ async function syncConfigToSidecar() {
     method: 'PUT',
     body: JSON.stringify(payload),
   });
-}
-
-async function waitSidecarHealthy(port: number, timeoutMs = 90000) {
-  const start = Date.now();
-  while (Date.now() - start < timeoutMs) {
-    try {
-      const resp = await fetch(`http://127.0.0.1:${port}/health`);
-      if (resp.ok) return;
-    } catch {
-      /* retry */
-    }
-    await new Promise((r) => setTimeout(r, 500));
-  }
-  throw new Error('Sidecar 重启超时');
 }
 
 async function restartSidecar(): Promise<number> {

@@ -1,5 +1,5 @@
 import { isTauriEnv } from '@/utils/tauri';
-import { parseResponseError } from '@/utils/sidecarFetch';
+import { parseResponseError, sidecarBaseUrl } from '@/utils/sidecarFetch';
 import { useSettingsStore } from '@/stores/settings';
 
 /**
@@ -25,14 +25,11 @@ export async function fetchOpenAiCompatibleModels(
 
   // Web 开发模式回退：仍走 Sidecar 预览接口
   const settings = useSettingsStore();
-  const resp = await fetch(
-    `http://127.0.0.1:${settings.sidecarPort}/providers/preview/models`,
-    {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ base_url: trimmedUrl, api_key: trimmedKey }),
-    }
-  );
+  const resp = await fetch(`${sidecarBaseUrl(settings.sidecarPort)}/providers/preview/models`, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ base_url: trimmedUrl, api_key: trimmedKey }),
+  });
   if (!resp.ok) {
     throw new Error(await parseResponseError(resp));
   }

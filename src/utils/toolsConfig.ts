@@ -1,3 +1,5 @@
+import { sidecarBaseUrl } from '@/utils/sidecarFetch';
+
 export type ConfigurableTool = {
   name: string;
   description?: string;
@@ -13,13 +15,9 @@ export type ToolsConfigResponse = {
   enabled_count?: number;
 };
 
-function sidecarBase(port: number) {
-  return `http://127.0.0.1:${port}`;
-}
-
 export async function loadToolsConfigFromSidecar(port: number): Promise<ToolsConfigResponse | null> {
   try {
-    const resp = await fetch(`${sidecarBase(port)}/config/tools`);
+    const resp = await fetch(`${sidecarBaseUrl(port)}/config/tools`);
     if (!resp.ok) return null;
     return (await resp.json()) as ToolsConfigResponse;
   } catch {
@@ -48,7 +46,7 @@ export async function saveToolsConfigToSidecar(
   tools: ConfigurableTool[]
 ): Promise<ToolsConfigResponse> {
   const payload = buildToolsConfigPayload(tools);
-  const resp = await fetch(`${sidecarBase(port)}/config/tools`, {
+  const resp = await fetch(`${sidecarBaseUrl(port)}/config/tools`, {
     method: 'PUT',
     headers: { 'Content-Type': 'application/json' },
     body: JSON.stringify(payload),
@@ -57,6 +55,6 @@ export async function saveToolsConfigToSidecar(
     throw new Error('保存工具配置失败');
   }
   const data = (await resp.json()) as ToolsConfigResponse;
-  await fetch(`${sidecarBase(port)}/tools/reload`, { method: 'POST' });
+  await fetch(`${sidecarBaseUrl(port)}/tools/reload`, { method: 'POST' });
   return data;
 }

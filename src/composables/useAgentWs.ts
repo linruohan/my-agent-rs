@@ -5,6 +5,7 @@ import { useSessionStore } from '@/stores/session';
 import { useSettingsStore } from '@/stores/settings';
 import { useKnowledgeStore } from '@/stores/knowledge';
 import { useTasksStore } from '@/stores/tasks';
+import { useMemoryStore } from '@/stores/memory';
 import type { ToolCall } from '@/types';
 import { logStartupMilestone } from '@/utils/startupTiming';
 import {
@@ -24,7 +25,7 @@ import {
   searchRagRest,
 } from '@/utils/sidecarRag';
 import { registerWsResumeHandler } from '@/utils/wsBridge';
-import { fetchSidecarAuthToken } from '@/utils/sidecarFetch';
+import { fetchSidecarAuthToken, sidecarWsUrl } from '@/utils/sidecarFetch';
 import {
   initWsLeaderElection,
   isWsLeader,
@@ -212,6 +213,7 @@ export function useAgentWs() {
   const settingsStore = useSettingsStore();
   const knowledgeStore = useKnowledgeStore();
   const tasksStore = useTasksStore();
+  const memoryStore = useMemoryStore();
   const connectionError = ref('');
 
   if (!leaderHooksReady) {
@@ -235,7 +237,7 @@ export function useAgentWs() {
   }
 
   function wsUrl() {
-    return `ws://127.0.0.1:${settingsStore.sidecarPort}/ws`;
+    return sidecarWsUrl(settingsStore.sidecarPort);
   }
 
   function isConnected() {
@@ -357,6 +359,7 @@ export function useAgentWs() {
         if (metadata?.task_data_changed) {
           void tasksStore.refreshIfRunning();
         }
+        void memoryStore.refreshAfterConversationTurn();
         break;
       }
 
@@ -368,7 +371,7 @@ export function useAgentWs() {
           role: 'assistant',
           content: `🔔 ${title}: ${body}`,
         });
-        void tasksStore.refreshIfRunning();
+        void tasksStore.refreshReminders();
         if (!settingsStore.notificationPrefs.desktopEnabled) break;
         import('@tauri-apps/plugin-notification')
           .then(({ sendNotification, isPermissionGranted, requestPermission }) => {
@@ -395,7 +398,7 @@ export function useAgentWs() {
         }
         break;
 
-      case 'session.unarchived':
+      case 'session.unarchived_one':
         if (msg.ok) {
           listSessions();
           listArchivedSessions();
@@ -599,7 +602,7 @@ export function useAgentWs() {
     ) {
       return;
     }
-    if (!canUseSessionRest()) return;
+    if (!canUseRestWrite()) return;
 
     chatAbortController?.abort();
     chatAbortController = new AbortController();
@@ -631,7 +634,7 @@ export function useAgentWs() {
     }
     chatAbortController?.abort();
     chatAbortController = null;
-    if (canUseSessionRest()) {
+    if (canUseRestWrite()) {
       void stopChatRest(settingsStore.sidecarPort, threadId).catch(() => {});
     }
     sessionStore.isStreaming = false;
@@ -653,7 +656,7 @@ export function useAgentWs() {
     ) {
       return;
     }
-    if (!canUseSessionRest()) return;
+    if (!canUseRestWrite()) return;
 
     chatAbortController?.abort();
     chatAbortController = new AbortController();
@@ -684,11 +687,6 @@ export function useAgentWs() {
 
   function canUseRestWrite() {
     return !settingsStore.wsReadOnly && settingsStore.sidecarStatus === 'running';
-  }
-
-  /** @deprecated alias */
-  function canUseSessionRest() {
-    return canUseRestWrite();
   }
 
   function applySessionCreated(session: {
@@ -739,7 +737,7 @@ export function useAgentWs() {
 
   function archiveSession(threadId: string) {
     if (sendRaw({ type: 'session.archive', thread_id: threadId })) return;
-    if (!canUseSessionRest()) return;
+    if (!canUseRestWrite()) return;
     void archiveSessionRest(settingsStore.sidecarPort, threadId)
       .then(() => {
         listSessions();
@@ -750,7 +748,7 @@ export function useAgentWs() {
 
   function unarchiveSession(threadId: string) {
     if (sendRaw({ type: 'session.unarchive', thread_id: threadId })) return;
-    if (!canUseSessionRest()) return;
+    if (!canUseRestWrite()) return;
     void unarchiveSessionRest(settingsStore.sidecarPort, threadId)
       .then(() => {
         listSessions();
@@ -781,7 +779,7 @@ export function useAgentWs() {
   function createSession(title?: string): boolean {
     if (settingsStore.wsReadOnly) return false;
     if (sendRaw({ type: 'session.create', title })) return true;
-    if (canUseSessionRest()) {
+    if (canUseRestWrite()) {
       void createSessionRest(settingsStore.sidecarPort, title)
         .then((session) => applySessionCreated(session))
         .catch(() => {
@@ -798,7 +796,7 @@ export function useAgentWs() {
   function deleteSession(threadId: string) {
     if (settingsStore.wsReadOnly) return;
     if (sendRaw({ type: 'session.delete', thread_id: threadId })) return;
-    if (!canUseSessionRest()) return;
+    if (!canUseRestWrite()) return;
     void deleteSessionRest(settingsStore.sidecarPort, threadId)
       .then(() => applySessionDeleted(threadId))
       .catch(() => {});
