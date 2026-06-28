@@ -6,10 +6,12 @@ import ConfirmModal from '@/components/ConfirmModal.vue';
 import StatusBar from '@/components/StatusBar.vue';
 import SettingsView from '@/views/SettingsView.vue';
 import KnowledgeBaseView from '@/views/KnowledgeBaseView.vue';
-import TasksView from '@/views/TasksView.vue';
+import ProjectsView from '@/views/ProjectsView.vue';
+import TodosView from '@/views/TodosView.vue';
 import SkillsToolsView from '@/views/SkillsToolsView.vue';
 import PlaceholderView from '@/views/PlaceholderView.vue';
 import StartupOverlay from '@/components/StartupOverlay.vue';
+import DialogHost from '@/components/DialogHost.vue';
 import { useNavigationStore } from '@/stores/navigation';
 
 const navigation = useNavigationStore();
@@ -17,7 +19,8 @@ const navigation = useNavigationStore();
 const viewTitle = computed(() => {
   const map: Record<string, string> = {
     chat: '聊天',
-    tasks: '任务和项目管理',
+    projects: '项目管理',
+    tasks: '任务管理',
     skills: '技能与工具',
     messaging: '消息平台',
     artifacts: '产物',
@@ -41,7 +44,7 @@ const viewTitle = computed(() => {
             class="top-btn"
             title="设置"
             :class="{ active: navigation.activeView === 'settings' }"
-            @click="navigation.setView('settings')"
+            @click="navigation.openSettings()"
           >
             ⚙
           </button>
@@ -58,7 +61,8 @@ const viewTitle = computed(() => {
 
       <main class="content-area">
         <ChatPanel v-if="navigation.activeView === 'chat'" />
-        <TasksView v-else-if="navigation.activeView === 'tasks'" />
+        <ProjectsView v-else-if="navigation.activeView === 'projects'" />
+        <TodosView v-else-if="navigation.activeView === 'tasks'" />
         <SkillsToolsView v-else-if="navigation.activeView === 'skills'" />
         <KnowledgeBaseView v-else-if="navigation.activeView === 'knowledge'" />
         <SettingsView v-else-if="navigation.activeView === 'settings'" />
@@ -80,6 +84,7 @@ const viewTitle = computed(() => {
     </div>
 
     <ConfirmModal />
+    <DialogHost />
     <StartupOverlay />
   </div>
 </template>
@@ -88,8 +93,8 @@ const viewTitle = computed(() => {
 .app-layout {
   display: flex;
   height: 100vh;
-  background: #0f1117;
-  color: #e4e4e7;
+  background: var(--bg-app);
+  color: var(--text-primary);
 }
 
 .main-column {
@@ -105,8 +110,8 @@ const viewTitle = computed(() => {
   align-items: center;
   justify-content: space-between;
   padding: 10px 20px;
-  background: #0f1117;
-  border-bottom: 1px solid #2a2d35;
+  background: var(--bg-app);
+  border-bottom: 1px solid var(--border);
   flex-shrink: 0;
 }
 

@@ -7,14 +7,15 @@ const props = defineProps<{
   defaultValue?: string;
   placeholder?: string;
   confirmLabel?: string;
+  multiline?: boolean;
 }>();
 
 const emit = defineEmits<{
   confirm: [value: string];
-  cancel: void;
+  cancel: [];
 }>();
 
-const inputRef = ref<HTMLInputElement | null>(null);
+const inputRef = ref<HTMLInputElement | HTMLTextAreaElement | null>(null);
 const value = ref('');
 
 watch(
@@ -22,7 +23,12 @@ watch(
   (isOpen) => {
     if (isOpen) {
       value.value = props.defaultValue ?? '';
-      nextTick(() => inputRef.value?.focus());
+      nextTick(() => {
+        inputRef.value?.focus();
+        if (inputRef.value instanceof HTMLInputElement) {
+          inputRef.value.select();
+        }
+      });
     }
   }
 );
@@ -34,7 +40,7 @@ function submit() {
 }
 
 function onKeydown(e: KeyboardEvent) {
-  if (e.key === 'Enter') {
+  if (e.key === 'Enter' && !props.multiline) {
     e.preventDefault();
     submit();
   }
@@ -49,18 +55,28 @@ function onKeydown(e: KeyboardEvent) {
     <div v-if="open" class="overlay" @click.self="emit('cancel')">
       <div class="dialog" role="dialog" aria-modal="true">
         <header class="dialog-header">
-          <h3>{{ title || '会话名称' }}</h3>
+          <h3>{{ title || '输入' }}</h3>
           <button type="button" class="btn-close" aria-label="关闭" @click="emit('cancel')">
             ×
           </button>
         </header>
         <div class="dialog-body">
+          <textarea
+            v-if="multiline"
+            ref="inputRef"
+            v-model="value"
+            class="text-input textarea"
+            :placeholder="placeholder"
+            rows="4"
+            @keydown="onKeydown"
+          />
           <input
+            v-else
             ref="inputRef"
             v-model="value"
             type="text"
-            class="name-input"
-            :placeholder="placeholder || '输入会话名称'"
+            class="text-input"
+            :placeholder="placeholder"
             @keydown="onKeydown"
           />
         </div>
@@ -129,7 +145,7 @@ function onKeydown(e: KeyboardEvent) {
   padding: 16px;
 }
 
-.name-input {
+.text-input {
   width: 100%;
   box-sizing: border-box;
   background: #0f1117;
@@ -142,7 +158,13 @@ function onKeydown(e: KeyboardEvent) {
   outline: none;
 }
 
-.name-input:focus {
+.textarea {
+  resize: vertical;
+  min-height: 96px;
+  line-height: 1.5;
+}
+
+.text-input:focus {
   border-color: #3b82f6;
 }
 

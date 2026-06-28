@@ -81,14 +81,14 @@ impl SidecarManager {
         cmd
     }
 
-    pub async fn start(&mut self, app: &AppHandle) -> Result<u16, String> {
+    pub async fn start(&mut self, app: &AppHandle, boot_start: std::time::Instant) -> Result<u16, String> {
         if self.status != SidecarStatus::Stopped {
             self.stop_async().await?;
         }
         let result = if cfg!(debug_assertions) {
-            self.start_dev_mode(app).await
+            self.start_dev_mode(app, boot_start).await
         } else {
-            self.start_production_sidecar(app).await
+            self.start_production_sidecar(app, boot_start).await
         };
         if result.is_err() {
             self.status = SidecarStatus::Error;
@@ -97,7 +97,7 @@ impl SidecarManager {
         result
     }
 
-    pub async fn start_dev_mode(&mut self, app: &AppHandle) -> Result<u16, String> {
+    pub async fn start_dev_mode(&mut self, app: &AppHandle, boot_start: std::time::Instant) -> Result<u16, String> {
         self.status = SidecarStatus::Starting;
         let _ = app.emit("sidecar-status", &self.status);
 
@@ -119,18 +119,22 @@ impl SidecarManager {
         let mut child = child
             .spawn()
             .map_err(|e| format!("Failed to start sidecar: {e}"))?;
+        log::info!(
+            "[startup] +{}ms Sidecar process spawned (dev python)",
+            boot_start.elapsed().as_millis()
+        );
 
-        let port = Self::wait_for_ready_stdout(&mut child, Duration::from_secs(60))?;
+        let port = Self::wait_for_ready_stdout(&mut child, Duration::from_secs(60), boot_start)?;
         self.child = Some(child);
         self.port = Some(port);
         self.status = SidecarStatus::Running;
         let _ = app.emit("sidecar-status", &self.status);
         let _ = app.emit("sidecar-port", port);
-        Self::wait_for_health(port).await?;
+        Self::wait_for_health(port, boot_start).await?;
         Ok(port)
     }
 
-    pub async fn start_production_sidecar(&mut self, app: &AppHandle) -> Result<u16, String> {
+    pub async fn start_production_sidecar(&mut self, app: &AppHandle, boot_start: std::time::Instant) -> Result<u16, String> {
         self.status = SidecarStatus::Starting;
         let _ = app.emit("sidecar-status", &self.status);
 
@@ -151,7 +155,7 @@ impl SidecarManager {
         let installed = crate::sidecar_update::installed_binary(&data_dir);
         if installed.is_file() {
             return self
-                .start_production_from_path(app, &data_dir, &installed)
+                .start_production_from_path(app, &data_dir, &installed, boot_start)
                 .await;
         }
 
@@ -166,6 +170,10 @@ impl SidecarManager {
         let sidecar = self.apply_native_env_sidecar(sidecar);
 
         let (mut rx, child) = sidecar.spawn().map_err(|e| format!("Spawn failed: {e}"))?;
+        log::info!(
+            "[startup] +{}ms Sidecar process spawned (shell sidecar)",
+            boot_start.elapsed().as_millis()
+        );
 
         let port = tokio::task::spawn_blocking(move || {
             let deadline = std::time::Instant::now() + Duration::from_secs(120);
@@ -198,7 +206,7 @@ impl SidecarManager {
 
         self.sidecar_child = Some(child);
         self.port = Some(port);
-        if let Err(e) = Self::wait_for_health(port).await {
+        if let Err(e) = Self::wait_for_health(port, boot_start).await {
             if let Some(child) = self.sidecar_child.take() {
                 let _ = child.kill();
             }
@@ -218,6 +226,7 @@ impl SidecarManager {
         app: &AppHandle,
         data_dir: &Path,
         binary: &Path,
+        boot_start: std::time::Instant,
     ) -> Result<u16, String> {
         let mut child = Command::new(binary);
         child.args(["--host", "127.0.0.1", "--port", "0"]);
@@ -230,11 +239,15 @@ impl SidecarManager {
         let mut child = child
             .spawn()
             .map_err(|e| format!("Failed to start synced sidecar: {e}"))?;
+        log::info!(
+            "[startup] +{}ms Sidecar process spawned (synced binary)",
+            boot_start.elapsed().as_millis()
+        );
 
-        let port = Self::wait_for_ready_stdout(&mut child, Duration::from_secs(120))?;
+        let port = Self::wait_for_ready_stdout(&mut child, Duration::from_secs(120), boot_start)?;
         self.child = Some(child);
         self.port = Some(port);
-        if let Err(e) = Self::wait_for_health(port).await {
+        if let Err(e) = Self::wait_for_health(port, boot_start).await {
             if let Some(mut child) = self.child.take() {
                 let _ = child.kill();
             }
@@ -266,7 +279,11 @@ impl SidecarManager {
         Ok((agent_dir, config_dir, data_dir))
     }
 
-    fn wait_for_ready_stdout(child: &mut Child, timeout: Duration) -> Result<u16, String> {
+    fn wait_for_ready_stdout(
+        child: &mut Child,
+        timeout: Duration,
+        boot_start: std::time::Instant,
+    ) -> Result<u16, String> {
         let stdout = child.stdout.take().ok_or("No stdout from sidecar")?;
         let reader = BufReader::new(stdout);
         let deadline = std::time::Instant::now() + timeout;
@@ -277,6 +294,10 @@ impl SidecarManager {
             let line = line.map_err(|e| e.to_string())?;
             log::info!("sidecar: {line}");
             if line.starts_with("READY port=") {
+                log::info!(
+                    "[startup] +{}ms Sidecar READY signal received",
+                    boot_start.elapsed().as_millis()
+                );
                 let port_str = line.trim_start_matches("READY port=");
                 return port_str
                     .parse::<u16>()
@@ -286,7 +307,7 @@ impl SidecarManager {
         Err("Sidecar exited before READY".to_string())
     }
 
-    async fn wait_for_health(port: u16) -> Result<(), String> {
+    async fn wait_for_health(port: u16, boot_start: std::time::Instant) -> Result<(), String> {
         const EXPECTED_VERSION: &str = env!("CARGO_PKG_VERSION");
 
         #[derive(serde::Deserialize)]
@@ -320,7 +341,11 @@ impl SidecarManager {
                             "Sidecar API version negotiation: version_ok=false (continuing)"
                         );
                     }
-                    log::info!("Sidecar health OK (v{})", body.version);
+                    log::info!(
+                        "[startup] +{}ms Sidecar health OK (v{})",
+                        boot_start.elapsed().as_millis(),
+                        body.version
+                    );
                     return Ok(());
                 }
             }
@@ -358,7 +383,7 @@ pub async fn start_sidecar(
     app: AppHandle,
 ) -> Result<u16, String> {
     let mut manager = state.lock().await;
-    manager.start(&app).await
+    manager.start(&app, std::time::Instant::now()).await
 }
 
 #[tauri::command]
@@ -374,7 +399,7 @@ pub async fn restart_sidecar(
 ) -> Result<u16, String> {
     let mut manager = state.lock().await;
     manager.stop_async().await?;
-    manager.start(&app).await
+    manager.start(&app, std::time::Instant::now()).await
 }
 
 #[tauri::command]

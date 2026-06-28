@@ -1,5 +1,9 @@
 import { computed, onMounted, ref } from 'vue';
 import { useSettingsStore } from '@/stores/settings';
+import { buildLlmConfigPayload, isUserCustomProviderId } from '@/utils/llmConfig';
+import { fetchOpenAiCompatibleModels } from '@/utils/providerModels';
+import { sidecarJson } from '@/utils/sidecarFetch';
+import { isTauriEnv } from '@/utils/tauri';
 
 export interface ProviderInfo {
   id: string;
@@ -7,6 +11,12 @@ export interface ProviderInfo {
   type: string;
   model: string;
   base_url?: string;
+  is_custom?: boolean;
+}
+
+export interface ModelTestResult {
+  ok: boolean;
+  status_code: number;
 }
 
 export interface ModelOption {
@@ -15,6 +25,8 @@ export interface ModelOption {
   providerLabel: string;
   model: string;
   label: string;
+  test?: ModelTestResult | null;
+  testing?: boolean;
 }
 
 export interface ModelGroup {
@@ -23,13 +35,16 @@ export interface ModelGroup {
   isPrimary: boolean;
   models: ModelOption[];
   loading?: boolean;
+  testing?: boolean;
 }
 
 export function useChatInputModels() {
   const settings = useSettingsStore();
   const providerList = ref<ProviderInfo[]>([]);
   const modelsByProvider = ref<Record<string, string[]>>({});
+  const testsByProvider = ref<Record<string, Record<string, ModelTestResult>>>({});
   const loadingProviders = ref<Set<string>>(new Set());
+  const testingProviders = ref<Set<string>>(new Set());
   const loading = ref(false);
 
   async function fetchProviders() {
@@ -48,18 +63,121 @@ export function useChatInputModels() {
     }
   }
 
-  async function fetchProviderModels(providerId: string, priority = false) {
-    if (modelsByProvider.value[providerId]?.length && !priority) return;
-    loadingProviders.value = new Set([...loadingProviders.value, providerId]);
+  async function getStoredApiKey(providerId: string): Promise<string | null> {
     try {
+      const { invoke } = await import('@tauri-apps/api/core');
+      return await invoke<string>('get_api_key', { provider: providerId });
+    } catch {
+      return null;
+    }
+  }
+
+  function resolveCustomBaseUrl(providerId: string, providerInfo?: ProviderInfo): string {
+    const fromList = providerInfo?.base_url?.trim();
+    if (fromList) return fromList;
+    const entry = settings.customProviders.find((e) => e.id === providerId);
+    if (entry?.baseUrl.trim()) return entry.baseUrl.trim();
+    if (providerId === 'custom') return settings.customBaseUrl.trim();
+    return '';
+  }
+
+  function isCustomProvider(providerId: string, providerInfo?: ProviderInfo): boolean {
+    return Boolean(providerInfo?.is_custom) || isUserCustomProviderId(providerId);
+  }
+
+  async function fetchCustomProviderModels(
+    providerId: string,
+    providerInfo: ProviderInfo | undefined,
+    test: boolean
+  ): Promise<{ models: string[]; tests?: Record<string, ModelTestResult> } | null> {
+    const baseUrl = resolveCustomBaseUrl(providerId, providerInfo);
+    const apiKey = await getStoredApiKey(providerId);
+    if (!baseUrl || !apiKey) return null;
+
+    try {
+      const models = await fetchOpenAiCompatibleModels(baseUrl, apiKey);
+      return { models };
+    } catch {
+      if (!test && settings.sidecarStatus === 'running') {
+        try {
+          const resp = await fetch(
+            `http://127.0.0.1:${settings.sidecarPort}/providers/${encodeURIComponent(providerId)}/models`
+          );
+          if (resp.ok) {
+            const data = (await resp.json()) as { models?: string[] };
+            return { models: data.models || [] };
+          }
+        } catch {
+          /* ignore */
+        }
+      }
+      return null;
+    }
+  }
+
+  function applyProviderModels(
+    providerId: string,
+    models: string[],
+    tests?: Record<string, ModelTestResult>
+  ) {
+    modelsByProvider.value = {
+      ...modelsByProvider.value,
+      [providerId]: models,
+    };
+    if (tests) {
+      testsByProvider.value = {
+        ...testsByProvider.value,
+        [providerId]: tests,
+      };
+    }
+  }
+
+  async function fetchProviderModels(providerId: string, options: { priority?: boolean; test?: boolean } = {}) {
+    const { priority = false, test = false } = options;
+    if (modelsByProvider.value[providerId]?.length && !priority && !test) return;
+
+    if (test) {
+      testingProviders.value = new Set([...testingProviders.value, providerId]);
+    } else {
+      loadingProviders.value = new Set([...loadingProviders.value, providerId]);
+    }
+
+    const providerInfo = providerList.value.find((p) => p.id === providerId);
+
+    try {
+      if (isCustomProvider(providerId, providerInfo)) {
+        const preview = await fetchCustomProviderModels(providerId, providerInfo, test);
+        if (preview?.models?.length) {
+          applyProviderModels(providerId, preview.models, preview.tests);
+          return;
+        }
+      }
+
       const base = `http://127.0.0.1:${settings.sidecarPort}`;
-      const resp = await fetch(`${base}/providers/${encodeURIComponent(providerId)}/models`);
+      const url = `${base}/providers/${encodeURIComponent(providerId)}/models${test ? '?test=true' : ''}`;
+      const resp = await fetch(url);
       if (resp.ok) {
-        const data = (await resp.json()) as { models?: string[] };
-        modelsByProvider.value = {
-          ...modelsByProvider.value,
-          [providerId]: data.models || [],
+        const data = (await resp.json()) as {
+          models?: string[];
+          tests?: Record<string, ModelTestResult>;
+          source?: string;
         };
+        let models = data.models || [];
+
+        if (
+          isCustomProvider(providerId, providerInfo) &&
+          models.length <= 1 &&
+          data.source !== 'api'
+        ) {
+          const preview = await fetchCustomProviderModels(providerId, providerInfo, test);
+          if (preview?.models?.length) {
+            models = preview.models;
+            applyProviderModels(providerId, models, preview.tests ?? data.tests);
+            return;
+          }
+        }
+
+        applyProviderModels(providerId, models, data.tests);
       }
     } catch {
       const fallback = providerList.value.find((p) => p.id === providerId)?.model;
@@ -67,16 +185,20 @@ export function useChatInputModels() {
         modelsByProvider.value = { ...modelsByProvider.value, [providerId]: [fallback] };
       }
     } finally {
-      const next = new Set(loadingProviders.value);
-      next.delete(providerId);
-      loadingProviders.value = next;
+      const loadingNext = new Set(loadingProviders.value);
+      loadingNext.delete(providerId);
+      loadingProviders.value = loadingNext;
+      const testingNext = new Set(testingProviders.value);
+      testingNext.delete(providerId);
+      testingProviders.value = testingNext;
     }
   }
 
   async function refreshModels() {
     await fetchProviders();
     const current = settings.provider;
-    await fetchProviderModels(current, true);
+    await fetchProviderModels(current, { priority: true, test: false });
+    void fetchProviderModels(current, { priority: true, test: true });
     const others = providerList.value.map((p) => p.id).filter((id) => id !== current);
     await Promise.all(others.map((id) => fetchProviderModels(id)));
   }
@@ -84,7 +206,8 @@ export function useChatInputModels() {
   async function openModelMenu() {
     const current = settings.provider;
     await fetchProviders();
-    await fetchProviderModels(current, true);
+    await fetchProviderModels(current, { priority: true, test: false });
+    void fetchProviderModels(current, { priority: true, test: true });
     void Promise.all(
       providerList.value
         .map((p) => p.id)
@@ -95,6 +218,8 @@ export function useChatInputModels() {
 
   function buildOptionsForProvider(p: ProviderInfo): ModelOption[] {
     const models = modelsByProvider.value[p.id];
+    const tests = testsByProvider.value[p.id];
+    const isTesting = testingProviders.value.has(p.id);
     const selected = settings.getSelectedModel(p.id);
     const defaultModel = p.model;
     const modelNames =
@@ -112,6 +237,8 @@ export function useChatInputModels() {
       providerLabel: p.label || p.id,
       model: m,
       label: m,
+      test: tests?.[m] ?? null,
+      testing: isTesting && !tests?.[m],
     }));
   }
 
@@ -132,6 +259,7 @@ export function useChatInputModels() {
       providerLabel: p.label || p.id,
       isPrimary: p.id === current,
       loading: loadingProviders.value.has(p.id),
+      testing: testingProviders.value.has(p.id),
       models: buildOptionsForProvider(p),
     }));
   });
@@ -151,37 +279,42 @@ export function useChatInputModels() {
     return (selected || currentModelLabel.value) === option.model;
   }
 
-  async function persistModelSelection() {
-    const payload = {
-      default_provider: settings.provider,
-      custom:
-        settings.provider === 'custom'
-          ? {
-              base_url: settings.customBaseUrl.trim(),
-              model: settings.customModel.trim(),
-            }
-          : undefined,
-      provider_models: { ...settings.providerModels },
-    };
-    if (settings.provider === 'ollama' && settings.customModel.trim()) {
-      payload.provider_models = {
-        ...payload.provider_models,
-        ollama: settings.customModel.trim(),
-      };
-    }
+  function formatTestStatus(option: ModelOption): string {
+    if (option.testing) return '测试中…';
+    if (!option.test) return '';
+    if (option.test.ok) return `${option.test.status_code} ok`;
+    const code = option.test.status_code || 0;
+    return `${code} fail`;
+  }
 
-    try {
+  function isTestOk(option: ModelOption): boolean | null {
+    if (option.testing) return null;
+    if (!option.test) return null;
+    return option.test.ok;
+  }
+
+  async function persistModelSelection() {
+    const payload = buildLlmConfigPayload(settings);
+
+    if (isTauriEnv()) {
       const { invoke } = await import('@tauri-apps/api/core');
       await invoke('store_llm_user_config', { config: payload });
+      if (settings.sidecarStatus === 'running') {
+        try {
+          await sidecarJson('/config/llm', {
+            method: 'PUT',
+            body: JSON.stringify(payload),
+          });
+        } catch {
+          /* 本地 yaml 已写入，Sidecar 下次重启会加载 */
+        }
+      }
       return;
-    } catch {
-      /* fall through */
     }
 
-    const base = `http://127.0.0.1:${settings.sidecarPort}`;
-    await fetch(`${base}/config/llm`, {
+    if (settings.sidecarStatus !== 'running') return;
+    await sidecarJson('/config/llm', {
       method: 'PUT',
-      headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify(payload),
     });
   }
@@ -233,5 +366,7 @@ export function useChatInputModels() {
     filterModels,
     filterModelGroups,
     isOptionActive,
+    formatTestStatus,
+    isTestOk,
   };
 }

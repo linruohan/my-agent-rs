@@ -7,11 +7,21 @@ pub struct CustomProviderConfig {
     pub model: String,
 }
 
+#[derive(Debug, Serialize, Deserialize, Clone)]
+pub struct CustomProviderEntry {
+    pub id: String,
+    pub name: String,
+    pub base_url: String,
+    pub model: String,
+}
+
 #[derive(Debug, Serialize, Deserialize, Default)]
 pub struct LlmUserConfig {
     pub default_provider: String,
     #[serde(default)]
     pub custom: Option<CustomProviderConfig>,
+    #[serde(default)]
+    pub custom_providers: Option<Vec<CustomProviderEntry>>,
     #[serde(default)]
     pub provider_models: Option<std::collections::HashMap<String, String>>,
 }
@@ -30,6 +40,7 @@ pub fn get_llm_user_config(app: AppHandle) -> Result<LlmUserConfig, String> {
         return Ok(LlmUserConfig {
             default_provider: "deepseek".to_string(),
             custom: None,
+            custom_providers: None,
             provider_models: None,
         });
     }
@@ -39,7 +50,17 @@ pub fn get_llm_user_config(app: AppHandle) -> Result<LlmUserConfig, String> {
 
 #[tauri::command]
 pub fn store_llm_user_config(app: AppHandle, config: LlmUserConfig) -> Result<(), String> {
-    if config.default_provider == "custom" {
+    if let Some(providers) = &config.custom_providers {
+        for entry in providers {
+            if entry.id.trim().is_empty()
+                || entry.name.trim().is_empty()
+                || entry.base_url.trim().is_empty()
+                || entry.model.trim().is_empty()
+            {
+                return Err("custom provider id, name, base_url and model cannot be empty".to_string());
+            }
+        }
+    } else if config.default_provider == "custom" {
         let custom = config
             .custom
             .as_ref()
@@ -59,7 +80,34 @@ pub fn store_llm_user_config(app: AppHandle, config: LlmUserConfig) -> Result<()
         serde_yaml::Value::from("default_provider"),
         serde_yaml::Value::from(config.default_provider.clone()),
     );
-    if config.default_provider == "custom" {
+
+    if let Some(providers) = &config.custom_providers {
+        let mut list = Vec::new();
+        for entry in providers {
+            let mut item = serde_yaml::Mapping::new();
+            item.insert(
+                serde_yaml::Value::from("id"),
+                serde_yaml::Value::from(entry.id.clone()),
+            );
+            item.insert(
+                serde_yaml::Value::from("name"),
+                serde_yaml::Value::from(entry.name.clone()),
+            );
+            item.insert(
+                serde_yaml::Value::from("base_url"),
+                serde_yaml::Value::from(entry.base_url.clone()),
+            );
+            item.insert(
+                serde_yaml::Value::from("model"),
+                serde_yaml::Value::from(entry.model.clone()),
+            );
+            list.push(serde_yaml::Value::Mapping(item));
+        }
+        data.insert(
+            serde_yaml::Value::from("custom_providers"),
+            serde_yaml::Value::Sequence(list),
+        );
+    } else if config.default_provider == "custom" {
         if let Some(custom) = config.custom {
             let mut custom_map = serde_yaml::Mapping::new();
             custom_map.insert(

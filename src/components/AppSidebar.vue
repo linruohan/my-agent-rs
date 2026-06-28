@@ -4,6 +4,7 @@ import { useSessionStore } from '@/stores/session';
 import { useNavigationStore, type AppView } from '@/stores/navigation';
 import { useAgentWs } from '@/composables/useAgentWs';
 import { useSettingsStore } from '@/stores/settings';
+import { useDialogStore } from '@/stores/dialog';
 import SessionListItem from '@/components/SessionListItem.vue';
 import {
   SESSION_COMMANDS,
@@ -12,13 +13,13 @@ import {
   type ChatCommand,
 } from '@/utils/chatCommands';
 
-const WORKSPACE_KEY = 'pa-workspace-path';
 const DEFAULT_WORKSPACE = '~/AssistantWorkspace';
 
 const sessionStore = useSessionStore();
 const navigation = useNavigationStore();
 const settings = useSettingsStore();
-const { createSession, deleteSession, loadSessionHistory, connectionError, isConnected } =
+const dialog = useDialogStore();
+const { createSession, deleteSession, loadSessionHistory, connectionError } =
   useAgentWs();
 
 const searchQuery = ref('');
@@ -26,18 +27,18 @@ const showSearchPopup = ref(false);
 const skills = ref<ChatCommand[]>([]);
 const workspaceMenuOpen = ref(false);
 const openSessionMenuId = ref<string | null>(null);
-const workspacePath = ref(localStorage.getItem(WORKSPACE_KEY) || DEFAULT_WORKSPACE);
 
 const navItems: Array<{ id: AppView; label: string; icon: string }> = [
   { id: 'skills', label: '技能与工具', icon: '⚡' },
   { id: 'messaging', label: '消息平台', icon: '💬' },
   { id: 'artifacts', label: '产物', icon: '📦' },
-  { id: 'tasks', label: '任务和项目管理', icon: '✓' },
+  { id: 'projects', label: '项目管理', icon: '📋' },
+  { id: 'tasks', label: '任务管理', icon: '✓' },
   { id: 'knowledge', label: '知识库', icon: '📚' },
 ];
 
 const workspaceDisplay = computed(() => {
-  const p = workspacePath.value;
+  const p = settings.workspacePath || DEFAULT_WORKSPACE;
   if (p.length > 28) return '…' + p.slice(-25);
   return p;
 });
@@ -79,13 +80,16 @@ function selectSession(threadId: string) {
   openSessionMenuId.value = null;
 }
 
-function handleNewSession() {
+async function handleNewSession() {
   navigation.setView('chat');
-  if (!isConnected()) {
-    createSession();
-    return;
-  }
-  createSession();
+  const title = await dialog.prompt({
+    title: '新建会话',
+    defaultValue: '新会话',
+    placeholder: '输入会话名称',
+    confirmLabel: '创建',
+  });
+  if (!title) return;
+  createSession(title);
 }
 
 function handleDelete(threadId: string) {
@@ -153,13 +157,18 @@ function toggleSessionMenu(threadId: string) {
   openSessionMenuId.value = openSessionMenuId.value === threadId ? null : threadId;
 }
 
-function renameSession(threadId: string) {
+async function renameSession(threadId: string) {
   const session = sessionStore.sessions.find((s) => s.thread_id === threadId);
   if (!session) return;
-  const title = window.prompt('输入新会话标题', session.title);
-  if (!title?.trim()) return;
-  session.title = title.trim();
   openSessionMenuId.value = null;
+  const title = await dialog.prompt({
+    title: '重命名会话',
+    defaultValue: session.title,
+    placeholder: '输入会话名称',
+    confirmLabel: '保存',
+  });
+  if (!title) return;
+  session.title = title;
 }
 
 function togglePinFromMenu(threadId: string) {
@@ -167,11 +176,14 @@ function togglePinFromMenu(threadId: string) {
   openSessionMenuId.value = null;
 }
 
-function editWorkspacePath() {
-  const path = window.prompt('工作区路径', workspacePath.value);
-  if (!path?.trim()) return;
-  workspacePath.value = path.trim();
-  localStorage.setItem(WORKSPACE_KEY, workspacePath.value);
+async function editWorkspacePath() {
+  const path = await dialog.prompt({
+    title: '工作区路径',
+    defaultValue: settings.workspacePath || DEFAULT_WORKSPACE,
+    placeholder: DEFAULT_WORKSPACE,
+  });
+  if (!path) return;
+  settings.workspacePath = path;
   workspaceMenuOpen.value = false;
 }
 
@@ -179,9 +191,12 @@ async function openWorkspaceFolder() {
   workspaceMenuOpen.value = false;
   try {
     const { invoke } = await import('@tauri-apps/api/core');
-    await invoke('open_workspace_folder', { path: workspacePath.value });
+    await invoke('open_workspace_folder', { path: settings.workspacePath });
   } catch {
-    window.alert(`工作区路径：${workspacePath.value}`);
+    await dialog.alert({
+      title: '工作区路径',
+      message: settings.workspacePath || DEFAULT_WORKSPACE,
+    });
   }
 }
 
@@ -357,8 +372,8 @@ onUnmounted(() => {
 <style scoped>
 .sidebar {
   width: 280px;
-  background: #12141a;
-  border-right: 1px solid #2a2d35;
+  background: var(--bg-sidebar);
+  border-right: 1px solid var(--border);
   display: flex;
   flex-direction: column;
   min-height: 0;

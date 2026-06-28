@@ -1,8 +1,10 @@
 <script setup lang="ts">
 import { computed, ref, watch } from 'vue';
 import { useSessionStore } from '@/stores/session';
+import { useDialogStore } from '@/stores/dialog';
 
 const sessionStore = useSessionStore();
+const dialog = useDialogStore();
 
 const currentInterrupt = computed(() => sessionStore.interruptQueue[0]);
 const editMode = ref(false);
@@ -31,7 +33,10 @@ function submitEdit() {
     sessionStore.resolveInterrupt('edit', parsed);
     editMode.value = false;
   } catch {
-    alert('JSON 格式无效，请检查后重试');
+    void dialog.alert({
+      title: '格式错误',
+      message: 'JSON 格式无效，请检查后重试',
+    });
   }
 }
 </script>

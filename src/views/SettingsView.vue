@@ -1,12 +1,17 @@
 <script setup lang="ts">
-import { computed, nextTick, onMounted, ref, watch } from 'vue';
+import { computed, onMounted, ref, watch } from 'vue';
 import { useSettingsStore } from '@/stores/settings';
-import { useNavigationStore } from '@/stores/navigation';
+import { useNavigationStore, type SettingsSectionId } from '@/stores/navigation';
 import type { ProviderInfo } from '@/composables/useChatInputModels';
+import { SETTINGS_NAV_GROUPS, TOOL_KEY_FIELDS } from '@/utils/settingsSections';
+import AppearanceSettings from '@/components/AppearanceSettings.vue';
+import ProviderSettings from '@/components/ProviderSettings.vue';
+import { buildLlmConfigPayload, isUserCustomProviderId } from '@/utils/llmConfig';
 
 const settings = useSettingsStore();
 const navigation = useNavigationStore();
-const providerSectionRef = ref<HTMLElement | null>(null);
+
+const activeSection = ref<SettingsSectionId>('model');
 const apiKey = ref('');
 const storedProviders = ref<string[]>([]);
 const providerList = ref<ProviderInfo[]>([]);
@@ -25,23 +30,37 @@ const mcpStatus = ref<{
   loaded_count: number;
   configured: Record<string, { enabled: boolean; transport: string }>;
 } | null>(null);
+
 const providers = computed(() =>
   providerList.value.length
     ? providerList.value
     : [{ id: 'deepseek', label: 'DeepSeek', type: 'openai_compatible', model: 'deepseek-chat' }]
 );
 
-const currentProviderInfo = computed(
-  () => providers.value.find((p) => p.id === settings.provider)
-);
-
-const isCustom = computed(() => settings.provider === 'custom');
+const currentProviderInfo = computed(() => providers.value.find((p) => p.id === settings.provider));
 const isOllama = computed(() => settings.provider === 'ollama');
-const keyProvider = computed(() => settings.provider);
-const hasStoredKey = computed(() => storedProviders.value.includes(keyProvider.value));
-const needsApiKey = computed(
-  () => !isOllama.value && !hasStoredKey.value && !apiKey.value.trim()
-);
+const isUserCustom = computed(() => isUserCustomProviderId(settings.provider));
+
+const sectionTitle = computed(() => {
+  for (const g of SETTINGS_NAV_GROUPS) {
+    const item = g.items.find((i) => i.id === activeSection.value);
+    if (item) return item.label;
+  }
+  return '设置';
+});
+
+function setSection(id: SettingsSectionId) {
+  activeSection.value = id;
+  navigation.settingsSection = null;
+}
+
+function toolKeyValue(id: string) {
+  return settings.toolKeys[id] ?? '';
+}
+
+function setToolKey(id: string, value: string) {
+  settings.toolKeys = { ...settings.toolKeys, [id]: value };
+}
 
 async function loadProviderList() {
   try {
@@ -75,15 +94,14 @@ async function loadLlmConfig() {
     settings.applyLlmConfig(cfg);
     return;
   } catch {
-    /* fall through to HTTP */
+    /* HTTP fallback */
   }
-
   const base = `http://127.0.0.1:${settings.sidecarPort}`;
   try {
     const cfg = await fetch(`${base}/config/llm`).then((r) => r.json());
     settings.applyLlmConfig(cfg);
   } catch {
-    /* use localStorage defaults */
+    /* defaults */
   }
 }
 
@@ -120,93 +138,47 @@ async function loadSidecarInfo() {
 }
 
 async function saveLlmConfig() {
-  const payload = {
-    default_provider: settings.provider,
-    custom:
-      settings.provider === 'custom'
-        ? {
-            base_url: settings.customBaseUrl.trim(),
-            model: settings.customModel.trim(),
-          }
-        : undefined,
-    provider_models: { ...settings.providerModels },
-  };
-
-  if (settings.provider === 'custom') {
-    if (!payload.custom?.base_url || !payload.custom?.model) {
-      throw new Error('请填写自定义 API Base URL 和模型名');
-    }
-  }
-  if (settings.provider === 'ollama' && settings.customModel.trim()) {
-    payload.provider_models = {
-      ...payload.provider_models,
-      ollama: settings.customModel.trim(),
-    };
-  }
-
+  const payload = buildLlmConfigPayload(settings);
   try {
     const { invoke } = await import('@tauri-apps/api/core');
     await invoke('store_llm_user_config', { config: payload });
     return;
   } catch {
-    /* fall through */
+    /* HTTP */
   }
-
   const base = `http://127.0.0.1:${settings.sidecarPort}`;
   const resp = await fetch(`${base}/config/llm`, {
     method: 'PUT',
     headers: { 'Content-Type': 'application/json' },
     body: JSON.stringify(payload),
   });
-  if (!resp.ok) {
-    throw new Error('保存 LLM 配置失败');
-  }
+  if (!resp.ok) throw new Error('保存 LLM 配置失败');
 }
 
 async function saveApiKey() {
   saveMessage.value = '';
   try {
-    const keyProviderName = keyProvider.value;
-    const hasKey =
-      apiKey.value.trim().length > 0 || storedProviders.value.includes(keyProviderName);
-    if (settings.provider !== 'ollama' && !hasKey) {
-      throw new Error('请填写 API Key');
-    }
-
     await saveLlmConfig();
-
     const keyWasUpdated = apiKey.value.trim().length > 0;
     if (keyWasUpdated) {
       const { invoke } = await import('@tauri-apps/api/core');
       await invoke('store_api_key', {
-        provider: keyProviderName,
+        provider: settings.provider,
         apiKey: apiKey.value.trim(),
       });
       apiKey.value = '';
       await loadStoredProviders();
-      if (!storedProviders.value.includes(keyProviderName)) {
-        throw new Error('API Key 保存失败，请重试或检查磁盘/密钥链权限');
-      }
     }
-
     await restartSidecar();
-
     const base = `http://127.0.0.1:${settings.sidecarPort}`;
     const health = await fetch(`${base}/health`).then((r) => r.json());
     sidecarKeyReady.value = health.llm_key_configured ?? null;
-    if (settings.provider !== 'ollama' && health.llm_key_configured === false) {
-      throw new Error(
-        'Sidecar 仍未加载 API Key。请在 API Key 输入框粘贴密钥后再次保存'
-      );
-    }
-
     saveMessage.value = keyWasUpdated
-      ? '配置与 API Key 已保存，Sidecar 已自动重启'
+      ? '配置与 API Key 已保存，Sidecar 已重启'
       : '配置已保存，Sidecar 已重启';
   } catch (e) {
     settings.setSidecarStatus('error');
-    const detail = e instanceof Error ? e.message : String(e);
-    saveMessage.value = `保存失败: ${detail}`;
+    saveMessage.value = `保存失败: ${e instanceof Error ? e.message : String(e)}`;
   }
 }
 
@@ -227,8 +199,7 @@ async function restartSidecarFromUi() {
     saveMessage.value = `Sidecar 已重启，端口 ${port}`;
   } catch (e) {
     settings.setSidecarStatus('error');
-    const detail = e instanceof Error ? e.message : String(e);
-    saveMessage.value = `Sidecar 重启失败: ${detail}`;
+    saveMessage.value = `Sidecar 重启失败: ${e instanceof Error ? e.message : String(e)}`;
   }
 }
 
@@ -291,12 +262,22 @@ async function installPendingUpdate() {
   }
 }
 
+function applyNavigationSection(section: SettingsSectionId | null) {
+  if (section) {
+    activeSection.value = section;
+    navigation.settingsSection = null;
+  }
+}
+
+watch(
+  () => navigation.settingsSection,
+  (section: SettingsSectionId | null) => applyNavigationSection(section)
+);
+
 watch(
   () => [settings.sidecarPort, settings.sidecarStatus],
   () => {
-    if (settings.sidecarStatus === 'running') {
-      loadSidecarInfo();
-    }
+    if (settings.sidecarStatus === 'running') loadSidecarInfo();
   }
 );
 
@@ -305,254 +286,440 @@ onMounted(async () => {
   await loadStoredProviders();
   await loadProviderList();
   await loadSidecarInfo();
-  if (navigation.settingsSection === 'provider') {
-    nextTick(() => {
-      providerSectionRef.value?.scrollIntoView({ behavior: 'smooth', block: 'start' });
-      navigation.settingsSection = null;
-    });
-  }
+  applyNavigationSection(navigation.settingsSection);
 });
-
-watch(
-  () => navigation.settingsSection,
-  (section) => {
-    if (section === 'provider' && navigation.activeView === 'settings') {
-      nextTick(() => {
-        providerSectionRef.value?.scrollIntoView({ behavior: 'smooth', block: 'start' });
-        navigation.settingsSection = null;
-      });
-    }
-  }
-);
 </script>
 
 <template>
-  <div class="settings">
-    <h2>设置</h2>
-
-    <section ref="providerSectionRef" class="provider-section">
-      <label>LLM Provider</label>
-      <select v-model="settings.provider">
-        <option v-for="p in providers" :key="p.id" :value="p.id">
-          {{ p.label || p.id }}
-        </option>
-      </select>
-      <p v-if="currentProviderInfo" class="info-inline">
-        类型: {{ currentProviderInfo.type }}
-        <template v-if="currentProviderInfo.model">
-          · 默认模型: {{ currentProviderInfo.model }}
-        </template>
-      </p>
-    </section>
-
-    <section v-if="isOllama">
-      <label>Ollama 模型名</label>
-      <input v-model="settings.customModel" type="text" placeholder="qwen2.5:7b" />
-    </section>
-
-    <section v-if="isCustom">
-      <label>API Base URL</label>
-      <input
-        v-model="settings.customBaseUrl"
-        type="text"
-        placeholder="https://your-gateway.com/v1"
-      />
-      <label>模型名</label>
-      <input v-model="settings.customModel" type="text" placeholder="your-model-name" />
-    </section>
-
-    <section v-if="isCustom && !hasStoredKey" class="warn-box">
-      <strong>尚未保存 API Key</strong>
-      <p>Provider / URL / 模型名已保存不等于 Key 已配置。请在下方输入框粘贴 NVIDIA API Key，再点「保存配置」。</p>
-    </section>
-
-    <section>
-      <label>温度 ({{ settings.temperature }})</label>
-      <input v-model.number="settings.temperature" type="range" min="0" max="1" step="0.1" />
-    </section>
-
-    <section>
-      <label>API Key（保存到系统密钥链，不会写入配置文件）</label>
-      <input v-model="apiKey" type="password" placeholder="sk-..." />
-      <p v-if="hasStoredKey" class="info-inline">{{ keyProvider }} 的 Key 已保存在本地（密钥链/加密文件）</p>
-      <p v-if="sidecarKeyReady === true" class="info-inline">Sidecar 已加载当前 Provider 的 API Key</p>
-      <p v-else-if="sidecarKeyReady === false" class="warn">Sidecar 未加载 API Key，聊天会失败</p>
-      <div class="btn-row">
-        <button @click="saveApiKey" :disabled="needsApiKey && !isOllama">
-          保存配置
-        </button>
-        <button class="btn-secondary" @click="restartSidecarFromUi">重启 Sidecar</button>
-      </div>
-      <p v-if="saveMessage" class="msg" :class="{ 'msg-error': settings.sidecarStatus === 'error' }">{{ saveMessage }}</p>
-    </section>
-
-    <section v-if="storedProviders.length" class="info">
-      <p>已存储 Key 的 Provider: {{ storedProviders.join(', ') }}</p>
-    </section>
-
-    <section class="info">
-      <p>Sidecar 端口: {{ settings.sidecarPort }}</p>
-      <p>Sidecar 状态: {{ settings.sidecarStatus }}</p>
-      <p v-if="sidecarVersion">Sidecar 版本: {{ sidecarVersion }}</p>
-      <p v-if="sidecarVersionOk === false" class="warn">Sidecar API 版本与桌面壳不一致</p>
-      <p v-if="toolStats.count">已注册工具: {{ toolStats.enabled_count }} / {{ toolStats.count }}</p>
-      <p>WebSocket: {{ settings.wsConnected ? '已连接' : '未连接' }}</p>
-    </section>
-
-    <section v-if="mcpStatus" class="info">
-      <h3>MCP 扩展</h3>
-      <div v-for="(server, name) in mcpStatus.configured" :key="name" class="mcp-row">
-        <label class="mcp-toggle">
-          <input v-model="mcpToggles[name]" type="checkbox" />
-          {{ name }} ({{ server.transport }})
-        </label>
-      </div>
-      <div class="btn-row">
-        <button class="btn-secondary" :disabled="mcpSaving" @click="saveMcpConfig">
-          {{ mcpSaving ? '保存中…' : '保存 MCP 并重启' }}
-        </button>
-      </div>
-      <p>已加载 MCP 工具: {{ mcpStatus.loaded_count }}</p>
-      <p v-if="mcpStatus.any_enabled && mcpStatus.loaded_count === 0" class="warn">
-        MCP 已启用但未加载工具，请检查依赖 (pip install -e "./agent[mcp]") 与 Token
-      </p>
-      <p class="info-inline">
-        Windows 用户可安装 Outlook 集成: pip install -e "./agent[outlook]"
-      </p>
-    </section>
-
-    <section>
-      <label>应用更新</label>
-      <div class="btn-row">
-        <button class="btn-secondary" @click="checkUpdates">检查更新</button>
+  <div class="settings-layout">
+    <nav class="settings-nav">
+      <div v-for="(group, gi) in SETTINGS_NAV_GROUPS" :key="gi" class="nav-group">
+        <div v-if="group.label" class="nav-group-label">{{ group.label }}</div>
         <button
-          v-if="pendingUpdate"
-          :disabled="updateInstalling"
-          @click="installPendingUpdate"
+          v-for="item in group.items"
+          :key="item.id"
+          type="button"
+          class="nav-item"
+          :class="{ active: activeSection === item.id }"
+          @click="setSection(item.id)"
         >
-          {{ updateInstalling ? '安装中…' : `安装 ${pendingUpdate.version}` }}
+          <span class="nav-icon">{{ item.icon }}</span>
+          <span>{{ item.label }}</span>
         </button>
       </div>
-      <p v-if="updateMessage" class="msg">{{ updateMessage }}</p>
-      <p class="info-inline">
-        发布前运行 scripts/configure_updater.ps1 并设置 TAURI_UPDATER_PUBKEY / ENDPOINT
-      </p>
-    </section>
+    </nav>
+
+    <div class="settings-main">
+      <header class="settings-header">
+        <h2>{{ sectionTitle }}</h2>
+        <button type="button" class="btn-close-settings" @click="navigation.setView('chat')">
+          ×
+        </button>
+      </header>
+
+      <div class="settings-body">
+        <!-- 模型 -->
+        <template v-if="activeSection === 'model'">
+          <div class="field-row">
+            <label>LLM PROVIDER</label>
+            <select v-model="settings.provider">
+              <option v-for="p in providers" :key="p.id" :value="p.id">
+                {{ p.label || p.id }}
+              </option>
+            </select>
+          </div>
+          <div v-if="currentProviderInfo" class="field-hint">
+            类型 {{ currentProviderInfo.type }}
+            <template v-if="currentProviderInfo.model"> · 默认 {{ currentProviderInfo.model }}</template>
+          </div>
+          <div v-if="isOllama" class="field-row">
+            <label>OLLAMA MODEL</label>
+            <input v-model="settings.customModel" type="text" placeholder="qwen2.5:7b" />
+          </div>
+          <div v-if="isUserCustom" class="field-hint">
+            自定义提供方请在「集成 → 提供方」中管理；当前：
+            {{ currentProviderInfo?.label || settings.provider }}
+            <template v-if="settings.getSelectedModel()"> · {{ settings.getSelectedModel() }}</template>
+          </div>
+          <div class="field-row">
+            <label>TEMPERATURE ({{ settings.temperature }})</label>
+            <input v-model.number="settings.temperature" type="range" min="0" max="1" step="0.1" class="range" />
+          </div>
+          <div class="actions">
+            <button type="button" @click="saveApiKey">保存模型配置</button>
+          </div>
+        </template>
+
+        <!-- 提供方 -->
+        <template v-else-if="activeSection === 'provider'">
+          <ProviderSettings
+            :stored-providers="storedProviders"
+            :sidecar-key-ready="sidecarKeyReady"
+            @saved="(msg) => (saveMessage = msg)"
+            @error="(msg) => (saveMessage = `保存失败: ${msg}`)"
+            @refresh-stored="loadStoredProviders"
+          />
+        </template>
+
+        <!-- 工具与密钥 -->
+        <template v-else-if="activeSection === 'tools-keys'">
+          <div v-for="field in TOOL_KEY_FIELDS" :key="field.id" class="field-row">
+            <label>{{ field.label }}</label>
+            <input
+              :type="field.type === 'password' ? 'password' : 'text'"
+              :value="toolKeyValue(field.id)"
+              :placeholder="field.placeholder"
+              @input="setToolKey(field.id, ($event.target as HTMLInputElement).value)"
+            />
+          </div>
+          <p class="field-hint">密钥保存在本地设置中，不会写入日志</p>
+        </template>
+
+        <!-- MCP -->
+        <template v-else-if="activeSection === 'mcp'">
+          <template v-if="mcpStatus">
+            <div v-for="(server, name) in mcpStatus.configured" :key="name" class="field-row mcp-row">
+              <label>{{ name.toUpperCase() }}</label>
+              <label class="checkbox-label">
+                <input v-model="mcpToggles[name]" type="checkbox" />
+                启用 ({{ server.transport }})
+              </label>
+            </div>
+            <p class="field-hint">已加载 MCP 工具: {{ mcpStatus.loaded_count }}</p>
+            <div class="actions">
+              <button type="button" class="btn-secondary" :disabled="mcpSaving" @click="saveMcpConfig">
+                {{ mcpSaving ? '保存中…' : '保存 MCP 并重启' }}
+              </button>
+            </div>
+          </template>
+          <p v-else class="placeholder-text">Sidecar 未连接，无法加载 MCP 状态</p>
+        </template>
+
+        <!-- 工作区 -->
+        <template v-else-if="activeSection === 'workspace'">
+          <div class="field-row">
+            <label>WORKSPACE PATH</label>
+            <input v-model="settings.workspacePath" type="text" placeholder="~/AssistantWorkspace" />
+          </div>
+          <p class="field-hint">Agent 文件工具与项目文档的默认工作目录</p>
+        </template>
+
+        <!-- 安全 -->
+        <template v-else-if="activeSection === 'security'">
+          <div class="field-row">
+            <label>HITL TIMEOUT (SEC)</label>
+            <input v-model.number="settings.hitlTimeoutSec" type="number" min="30" max="3600" />
+          </div>
+          <p class="field-hint">人工确认操作超时时间（秒），超时后自动拒绝</p>
+        </template>
+
+        <!-- 项目设置 -->
+        <template v-else-if="activeSection === 'project'">
+          <div class="field-row">
+            <label>DEFAULT STATUS</label>
+            <select v-model="settings.projectPrefs.defaultStatus">
+              <option value="planning">规划中</option>
+              <option value="active">进行中</option>
+              <option value="on_hold">暂停</option>
+            </select>
+          </div>
+          <div class="field-row mcp-row">
+            <label>AUTO INDEX DOCS</label>
+            <label class="checkbox-label">
+              <input v-model="settings.projectPrefs.autoIndexDocs" type="checkbox" />
+              添加项目文档时自动索引到知识库
+            </label>
+          </div>
+        </template>
+
+        <!-- 任务设置 -->
+        <template v-else-if="activeSection === 'task'">
+          <div class="field-row">
+            <label>DEFAULT PRIORITY</label>
+            <select v-model="settings.taskPrefs.defaultPriority">
+              <option value="low">低</option>
+              <option value="medium">中</option>
+              <option value="high">高</option>
+            </select>
+          </div>
+          <div class="field-row mcp-row">
+            <label>SHOW COMPLETED</label>
+            <label class="checkbox-label">
+              <input v-model="settings.taskPrefs.showCompleted" type="checkbox" />
+              默认显示已完成任务
+            </label>
+          </div>
+          <div class="field-row">
+            <label>DEFAULT REMIND OFFSET (H)</label>
+            <input v-model.number="settings.taskPrefs.defaultRemindHours" type="number" min="0" max="168" />
+          </div>
+        </template>
+
+        <!-- 关于 -->
+        <template v-else-if="activeSection === 'about'">
+          <div class="info-block">
+            <p>Sidecar 端口: {{ settings.sidecarPort }}</p>
+            <p>Sidecar 状态: {{ settings.sidecarStatus }}</p>
+            <p v-if="sidecarVersion">版本: {{ sidecarVersion }}</p>
+            <p v-if="sidecarVersionOk === false" class="warn">API 版本与桌面壳不一致</p>
+            <p v-if="toolStats.count">工具: {{ toolStats.enabled_count }} / {{ toolStats.count }}</p>
+            <p>WebSocket: {{ settings.wsConnected ? '已连接' : '未连接' }}</p>
+          </div>
+          <div class="actions">
+            <button type="button" class="btn-secondary" @click="checkUpdates">检查更新</button>
+            <button
+              v-if="pendingUpdate"
+              type="button"
+              :disabled="updateInstalling"
+              @click="installPendingUpdate"
+            >
+              {{ updateInstalling ? '安装中…' : `安装 ${pendingUpdate.version}` }}
+            </button>
+            <button type="button" class="btn-secondary" @click="restartSidecarFromUi">重启 Sidecar</button>
+          </div>
+          <p v-if="updateMessage" class="field-hint">{{ updateMessage }}</p>
+        </template>
+
+        <!-- 外观 -->
+        <template v-else-if="activeSection === 'appearance'">
+          <AppearanceSettings />
+        </template>
+
+        <!-- 高级 -->
+        <template v-else-if="activeSection === 'advanced'">
+          <div class="actions">
+            <button type="button" class="btn-secondary" @click="restartSidecarFromUi">重启 Sidecar</button>
+          </div>
+          <p class="field-hint">重启后重新加载配置与工具注册</p>
+        </template>
+
+        <!-- 占位分类 -->
+        <template v-else>
+          <p class="placeholder-text">此分类的设置即将推出</p>
+        </template>
+
+        <p v-if="saveMessage" class="save-msg" :class="{ error: saveMessage.startsWith('保存失败') }">
+          {{ saveMessage }}
+        </p>
+      </div>
+    </div>
   </div>
 </template>
 
 <style scoped>
-.settings {
+.settings-layout {
   flex: 1;
+  display: flex;
+  min-height: 0;
+  background: var(--bg-app);
+}
+
+.settings-nav {
+  width: 220px;
+  flex-shrink: 0;
+  border-right: 1px solid var(--border);
+  padding: 12px 8px;
   overflow-y: auto;
-  padding: 24px;
-  max-width: 480px;
+  background: var(--bg-sidebar);
 }
 
-h2 {
-  margin-bottom: 20px;
-  font-size: 18px;
+.nav-group {
+  margin-bottom: 12px;
 }
 
-h3 {
-  font-size: 14px;
+.nav-group-label {
+  font-size: 10px;
+  font-weight: 600;
+  letter-spacing: 0.06em;
+  color: #52525b;
+  padding: 8px 12px 4px;
+  text-transform: uppercase;
+}
+
+.nav-item {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  width: 100%;
+  padding: 8px 12px;
+  background: none;
+  border: none;
+  border-radius: 8px;
+  color: #a1a1aa;
+  font-size: 13px;
+  cursor: pointer;
+  text-align: left;
+  font-family: inherit;
+}
+
+.nav-item:hover {
+  background: #1f2128;
   color: #e4e4e7;
-  margin-bottom: 8px;
 }
 
-section {
-  margin-bottom: 20px;
+.nav-item.active {
+  background: var(--settings-nav-active);
+  color: var(--text-primary);
+}
+
+.nav-icon {
+  width: 18px;
+  text-align: center;
+  font-size: 13px;
+}
+
+.settings-main {
+  flex: 1;
   display: flex;
   flex-direction: column;
-  gap: 8px;
+  min-width: 0;
+  min-height: 0;
 }
 
-label {
-  font-size: 13px;
-  color: #a1a1aa;
+.settings-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 16px 24px;
+  border-bottom: 1px solid #2a2d35;
+  flex-shrink: 0;
 }
 
-select,
-input[type='password'],
-input[type='text'] {
-  background: #16181d;
+.settings-header h2 {
+  font-size: 16px;
+  font-weight: 600;
+  margin: 0;
+}
+
+.btn-close-settings {
+  background: none;
+  border: none;
+  color: #71717a;
+  font-size: 22px;
+  cursor: pointer;
+  line-height: 1;
+}
+
+.btn-close-settings:hover {
+  color: #e4e4e7;
+}
+
+.settings-body {
+  flex: 1;
+  overflow-y: auto;
+  padding: 20px 24px 32px;
+  max-width: 720px;
+}
+
+.field-row {
+  display: grid;
+  grid-template-columns: 200px 1fr;
+  align-items: center;
+  gap: 16px;
+  padding: 10px 0;
+  border-bottom: 1px solid #1f2128;
+}
+
+.field-row label {
+  font-size: 11px;
+  font-weight: 600;
+  letter-spacing: 0.04em;
+  color: #71717a;
+  text-transform: uppercase;
+}
+
+.field-row input[type='text'],
+.field-row input[type='password'],
+.field-row input[type='number'],
+.field-row select {
+  width: 100%;
+  background: #0f1117;
   border: 1px solid #2a2d35;
-  border-radius: 6px;
+  border-radius: 8px;
   color: #e4e4e7;
   padding: 8px 12px;
-  font-size: 14px;
+  font-size: 13px;
+  font-family: inherit;
 }
 
-.btn-row {
+.field-row .range {
+  width: 100%;
+}
+
+.mcp-row {
+  align-items: flex-start;
+}
+
+.checkbox-label {
   display: flex;
+  align-items: center;
   gap: 8px;
+  font-size: 13px !important;
+  color: #e4e4e7 !important;
+  text-transform: none !important;
+  font-weight: 400 !important;
 }
 
-button {
-  background: #3b82f6;
-  color: white;
-  border: none;
-  padding: 8px 16px;
-  border-radius: 6px;
-  cursor: pointer;
-  align-self: flex-start;
-}
-
-.btn-secondary {
-  background: #374151;
-}
-
-.msg {
+.field-hint {
   font-size: 12px;
+  color: #71717a;
+  margin: 8px 0 16px;
+}
+
+.field-hint.ok {
   color: #10b981;
 }
 
-.msg-error {
-  color: #ef4444;
-}
-
-.info {
-  font-size: 12px;
-  color: #71717a;
-}
-
-.warn-box {
-  background: #451a03;
-  border: 1px solid #92400e;
-  border-radius: 8px;
-  padding: 12px;
-  font-size: 13px;
-  color: #fcd34d;
-}
-
-.warn-box p {
-  margin: 6px 0 0;
-  color: #fde68a;
-}
-
-.warn-box strong {
-  color: #fbbf24;
-}
-
+.field-hint.warn,
 .warn {
   color: #f59e0b;
 }
 
-.info-inline {
-  font-size: 12px;
-  color: #71717a;
-}
-
-.mcp-row {
-  margin-bottom: 6px;
-}
-
-.mcp-toggle {
+.actions {
   display: flex;
-  align-items: center;
+  flex-wrap: wrap;
   gap: 8px;
-  font-size: 13px;
-  color: #e4e4e7;
+  margin-top: 16px;
+}
+
+.actions button {
+  background: #3b82f6;
+  color: white;
+  border: none;
+  padding: 8px 16px;
+  border-radius: 8px;
   cursor: pointer;
+  font-size: 13px;
+  font-family: inherit;
+}
+
+.btn-secondary {
+  background: #374151 !important;
+}
+
+.info-block {
+  font-size: 13px;
+  color: #a1a1aa;
+  line-height: 1.8;
+}
+
+.info-block p {
+  margin: 0;
+}
+
+.placeholder-text {
+  color: #71717a;
+  font-size: 14px;
+  padding: 24px 0;
+}
+
+.save-msg {
+  margin-top: 16px;
+  font-size: 12px;
+  color: #10b981;
+}
+
+.save-msg.error {
+  color: #ef4444;
 }
 </style>

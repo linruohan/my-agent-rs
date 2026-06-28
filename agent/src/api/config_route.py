@@ -22,9 +22,17 @@ class CustomProviderConfig(BaseModel):
     model: str = Field(min_length=1)
 
 
+class CustomProviderEntry(BaseModel):
+    id: str = Field(min_length=1)
+    name: str = Field(min_length=1)
+    base_url: str = Field(min_length=1)
+    model: str = Field(min_length=1)
+
+
 class LlmUserConfigBody(BaseModel):
     default_provider: str = Field(min_length=1)
     custom: CustomProviderConfig | None = None
+    custom_providers: list[CustomProviderEntry] | None = None
     provider_models: dict[str, str] | None = None
 
 
@@ -44,7 +52,9 @@ async def get_llm_user_config():
 @router.put("/config/llm")
 async def put_llm_user_config(body: LlmUserConfigBody):
     data: dict[str, Any] = {"default_provider": body.default_provider}
-    if body.default_provider == "custom" and body.custom:
+    if body.custom_providers:
+        data["custom_providers"] = [entry.model_dump() for entry in body.custom_providers]
+    elif body.default_provider == "custom" and body.custom:
         data["custom"] = body.custom.model_dump()
     if body.provider_models:
         data["provider_models"] = {

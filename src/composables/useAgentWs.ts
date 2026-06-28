@@ -1,8 +1,10 @@
 import { ref } from 'vue';
+import type { ChatAttachment } from '@/utils/attachments';
 import { useSessionStore } from '@/stores/session';
 import { useSettingsStore } from '@/stores/settings';
 import { useKnowledgeStore } from '@/stores/knowledge';
 import type { ToolCall } from '@/types';
+import { logStartupMilestone } from '@/utils/startupTiming';
 
 const RECONNECT_DELAYS = [1000, 2000, 4000, 8000, 16000];
 const TOKEN_FLUSH_MS = 50;
@@ -174,6 +176,7 @@ export function useAgentWs() {
         const metadata = msg.metadata as { duration_ms?: number } | undefined;
         if (metadata?.duration_ms != null) {
           settingsStore.setLastTurnDuration(metadata.duration_ms);
+          sessionStore.setLastAssistantDuration(metadata.duration_ms);
         }
         break;
       }
@@ -291,6 +294,7 @@ export function useAgentWs() {
       reconnectAttempt = 0;
       settingsStore.setWsConnected(true);
       connectionError.value = '';
+      logStartupMilestone('WebSocket connected — loading complete');
     };
 
     ws.onmessage = (e) => {
@@ -333,21 +337,14 @@ export function useAgentWs() {
     return false;
   }
 
-  function send(
-    content: string,
-    threadId: string,
-    attachments?: Array<{ type: string; name: string; content: string }>
-  ) {
+  function send(content: string, threadId: string, attachments?: ChatAttachment[]) {
     sessionStore.isStreaming = true;
     bc?.postMessage({ type: 'streaming.start', threadId });
-    const displayContent =
-      attachments?.length && attachments.length > 0
-        ? `${content}\n📎 ${attachments.map((a) => a.name).join(', ')}`
-        : content;
     sessionStore.addMessage({
       id: crypto.randomUUID(),
       role: 'user',
-      content: displayContent,
+      content,
+      attachments: attachments?.length ? [...attachments] : undefined,
     });
     sessionStore.addMessage({
       id: crypto.randomUUID(),

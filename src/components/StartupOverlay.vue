@@ -1,14 +1,17 @@
 <script setup lang="ts">
 import { computed } from 'vue';
 import { useSettingsStore } from '@/stores/settings';
+import { isTauriEnv } from '@/utils/tauri';
 
 const settings = useSettingsStore();
+const inTauri = isTauriEnv();
 
 const visible = computed(
   () =>
-    settings.sidecarStatus === 'starting' ||
-    settings.sidecarStatus === 'error' ||
-    (settings.sidecarStatus === 'running' && !settings.wsConnected)
+    inTauri &&
+    (settings.sidecarStatus === 'starting' ||
+      settings.sidecarStatus === 'error' ||
+      (settings.sidecarStatus === 'running' && !settings.wsConnected))
 );
 
 const title = computed(() => {

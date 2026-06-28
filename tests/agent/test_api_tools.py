@@ -87,3 +87,21 @@ async def test_provider_models_endpoint(test_app):
         assert data["provider"] == "deepseek"
         assert "models" in data
         assert len(data["models"]) >= 1
+
+
+@pytest.mark.asyncio
+async def test_provider_models_with_test(test_app, monkeypatch):
+    from httpx import ASGITransport, AsyncClient
+
+    async def fake_test(provider_name, models, **kwargs):
+        return {m: {"ok": True, "status_code": 200} for m in models}
+
+    monkeypatch.setattr("llm.models.test_provider_models", fake_test)
+
+    transport = ASGITransport(app=test_app)
+    async with AsyncClient(transport=transport, base_url="http://test") as client:
+        resp = await client.get("/providers/deepseek/models?test=true")
+        assert resp.status_code == 200
+        data = resp.json()
+        assert "tests" in data
+        assert data["tests"][data["models"][0]]["status_code"] == 200

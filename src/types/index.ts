@@ -1,3 +1,5 @@
+import type { ChatAttachment } from '@/utils/attachments';
+
 export interface Message {
   id: string;
   role: 'user' | 'assistant' | 'tool';
@@ -5,6 +7,8 @@ export interface Message {
   toolName?: string;
   category?: string;
   citations?: Array<{ title: string; url: string }>;
+  durationMs?: number;
+  attachments?: ChatAttachment[];
 }
 
 export interface ToolCall {

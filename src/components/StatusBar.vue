@@ -44,8 +44,8 @@ const modelLabel = computed(() => {
   align-items: center;
   justify-content: space-between;
   padding: 6px 20px;
-  background: #12141a;
-  border-top: 1px solid #2a2d35;
+  background: var(--bg-sidebar);
+  border-top: 1px solid var(--border);
   font-size: 11px;
   color: #52525b;
   flex-shrink: 0;

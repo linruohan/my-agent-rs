@@ -1,10 +1,16 @@
 from __future__ import annotations
 
 import os
+import re
 from pathlib import Path
 from typing import Any
 
 import yaml
+
+
+def provider_api_key_env(provider_id: str) -> str:
+    safe = re.sub(r"[^A-Za-z0-9]", "_", provider_id).upper()
+    return f"PA_{safe}_API_KEY"
 
 
 def get_config_dir() -> Path:
@@ -86,17 +92,74 @@ def save_user_llm_config(data: dict[str, Any]) -> None:
         yaml.safe_dump(data, f, allow_unicode=True, default_flow_style=False)
 
 
+def _normalize_custom_providers(user: dict[str, Any]) -> list[dict[str, str]]:
+    raw = user.get("custom_providers")
+    items: list[dict[str, str]] = []
+    if isinstance(raw, list):
+        for entry in raw:
+            if not isinstance(entry, dict):
+                continue
+            id_ = str(entry.get("id", "")).strip()
+            name = str(entry.get("name", "")).strip()
+            base_url = str(entry.get("base_url", "")).strip()
+            model = str(entry.get("model", "")).strip()
+            if not id_ or not base_url or not model:
+                continue
+            items.append(
+                {
+                    "id": id_,
+                    "name": name or id_,
+                    "base_url": base_url,
+                    "model": model,
+                }
+            )
+    if items:
+        return items
+
+    legacy = user.get("custom")
+    if isinstance(legacy, dict) and legacy.get("base_url") and legacy.get("model"):
+        return [
+            {
+                "id": "custom",
+                "name": str(legacy.get("name", "自定义网关")),
+                "base_url": str(legacy["base_url"]).strip(),
+                "model": str(legacy["model"]).strip(),
+            }
+        ]
+    return []
+
+
+def _merge_custom_providers(cfg: dict[str, Any], user: dict[str, Any]) -> list[str]:
+    entries = _normalize_custom_providers(user)
+    providers = cfg.setdefault("providers", {})
+    custom_ids: list[str] = []
+    for entry in entries:
+        id_ = entry["id"]
+        custom_ids.append(id_)
+        providers[id_] = {
+            "label": entry["name"],
+            "type": "openai_compatible",
+            "base_url": entry["base_url"],
+            "model": entry["model"],
+            "api_key_env": "CUSTOM_API_KEY" if id_ == "custom" else provider_api_key_env(id_),
+            "supports_tool_call": True,
+            "timeout_sec": 60,
+            "max_retries": 2,
+            "is_custom": True,
+        }
+    if custom_ids and isinstance(providers, dict):
+        template = providers.get("custom")
+        if isinstance(template, dict) and template.get("is_custom") is not True:
+            providers.pop("custom", None)
+    return custom_ids
+
+
 def load_llm_providers_config() -> dict[str, Any]:
     cfg = load_yaml("llm_providers.yaml")
     user = load_user_llm_config()
     if user.get("default_provider"):
         cfg["default_provider"] = user["default_provider"]
-    custom = user.get("custom")
-    if isinstance(custom, dict) and custom:
-        providers = cfg.setdefault("providers", {})
-        base = providers.get("custom", {})
-        if isinstance(base, dict):
-            providers["custom"] = {**base, **custom}
+    _merge_custom_providers(cfg, user)
     provider_models = user.get("provider_models")
     if isinstance(provider_models, dict):
         providers = cfg.setdefault("providers", {})

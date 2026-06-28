@@ -12,6 +12,7 @@
   "app": {
     "windows": [
       {
+        "label": "main",
         "title": "个人助理 Agent",
         "width": 1200,
         "height": 800,
@@ -21,7 +22,7 @@
       }
     ],
     "security": {
-      "csp": "default-src 'self'; connect-src 'self' ws://127.0.0.1:* http://127.0.0.1:*"
+      "csp": "default-src 'self'; script-src 'self' 'unsafe-inline' 'unsafe-eval'; style-src 'self' 'unsafe-inline'; img-src 'self' data: blob: asset: https://asset.localhost; connect-src 'self' ipc: http://ipc.localhost ws://localhost:* ws://127.0.0.1:* http://localhost:* http://127.0.0.1:*"
     }
   },
   "bundle": {

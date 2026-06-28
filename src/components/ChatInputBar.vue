@@ -3,6 +3,7 @@ import { computed, nextTick, onMounted, onUnmounted, ref, watch } from 'vue';
 import { useSessionStore } from '@/stores/session';
 import { useSettingsStore } from '@/stores/settings';
 import { useNavigationStore } from '@/stores/navigation';
+import { useDialogStore } from '@/stores/dialog';
 import { useAgentWs } from '@/composables/useAgentWs';
 import { useChatInputModels } from '@/composables/useChatInputModels';
 import {
@@ -11,14 +12,25 @@ import {
   toolToSkill,
   type ChatCommand,
 } from '@/utils/chatCommands';
+import type { ChatAttachment } from '@/utils/attachments';
+import { attachmentIcon, imageDataUrl } from '@/utils/attachments';
+import {
+  pickFilesNative,
+  pickFolderNative,
+  pickImagesNative,
+  attachmentsFromFileList,
+  attachmentFromFolderFiles,
+} from '@/utils/tauriFiles';
+import { openExternalUrl, openLocalPath } from '@/utils/nativeOpen';
 
 const emit = defineEmits<{
-  send: [text: string, attachments?: Array<{ type: string; name: string; content: string }>];
+  send: [text: string, attachments?: ChatAttachment[]];
 }>();
 
 const sessionStore = useSessionStore();
 const settings = useSettingsStore();
 const navigation = useNavigationStore();
+const dialog = useDialogStore();
 const { createSession, stop, send: wsSend } = useAgentWs();
 const {
   currentModelLabel,
@@ -28,11 +40,13 @@ const {
   refreshModels,
   openModelMenu,
   isOptionActive,
+  formatTestStatus,
+  isTestOk,
 } = useChatInputModels();
 
 const input = ref('');
 const textareaRef = ref<HTMLTextAreaElement | null>(null);
-const pendingAttachments = ref<Array<{ type: string; name: string; content: string }>>([]);
+const pendingAttachments = ref<ChatAttachment[]>([]);
 
 const showAttachMenu = ref(false);
 const showModelMenu = ref(false);
@@ -197,8 +211,9 @@ function retryLastMessage() {
   for (let i = msgs.length - 1; i >= 0; i--) {
     if (msgs[i].role === 'user') {
       const content = msgs[i].content.replace(/\n📎 .+$/, '').trim();
+      const attachments = msgs[i].attachments;
       if (content && sessionStore.currentThreadId) {
-        wsSend(content, sessionStore.currentThreadId);
+        wsSend(content, sessionStore.currentThreadId, attachments);
       }
       break;
     }
@@ -219,32 +234,25 @@ function undoLastExchange() {
   }
 }
 
-function renameSession() {
-  const title = window.prompt('输入新会话标题');
-  if (!title?.trim() || !sessionStore.currentThreadId) return;
+async function renameSession() {
+  if (!sessionStore.currentThreadId) return;
   const session = sessionStore.sessions.find(
     (s) => s.thread_id === sessionStore.currentThreadId
   );
-  if (session) session.title = title.trim();
+  const title = await dialog.prompt({
+    title: '重命名会话',
+    defaultValue: session?.title ?? '',
+    placeholder: '输入新会话标题',
+  });
+  if (!title || !session) return;
+  session.title = title;
 }
 
 async function handleFileSelect(e: Event) {
   const inputEl = e.target as HTMLInputElement;
   if (!inputEl.files?.length) return;
-  for (const file of Array.from(inputEl.files)) {
-    if (file.type.startsWith('image/')) {
-      const buf = await file.arrayBuffer();
-      const b64 = btoa(String.fromCharCode(...new Uint8Array(buf)));
-      pendingAttachments.value.push({
-        type: 'image',
-        name: file.name,
-        content: b64,
-      });
-    } else {
-      const content = await file.text();
-      pendingAttachments.value.push({ type: 'text', name: file.name, content });
-    }
-  }
+  const added = await attachmentsFromFileList(inputEl.files);
+  pendingAttachments.value.push(...added);
   inputEl.value = '';
   showAttachMenu.value = false;
 }
@@ -252,14 +260,55 @@ async function handleFileSelect(e: Event) {
 async function handleFolderSelect(e: Event) {
   const inputEl = e.target as HTMLInputElement;
   if (!inputEl.files?.length) return;
-  const names = Array.from(inputEl.files).map((f) => f.name);
-  pendingAttachments.value.push({
-    type: 'folder',
-    name: names[0]?.split('/')[0] || 'folder',
-    content: names.join('\n'),
-  });
+  pendingAttachments.value.push(attachmentFromFolderFiles(inputEl.files));
   inputEl.value = '';
   showAttachMenu.value = false;
+}
+
+async function pickFilesDialog() {
+  const result = await pickFilesNative();
+  if (result === 'use-html') {
+    document.getElementById('attach-file-input')?.click();
+    return;
+  }
+  if (Array.isArray(result) && result.length) {
+    pendingAttachments.value.push(...result);
+    showAttachMenu.value = false;
+  }
+}
+
+async function pickFolderDialog() {
+  const result = await pickFolderNative();
+  if (result === 'use-html') {
+    document.getElementById('attach-folder-input')?.click();
+    return;
+  }
+  if (result) {
+    pendingAttachments.value.push(result);
+    showAttachMenu.value = false;
+  }
+}
+
+async function pickImagesDialog() {
+  const result = await pickImagesNative();
+  if (result === 'use-html') {
+    document.getElementById('attach-image-input')?.click();
+    return;
+  }
+  if (Array.isArray(result) && result.length) {
+    pendingAttachments.value.push(...result);
+    showAttachMenu.value = false;
+  }
+}
+
+async function onAttachmentChipClick(att: ChatAttachment) {
+  if (att.type === 'url') {
+    await openExternalUrl(att.content);
+    return;
+  }
+  if (att.path) {
+    await openLocalPath(att.path);
+  }
 }
 
 async function pasteImageFromClipboard() {
@@ -270,11 +319,17 @@ async function pasteImageFromClipboard() {
       if (!type) continue;
       const blob = await item.getType(type);
       const buf = await blob.arrayBuffer();
-      const b64 = btoa(String.fromCharCode(...new Uint8Array(buf)));
+      const bytes = new Uint8Array(buf);
+      let binary = '';
+      const chunk = 8192;
+      for (let i = 0; i < bytes.length; i += chunk) {
+        binary += String.fromCharCode(...bytes.subarray(i, i + chunk));
+      }
       pendingAttachments.value.push({
         type: 'image',
         name: `paste-${Date.now()}.png`,
-        content: b64,
+        content: btoa(binary),
+        mimeType: type,
       });
       showAttachMenu.value = false;
       return;
@@ -284,17 +339,25 @@ async function pasteImageFromClipboard() {
   }
 }
 
-function attachUrl() {
-  const url = window.prompt('输入 URL');
-  if (!url?.trim()) return;
-  pendingAttachments.value.push({ type: 'url', name: url.trim(), content: url.trim() });
+async function attachUrl() {
+  const url = await dialog.prompt({
+    title: '附加 URL',
+    placeholder: 'https://example.com',
+  });
+  if (!url) return;
+  pendingAttachments.value.push({ type: 'url', name: url, content: url });
   showAttachMenu.value = false;
 }
 
-function insertPromptSnippet() {
-  const snippet = window.prompt('输入提示词片段');
-  if (!snippet?.trim()) return;
-  input.value = `${input.value}${input.value ? '\n' : ''}${snippet.trim()}`;
+async function insertPromptSnippet() {
+  const snippet = await dialog.prompt({
+    title: '提示词片段',
+    placeholder: '输入要插入的提示词…',
+    multiline: true,
+    confirmLabel: '插入',
+  });
+  if (!snippet) return;
+  input.value = `${input.value}${input.value ? '\n' : ''}${snippet}`;
   showAttachMenu.value = false;
   nextTick(() => {
     autoResize();
@@ -409,9 +472,22 @@ defineExpose({ pendingAttachments });
 <template>
   <div class="input-bar-root">
     <div v-if="pendingAttachments.length" class="attachments">
-      <span v-for="(att, i) in pendingAttachments" :key="i" class="attachment-chip">
-        📎 {{ att.name }}
-        <button type="button" class="remove-att" @click="removeAttachment(i)">×</button>
+      <span
+        v-for="(att, i) in pendingAttachments"
+        :key="i"
+        class="attachment-chip"
+        :class="{ clickable: att.type === 'url' || !!att.path }"
+        @click="onAttachmentChipClick(att)"
+      >
+        <img
+          v-if="att.type === 'image' && imageDataUrl(att)"
+          :src="imageDataUrl(att)!"
+          :alt="att.name"
+          class="chip-thumb"
+        />
+        <span v-else class="chip-icon">{{ attachmentIcon(att.type) }}</span>
+        <span class="chip-name">{{ att.name }}</span>
+        <button type="button" class="remove-att" @click.stop="removeAttachment(i)">×</button>
       </span>
     </div>
 
@@ -464,6 +540,7 @@ defineExpose({ pendingAttachments });
             {{ group.providerLabel }}
             <span v-if="group.isPrimary" class="group-badge">当前</span>
             <span v-if="group.loading" class="group-loading">加载中…</span>
+            <span v-else-if="group.testing" class="group-loading">连通性测试中…</span>
           </div>
           <button
             v-for="opt in group.models"
@@ -475,7 +552,17 @@ defineExpose({ pendingAttachments });
             @mouseenter="modelHighlight = filteredModels.findIndex((m) => m.id === opt.id)"
           >
             <span class="item-label">{{ opt.label }}</span>
-            <span class="item-desc">{{ group.providerLabel }}</span>
+            <span
+              v-if="group.isPrimary && formatTestStatus(opt)"
+              class="test-badge"
+              :class="{
+                'test-ok': isTestOk(opt) === true,
+                'test-fail': isTestOk(opt) === false,
+                'test-pending': isTestOk(opt) === null,
+              }"
+            >
+              {{ formatTestStatus(opt) }}
+            </span>
           </button>
         </template>
         <div v-if="!filteredModels.length" class="popup-empty">无匹配模型</div>
@@ -493,28 +580,18 @@ defineExpose({ pendingAttachments });
     <!-- Attach menu -->
     <div v-if="showAttachMenu" class="popup attach-popup">
       <div class="popup-label">附加</div>
-      <label class="popup-item attach-item">
+      <button type="button" class="popup-item attach-item" @click="pickFilesDialog">
         <span class="attach-icon">📄</span>
         <span>文件…</span>
-        <input type="file" :accept="ATTACH_ACCEPT" multiple hidden @change="handleFileSelect($event)" />
-      </label>
-      <label class="popup-item attach-item">
+      </button>
+      <button type="button" class="popup-item attach-item" @click="pickFolderDialog">
         <span class="attach-icon">📁</span>
         <span>文件夹…</span>
-        <input
-          type="file"
-          webkitdirectory
-          directory
-          multiple
-          hidden
-          @change="handleFolderSelect"
-        />
-      </label>
-      <label class="popup-item attach-item">
+      </button>
+      <button type="button" class="popup-item attach-item" @click="pickImagesDialog">
         <span class="attach-icon">🖼</span>
         <span>图片…</span>
-        <input type="file" :accept="IMAGE_ACCEPT" multiple hidden @change="handleFileSelect" />
-      </label>
+      </button>
       <button type="button" class="popup-item attach-item" @click="pasteImageFromClipboard">
         <span class="attach-icon">📋</span>
         <span>粘贴图片</span>
@@ -528,6 +605,32 @@ defineExpose({ pendingAttachments });
         <span>提示词片段…</span>
       </button>
       <p class="attach-hint">提示：输入 @ 引用技能，输入 / 搜索命令</p>
+      <!-- Web fallback hidden inputs -->
+      <input
+        id="attach-file-input"
+        type="file"
+        :accept="ATTACH_ACCEPT"
+        multiple
+        hidden
+        @change="handleFileSelect"
+      />
+      <input
+        id="attach-folder-input"
+        type="file"
+        webkitdirectory
+        directory
+        multiple
+        hidden
+        @change="handleFolderSelect"
+      />
+      <input
+        id="attach-image-input"
+        type="file"
+        :accept="IMAGE_ACCEPT"
+        multiple
+        hidden
+        @change="handleFileSelect"
+      />
     </div>
 
     <!-- Main input bar -->
@@ -611,6 +714,29 @@ defineExpose({ pendingAttachments });
   gap: 4px;
 }
 
+.attachment-chip.clickable {
+  cursor: pointer;
+}
+
+.attachment-chip.clickable:hover {
+  border-color: #3b82f6;
+  color: #e4e4e7;
+}
+
+.chip-thumb {
+  width: 20px;
+  height: 20px;
+  object-fit: cover;
+  border-radius: 3px;
+}
+
+.chip-name {
+  max-width: 160px;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
 .remove-att {
   background: none;
   border: none;
@@ -631,11 +757,19 @@ defineExpose({ pendingAttachments });
   overflow: hidden;
 }
 
-.slash-popup,
-.model-popup {
+.slash-popup {
   left: 0;
   right: 0;
   max-height: 320px;
+  display: flex;
+  flex-direction: column;
+}
+
+.model-popup {
+  right: 0;
+  left: auto;
+  width: min(320px, 100%);
+  max-height: 360px;
   display: flex;
   flex-direction: column;
 }
@@ -700,6 +834,39 @@ defineExpose({ pendingAttachments });
   flex-direction: row;
   justify-content: space-between;
   align-items: center;
+  gap: 8px;
+}
+
+.model-item .item-label {
+  flex: 1;
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.test-badge {
+  flex-shrink: 0;
+  font-size: 11px;
+  font-weight: 500;
+  padding: 2px 8px;
+  border-radius: 4px;
+  font-variant-numeric: tabular-nums;
+}
+
+.test-ok {
+  color: #10b981;
+  background: rgba(16, 185, 129, 0.12);
+}
+
+.test-fail {
+  color: #ef4444;
+  background: rgba(239, 68, 68, 0.12);
+}
+
+.test-pending {
+  color: #71717a;
+  background: rgba(113, 113, 122, 0.12);
 }
 
 .item-label {
@@ -744,11 +911,13 @@ defineExpose({ pendingAttachments });
 
 .model-footer {
   display: flex;
-  gap: 4px;
+  flex-direction: column;
+  gap: 2px;
 }
 
 .model-footer .footer-btn {
-  flex: 1;
+  flex: none;
+  width: 100%;
 }
 
 .settings-link {

@@ -19,6 +19,7 @@ if getattr(sys, "frozen", False):
 
 import uvicorn
 from fastapi import FastAPI
+from loguru import logger
 
 from agent.graph import create_agent_graph, create_sqlite_checkpointer
 from agent.runner import AgentRunner
@@ -34,6 +35,14 @@ from infra.scheduler import get_scheduler, shutdown_scheduler
 from infra.session_store import SessionStore
 from tools.registry import build_registry
 
+_LOG_FORMAT = "{time:YYYY-MM-DD HH:mm:ss.SSS} | {level:<8} | {message}"
+_BOOT_T0: float | None = None
+
+
+def _configure_logging() -> None:
+    logger.remove()
+    logger.add(sys.stderr, format=_LOG_FORMAT, level="INFO")
+
 
 def _uvicorn_log_config() -> dict:
     """Send uvicorn logs to stderr so stdout stays clean for READY port= (Tauri pipe)."""
@@ -42,6 +51,13 @@ def _uvicorn_log_config() -> dict:
     from uvicorn.config import LOGGING_CONFIG
 
     cfg = copy.deepcopy(LOGGING_CONFIG)
+    ts_fmt = "%Y-%m-%d %H:%M:%S"
+    cfg["formatters"]["default"]["format"] = "%(asctime)s | %(levelprefix)s | %(message)s"
+    cfg["formatters"]["default"]["datefmt"] = ts_fmt
+    cfg["formatters"]["access"]["format"] = (
+        '%(asctime)s | %(levelname)s | %(client_addr)s - "%(request_line)s" %(status_code)s'
+    )
+    cfg["formatters"]["access"]["datefmt"] = ts_fmt
     for handler in ("default", "access"):
         cfg["handlers"][handler]["stream"] = "ext://sys.stderr"
     return cfg
@@ -59,8 +75,9 @@ def build_app(port: int = 8765) -> FastAPI:
 
     @asynccontextmanager
     async def lifespan(app: FastAPI):
-        from loguru import logger
+        import time
 
+        lifespan_t0 = time.monotonic()
         checkpointer, conn = await create_sqlite_checkpointer()
         app.state.checkpointer = checkpointer
         app.state.conn = conn
@@ -100,6 +117,11 @@ def build_app(port: int = 8765) -> FastAPI:
             tools = await registry.resolve_all(include_mcp=True)
             runner.graph = create_agent_graph(registry, checkpointer)
             logger.info("MCP enabled; {} tools available", len(tools))
+        logger.info(
+            "Application lifespan ready in {:.2f}s (since process start {:.2f}s)",
+            time.monotonic() - lifespan_t0,
+            time.monotonic() - (_BOOT_T0 or lifespan_t0),
+        )
         try:
             yield
         finally:
@@ -125,6 +147,12 @@ def build_app(port: int = 8765) -> FastAPI:
 
 
 def main():
+    import time
+
+    global _BOOT_T0
+    _BOOT_T0 = time.monotonic()
+    _configure_logging()
+
     parser = argparse.ArgumentParser(description="Personal Assistant Agent Sidecar")
     parser.add_argument("--host", default="127.0.0.1")
     parser.add_argument("--port", type=int, default=0, help="0 = auto-assign")
@@ -150,6 +178,8 @@ def main():
     original_startup = server.startup
 
     async def startup_with_ready(sockets=None):
+        import time
+
         await original_startup(sockets)
         actual_port = requested_port
         if server.servers:
@@ -157,6 +187,8 @@ def main():
                 if s.sockets:
                     actual_port = s.sockets[0].getsockname()[1]
                     break
+        elapsed = time.monotonic() - (_BOOT_T0 or time.monotonic())
+        logger.info("Sidecar listening on {}:{} ({:.2f}s since process start)", host, actual_port, elapsed)
         print(f"READY port={actual_port}", flush=True)
 
     server.startup = startup_with_ready

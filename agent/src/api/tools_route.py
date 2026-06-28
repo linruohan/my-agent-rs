@@ -2,7 +2,7 @@ from __future__ import annotations
 
 from typing import Any
 
-from fastapi import APIRouter, Request
+from fastapi import APIRouter, HTTPException, Request
 from pydantic import BaseModel, Field
 
 from agent.graph import create_agent_graph
@@ -80,6 +80,7 @@ def create_tools_router(registry: ToolRegistry, runner: AgentRunner) -> APIRoute
                         "type": pcfg.get("type", "openai_compatible"),
                         "model": pcfg.get("model", ""),
                         "base_url": pcfg.get("base_url", ""),
+                        "is_custom": bool(pcfg.get("is_custom")),
                     }
                 )
         return {
@@ -89,10 +90,54 @@ def create_tools_router(registry: ToolRegistry, runner: AgentRunner) -> APIRoute
         }
 
     @tools_router.get("/providers/{provider_name}/models")
-    async def list_provider_models_endpoint(provider_name: str):
+    async def list_provider_models_endpoint(provider_name: str, test: bool = False):
         from llm.models import list_provider_models
 
-        return await list_provider_models(provider_name)
+        return await list_provider_models(provider_name, test=test)
+
+    class PreviewModelsBody(BaseModel):
+        base_url: str = Field(min_length=1)
+        api_key: str | None = None
+        provider_id: str | None = None
+
+    @tools_router.post("/providers/preview/models")
+    async def preview_provider_models(body: PreviewModelsBody, test: bool = False):
+        import httpx
+
+        from llm.models import (
+            list_openai_compatible_models,
+            test_openai_compatible_models,
+            _api_key_for_provider,
+        )
+        from llm.factory import load_provider
+
+        api_key = (body.api_key or "").strip()
+        if not api_key and body.provider_id:
+            try:
+                cfg = load_provider(body.provider_id.strip())
+                api_key = _api_key_for_provider(cfg)
+            except ValueError:
+                api_key = ""
+        if not api_key:
+            raise HTTPException(status_code=400, detail="请填写 API Key 或先保存密钥")
+
+        try:
+            models = await list_openai_compatible_models(body.base_url, api_key)
+        except httpx.HTTPStatusError as exc:
+            detail = exc.response.text[:300] if exc.response else str(exc)
+            raise HTTPException(
+                status_code=400,
+                detail=f"上游 API 错误 {exc.response.status_code}: {detail}",
+            ) from exc
+        except httpx.RequestError as exc:
+            raise HTTPException(status_code=400, detail=f"无法连接 API: {exc}") from exc
+
+        result: dict[str, Any] = {"models": models, "source": "api" if models else "empty"}
+        if test and models:
+            result["tests"] = await test_openai_compatible_models(
+                body.base_url, api_key, models
+            )
+        return result
 
     @tools_router.get("/mcp/status")
     async def mcp_status():

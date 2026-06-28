@@ -1,4 +1,7 @@
 <script setup lang="ts">
+import { computed } from 'vue';
+import { useSettingsStore } from '@/stores/settings';
+
 defineProps<{
   name: string;
   category?: string;
@@ -7,6 +10,9 @@ defineProps<{
   status?: 'running' | 'done' | 'error';
   citations?: Array<{ title: string; url: string }>;
 }>();
+
+const settings = useSettingsStore();
+const showTechnical = computed(() => settings.appearance.toolCallDisplay === 'technical');
 
 const categoryLabels: Record<string, string> = {
   capability: '通用能力',
@@ -33,7 +39,7 @@ const categoryColors: Record<string, string> = {
       <span class="name">{{ name }}</span>
       <span v-if="status === 'running'" class="spinner">⏳</span>
     </div>
-    <div v-if="args && Object.keys(args).length" class="args">
+    <div v-if="showTechnical && args && Object.keys(args).length" class="args">
       <code>{{ JSON.stringify(args, null, 2) }}</code>
     </div>
     <div v-if="content" class="content">{{ content }}</div>

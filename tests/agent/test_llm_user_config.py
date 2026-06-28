@@ -14,6 +14,42 @@ def config_env(monkeypatch, tmp_path):
     monkeypatch.setenv("AGENT_CONFIG_DIR", str(AGENT_DIR / "config"))
 
 
+def test_custom_providers_merge(config_env, tmp_path):
+    user_file = tmp_path / "llm_user.yaml"
+    user_file.write_text(
+        yaml.safe_dump(
+            {
+                "default_provider": "custom_my_api",
+                "custom_providers": [
+                    {
+                        "id": "custom_my_api",
+                        "name": "我的网关",
+                        "base_url": "https://api.example.com/v1",
+                        "model": "gpt-4o",
+                    },
+                    {
+                        "id": "custom_backup",
+                        "name": "备用",
+                        "base_url": "https://backup.example.com/v1",
+                        "model": "glm-4",
+                    },
+                ],
+            }
+        ),
+        encoding="utf-8",
+    )
+
+    from infra.config import load_llm_providers_config, provider_api_key_env
+
+    cfg = load_llm_providers_config()
+    assert cfg["default_provider"] == "custom_my_api"
+    assert cfg["providers"]["custom_my_api"]["base_url"] == "https://api.example.com/v1"
+    assert cfg["providers"]["custom_my_api"]["label"] == "我的网关"
+    assert cfg["providers"]["custom_my_api"]["api_key_env"] == provider_api_key_env("custom_my_api")
+    assert cfg["providers"]["custom_backup"]["model"] == "glm-4"
+    assert "custom" not in cfg["providers"] or cfg["providers"]["custom"].get("is_custom")
+
+
 def test_user_llm_config_merge(config_env, tmp_path):
     user_file = tmp_path / "llm_user.yaml"
     user_file.write_text(

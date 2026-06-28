@@ -2,6 +2,19 @@ import { onMounted, onUnmounted } from 'vue';
 import { listen, type UnlistenFn } from '@tauri-apps/api/event';
 import { useSettingsStore } from '@/stores/settings';
 import { useAgentWs } from '@/composables/useAgentWs';
+import { isTauriEnv } from '@/utils/tauri';
+import { logStartupMilestone } from '@/utils/startupTiming';
+
+type SidecarStatus = 'stopped' | 'starting' | 'running' | 'error';
+
+function normalizeStatus(raw: unknown): SidecarStatus {
+  if (typeof raw === 'string') {
+    if (raw === 'stopped' || raw === 'starting' || raw === 'running' || raw === 'error') {
+      return raw;
+    }
+  }
+  return 'stopped';
+}
 
 export function useTauriNative() {
   const settings = useSettingsStore();
@@ -9,10 +22,40 @@ export function useTauriNative() {
   let unlisteners: UnlistenFn[] = [];
   let pollTimer: ReturnType<typeof setInterval> | null = null;
 
-  async function setup() {
+  async function pollStatus() {
     try {
       const { invoke } = await import('@tauri-apps/api/core');
+      const result = await invoke<[unknown, number | null]>('get_sidecar_status');
+      const status = normalizeStatus(result[0]);
+      const port = result[1];
 
+      settings.setSidecarStatus(status);
+      if (port && port !== settings.sidecarPort) {
+        disconnect();
+        settings.setSidecarPort(port);
+      }
+      if (status === 'running' && port) {
+        logStartupMilestone('Sidecar running', { port });
+        connect();
+        if (pollTimer) {
+          clearInterval(pollTimer);
+          pollTimer = null;
+        }
+      }
+    } catch {
+      /* ignore poll errors */
+    }
+  }
+
+  async function setup() {
+    if (!isTauriEnv()) {
+      connect();
+      return;
+    }
+
+    settings.setSidecarStatus('starting');
+
+    try {
       unlisteners.push(
         await listen<number>('sidecar-port', (e) => {
           disconnect();
@@ -23,45 +66,30 @@ export function useTauriNative() {
       );
 
       unlisteners.push(
-        await listen<string>('sidecar-status', (e) => {
-          settings.setSidecarStatus(e.payload as typeof settings.sidecarStatus);
-          if (e.payload === 'running') {
+        await listen<unknown>('sidecar-status', (e) => {
+          const status = normalizeStatus(e.payload);
+          settings.setSidecarStatus(status);
+          if (status === 'running') {
             connect();
           }
         })
       );
 
+      await pollStatus();
+
       pollTimer = setInterval(async () => {
         if (settings.sidecarStatus === 'running' && settings.wsConnected) {
-          if (pollTimer) clearInterval(pollTimer);
+          if (pollTimer) {
+            clearInterval(pollTimer);
+            pollTimer = null;
+          }
           return;
         }
-        try {
-          const [status, port] = await invoke<[string, number | null]>('get_sidecar_status');
-          settings.setSidecarStatus(status as typeof settings.sidecarStatus);
-          if (port && port !== settings.sidecarPort) {
-            disconnect();
-            settings.setSidecarPort(port);
-          }
-          if (status === 'running' && port) {
-            connect();
-            if (pollTimer) clearInterval(pollTimer);
-          }
-        } catch {
-          /* ignore poll errors */
-        }
+        await pollStatus();
       }, 1500);
-
-      const [status, port] = await invoke<[string, number | null]>('get_sidecar_status');
-      settings.setSidecarStatus(status as typeof settings.sidecarStatus);
-      if (port) {
-        settings.setSidecarPort(port);
-      }
-      if (status === 'running' && port) {
-        connect();
-      }
-    } catch {
-      connect();
+    } catch (err) {
+      console.error('Tauri native setup failed:', err);
+      settings.setSidecarStatus('error');
     }
   }
 

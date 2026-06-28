@@ -1,14 +1,30 @@
 import { ref, watch } from 'vue';
 import { defineStore } from 'pinia';
+import {
+  DEFAULT_APPEARANCE,
+  type ColorMode,
+  type InlinePreviewMode,
+  type ToolCallDisplayMode,
+} from '@/utils/themes';
+import { isTauriEnv } from '@/utils/tauri';
+import { mapCustomProvidersFromApi, isUserCustomProviderId } from '@/utils/llmConfig';
 
 const STORAGE_KEY = 'pa-agent-settings';
 const WORKSPACE_KEY = 'pa-workspace-path';
+
+export interface CustomProviderEntry {
+  id: string;
+  name: string;
+  baseUrl: string;
+  model: string;
+}
 
 type StoredSettings = {
   provider: string;
   temperature: number;
   customBaseUrl: string;
   customModel: string;
+  customProviders: CustomProviderEntry[];
   providerModels: Record<string, string>;
   workspacePath: string;
   toolKeys: Record<string, string>;
@@ -22,6 +38,14 @@ type StoredSettings = {
     defaultRemindHours: number;
   };
   hitlTimeoutSec: number;
+  appearance: {
+    uiLanguage: string;
+    colorMode: ColorMode;
+    themeId: string;
+    windowTransparency: number;
+    toolCallDisplay: ToolCallDisplayMode;
+    inlinePreview: InlinePreviewMode;
+  };
 };
 
 function loadStored(): Partial<StoredSettings> {
@@ -41,11 +65,14 @@ export const useSettingsStore = defineStore('settings', () => {
   const stored = loadStored();
   const sidecarPort = ref(Number(import.meta.env.VITE_SIDECAR_PORT) || 8765);
   const wsConnected = ref(false);
-  const sidecarStatus = ref<'stopped' | 'starting' | 'running' | 'error'>('stopped');
+  const sidecarStatus = ref<'stopped' | 'starting' | 'running' | 'error'>(
+    isTauriEnv() ? 'starting' : 'stopped'
+  );
   const provider = ref(stored.provider ?? 'deepseek');
   const temperature = ref(stored.temperature ?? 0.7);
   const customBaseUrl = ref(stored.customBaseUrl ?? '');
   const customModel = ref(stored.customModel ?? '');
+  const customProviders = ref<CustomProviderEntry[]>(stored.customProviders ?? []);
   const providerModels = ref<Record<string, string>>(stored.providerModels ?? {});
   const workspacePath = ref(stored.workspacePath ?? localStorage.getItem(WORKSPACE_KEY) ?? '~/AssistantWorkspace');
   const toolKeys = ref<Record<string, string>>(stored.toolKeys ?? {});
@@ -56,22 +83,41 @@ export const useSettingsStore = defineStore('settings', () => {
     stored.taskPrefs ?? { defaultPriority: 'medium', showCompleted: true, defaultRemindHours: 0 }
   );
   const hitlTimeoutSec = ref(stored.hitlTimeoutSec ?? 300);
+  const appearance = ref({
+    ...DEFAULT_APPEARANCE,
+    ...stored.appearance,
+  });
   const lastTurnDurationMs = ref<number | null>(null);
 
   watch(
-    [provider, temperature, customBaseUrl, customModel, providerModels, workspacePath, toolKeys, projectPrefs, taskPrefs, hitlTimeoutSec],
+    [
+      provider,
+      temperature,
+      customBaseUrl,
+      customModel,
+      customProviders,
+      providerModels,
+      workspacePath,
+      toolKeys,
+      projectPrefs,
+      taskPrefs,
+      hitlTimeoutSec,
+      appearance,
+    ],
     () => {
       saveStored({
         provider: provider.value,
         temperature: temperature.value,
         customBaseUrl: customBaseUrl.value,
         customModel: customModel.value,
+        customProviders: customProviders.value.map((e) => ({ ...e })),
         providerModels: { ...providerModels.value },
         workspacePath: workspacePath.value,
         toolKeys: { ...toolKeys.value },
         projectPrefs: { ...projectPrefs.value },
         taskPrefs: { ...taskPrefs.value },
         hitlTimeoutSec: hitlTimeoutSec.value,
+        appearance: { ...appearance.value },
       });
       localStorage.setItem(WORKSPACE_KEY, workspacePath.value);
     },
@@ -96,13 +142,29 @@ export const useSettingsStore = defineStore('settings', () => {
 
   function getSelectedModel(providerName?: string): string | undefined {
     const p = providerName ?? provider.value;
-    if (p === 'custom') return customModel.value.trim() || undefined;
+    if (isUserCustomProviderId(p)) {
+      if (p === 'custom') {
+        return customModel.value.trim() || undefined;
+      }
+      const entry = customProviders.value.find((e) => e.id === p);
+      if (entry?.model.trim()) return entry.model.trim();
+    }
     if (p === 'ollama') return customModel.value.trim() || undefined;
     return providerModels.value[p];
   }
 
   function setSelectedModel(providerName: string, model: string) {
-    if (providerName === 'custom' || providerName === 'ollama') {
+    if (isUserCustomProviderId(providerName)) {
+      if (providerName === 'custom') {
+        customModel.value = model;
+      } else {
+        const idx = customProviders.value.findIndex((e) => e.id === providerName);
+        if (idx >= 0) {
+          customProviders.value[idx] = { ...customProviders.value[idx], model };
+        }
+        providerModels.value = { ...providerModels.value, [providerName]: model };
+      }
+    } else if (providerName === 'ollama') {
       customModel.value = model;
     } else {
       providerModels.value = { ...providerModels.value, [providerName]: model };
@@ -111,11 +173,27 @@ export const useSettingsStore = defineStore('settings', () => {
 
   function applyLlmConfig(cfg: {
     default_provider?: string;
-    custom?: { base_url?: string; model?: string };
+    custom?: { base_url?: string; model?: string; name?: string };
+    custom_providers?: Array<{ id?: string; name?: string; base_url?: string; model?: string }>;
     provider_models?: Record<string, string>;
   }) {
     if (cfg.default_provider) {
       provider.value = cfg.default_provider;
+    }
+    const fromList = mapCustomProvidersFromApi(cfg.custom_providers);
+    if (fromList.length) {
+      customProviders.value = fromList;
+    } else if (cfg.custom?.base_url && cfg.custom?.model) {
+      customProviders.value = [
+        {
+          id: 'custom',
+          name: cfg.custom.name?.trim() || '自定义网关',
+          baseUrl: cfg.custom.base_url,
+          model: cfg.custom.model,
+        },
+      ];
+      customBaseUrl.value = cfg.custom.base_url;
+      customModel.value = cfg.custom.model;
     }
     if (cfg.custom?.base_url) {
       customBaseUrl.value = cfg.custom.base_url;
@@ -136,12 +214,14 @@ export const useSettingsStore = defineStore('settings', () => {
     temperature,
     customBaseUrl,
     customModel,
+    customProviders,
     providerModels,
     workspacePath,
     toolKeys,
     projectPrefs,
     taskPrefs,
     hitlTimeoutSec,
+    appearance,
     lastTurnDurationMs,
     setSidecarPort,
     setWsConnected,

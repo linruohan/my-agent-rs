@@ -114,6 +114,47 @@ pub fn delete_api_key(app: AppHandle, provider: String) -> Result<(), String> {
     Ok(())
 }
 
+fn provider_api_key_env(provider_id: &str) -> String {
+    let safe: String = provider_id
+        .chars()
+        .map(|c| {
+            if c.is_ascii_alphanumeric() {
+                c.to_ascii_uppercase()
+            } else {
+                '_'
+            }
+        })
+        .collect();
+    format!("PA_{}_API_KEY", safe)
+}
+
+fn inject_dynamic_provider_keys(cmd: &mut Command, data_dir: &Path) {
+    let secrets_dir = data_dir.join("secrets");
+    if !secrets_dir.is_dir() {
+        return;
+    }
+    if let Ok(entries) = std::fs::read_dir(&secrets_dir) {
+        for entry in entries.flatten() {
+            let path = entry.path();
+            if path.extension().and_then(|s| s.to_str()) != Some("key") {
+                continue;
+            }
+            let stem = path
+                .file_stem()
+                .and_then(|s| s.to_str())
+                .unwrap_or_default();
+            if stem.is_empty() {
+                continue;
+            }
+            if let Some(key) = read_provider_key(stem, Some(data_dir)) {
+                let env_var = provider_api_key_env(stem);
+                log::info!("Injecting env {env_var} for provider {stem}");
+                cmd.env(env_var, key);
+            }
+        }
+    }
+}
+
 /// Inject stored API keys into dev-mode std::process::Command.
 pub fn inject_api_keys(cmd: &mut Command, data_dir: &Path) {
     for (provider, env_var) in PROVIDER_ENV_MAP {
@@ -122,6 +163,7 @@ pub fn inject_api_keys(cmd: &mut Command, data_dir: &Path) {
             cmd.env(env_var, key);
         }
     }
+    inject_dynamic_provider_keys(cmd, data_dir);
 }
 
 /// Inject data dir and API keys into Tauri sidecar shell command.
@@ -134,6 +176,29 @@ pub fn apply_sidecar_env(
         if let Some(key) = read_provider_key(provider, Some(data_dir)) {
             log::info!("Injecting env {env_var} for provider {provider}");
             cmd = cmd.env(env_var, key);
+        }
+    }
+    let secrets_dir = data_dir.join("secrets");
+    if secrets_dir.is_dir() {
+        if let Ok(entries) = std::fs::read_dir(&secrets_dir) {
+            for entry in entries.flatten() {
+                let path = entry.path();
+                if path.extension().and_then(|s| s.to_str()) != Some("key") {
+                    continue;
+                }
+                let stem = path
+                    .file_stem()
+                    .and_then(|s| s.to_str())
+                    .unwrap_or_default();
+                if stem.is_empty() {
+                    continue;
+                }
+                if let Some(key) = read_provider_key(stem, Some(data_dir)) {
+                    let env_var = provider_api_key_env(stem);
+                    log::info!("Injecting env {env_var} for provider {stem}");
+                    cmd = cmd.env(env_var, key);
+                }
+            }
         }
     }
     cmd

@@ -64,6 +64,16 @@ export const useSessionStore = defineStore('session', () => {
     }
   }
 
+  function setLastAssistantDuration(ms: number) {
+    for (let i = messages.value.length - 1; i >= 0; i--) {
+      const msg = messages.value[i];
+      if (msg.role === 'assistant') {
+        msg.durationMs = ms;
+        return;
+      }
+    }
+  }
+
   function addPendingToolCall(tc: ToolCall) {
     pendingToolCalls.value.set(tc.id, tc);
   }
@@ -170,6 +180,7 @@ export const useSessionStore = defineStore('session', () => {
     sessionPreviews,
     addMessage,
     appendToLastAssistant,
+    setLastAssistantDuration,
     addPendingToolCall,
     resolveToolCall,
     updateToolProgress,
