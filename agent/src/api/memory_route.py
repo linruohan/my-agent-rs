@@ -1,27 +1,15 @@
 from __future__ import annotations
 
-from typing import Annotated, Any
+from typing import Any
 
-from fastapi import APIRouter, Depends, Header, HTTPException
+from fastapi import APIRouter, Depends
 from pydantic import BaseModel
 
-from infra.auth import auth_required, verify_token
+from api.deps import require_auth
 
 
 class MemoryValueBody(BaseModel):
     value: dict[str, Any] = {}
-
-
-def _auth_dependency(
-    authorization: Annotated[str | None, Header()] = None,
-) -> None:
-    if not auth_required():
-        return
-    if not authorization or not authorization.startswith("Bearer "):
-        raise HTTPException(status_code=401, detail="Unauthorized")
-    token = authorization[7:].strip()
-    if not verify_token(token):
-        raise HTTPException(status_code=401, detail="Unauthorized")
 
 
 def create_memory_router() -> APIRouter:
@@ -31,7 +19,7 @@ def create_memory_router() -> APIRouter:
     async def memory_get(
         namespace: str,
         key: str,
-        _: None = Depends(_auth_dependency),
+        _: None = Depends(require_auth),
     ) -> dict:
         from memory.store import MemoryStore
 
@@ -44,7 +32,7 @@ def create_memory_router() -> APIRouter:
         namespace: str,
         key: str,
         body: MemoryValueBody,
-        _: None = Depends(_auth_dependency),
+        _: None = Depends(require_auth),
     ) -> dict:
         from memory.store import MemoryStore
 

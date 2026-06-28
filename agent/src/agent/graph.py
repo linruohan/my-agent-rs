@@ -1,19 +1,17 @@
 from __future__ import annotations
 
-import asyncio
 import json
 from typing import Any, Callable
 
+from langchain.agents import create_agent
 from langchain_core.language_models.chat_models import BaseChatModel
+from langchain_core.language_models.fake_chat_models import FakeListChatModel
 from langchain_core.messages import HumanMessage, ToolMessage
 from langgraph.checkpoint.base import BaseCheckpointSaver
-from langgraph.prebuilt import create_react_agent
-from langgraph._internal._runnable import RunnableCallable
-from loguru import logger
 
 from agent.planner import format_plan_for_prompt, generate_task_plan, needs_planning
 from agent.state import AgentState
-from agent.hitl_node import create_hitl_tool_node
+from agent.pa_middleware import create_pa_middleware
 from infra.config import get_data_dir, load_effective_tools_config
 from infra.time_context import (
     format_current_time_context,
@@ -21,7 +19,7 @@ from infra.time_context import (
     is_fresh_info_query,
 )
 from llm.factory import get_default_provider
-from llm.fallback import _provider_available, create_llm_with_fallback, get_fallback_chain
+from llm.fallback import _provider_available, create_llm_with_fallback
 from memory.rag import RagStore, is_knowledge_query
 from memory.store import get_user_preferences
 from tools.registry import ToolRegistry
@@ -160,16 +158,9 @@ def _prefetch_web_context(query: str) -> str | None:
         return None
 
 
-def _messages_for_llm(state: AgentState) -> list:
-    from langchain_core.messages import SystemMessage
-
-    messages = list(state["messages"])
-    system_content = _build_system_prompt(state)
-    if not messages or not isinstance(messages[0], SystemMessage):
-        messages = [SystemMessage(content=system_content)] + messages
-    else:
-        messages[0] = SystemMessage(content=system_content)
-
+def _messages_with_time_hint(messages: list) -> list:
+    """Apply user-turn time hint to the latest human message (for model call only)."""
+    messages = list(messages)
     for i in range(len(messages) - 1, -1, -1):
         if isinstance(messages[i], HumanMessage):
             raw = messages[i].content
@@ -180,6 +171,18 @@ def _messages_for_llm(state: AgentState) -> list:
                 )
             break
     return messages
+
+
+def _messages_for_llm(state: AgentState) -> list:
+    from langchain_core.messages import SystemMessage
+
+    messages = list(state["messages"])
+    system_content = _build_system_prompt(state)
+    if not messages or not isinstance(messages[0], SystemMessage):
+        messages = [SystemMessage(content=system_content)] + messages
+    else:
+        messages[0] = SystemMessage(content=system_content)
+    return _messages_with_time_hint(messages)
 
 
 def create_preprocess_node(
@@ -243,43 +246,6 @@ def create_preprocess_node(
         return updates
 
     return preprocess
-
-
-def create_pre_model_hook(
-    llm_get: Callable[[], BaseChatModel | None],
-):
-    preprocess = create_preprocess_node(llm_get)
-    reflect = create_reflect_node()
-
-    def pre_model_hook(state: AgentState) -> dict[str, Any]:
-        messages = state.get("messages") or []
-        updates: dict[str, Any] = {}
-
-        if messages and isinstance(messages[-1], HumanMessage):
-            updates.update(preprocess(state))
-        elif messages and isinstance(messages[-1], ToolMessage):
-            meta = _state_metadata(state)
-            meta["tool_rounds"] = meta.get("tool_rounds", 0) + 1
-
-            last_tool_msgs: list[ToolMessage] = []
-            for msg in reversed(messages):
-                if isinstance(msg, ToolMessage):
-                    last_tool_msgs.insert(0, msg)
-                elif last_tool_msgs:
-                    break
-            for tm in last_tool_msgs:
-                if _is_usable_tool_output(str(tm.content or "")):
-                    meta["has_tool_content"] = True
-                    break
-
-            merged = {**state, **updates, "metadata": meta}
-            updates.update(reflect(merged))
-
-        merged_state: AgentState = {**state, **updates}  # type: ignore[typeddict-item]
-        updates["llm_input_messages"] = _messages_for_llm(merged_state)
-        return updates
-
-    return pre_model_hook
 
 
 def create_reflect_node():
@@ -359,112 +325,25 @@ class _LazyLlm:
         return self._llm_with_tools
 
 
+def _placeholder_model() -> BaseChatModel:
+    """Graph-build placeholder; PersonalAssistantMiddleware overrides on each turn."""
+    return FakeListChatModel(responses=[""])
+
+
 def create_agent_graph(
     registry: ToolRegistry,
     checkpointer: BaseCheckpointSaver | None = None,
     llm: BaseChatModel | None = None,
 ):
     lazy_llm = _LazyLlm(registry, llm=llm)
+    base_model = llm if llm is not None else _placeholder_model()
+    middleware = create_pa_middleware(registry, lazy_llm)
 
-    def _invoke_with_fallback(messages: list, config: dict | None, meta: dict[str, Any]):
-        force_answer = meta.get("force_answer") or meta.get("tool_rounds", 0) >= MAX_TOOL_ROUNDS
-        bind_tools = bool(registry.get_enabled_tools()) and not force_answer
-
-        chain = get_fallback_chain()
-        primary = lazy_llm._primary
-        if primary and primary not in chain:
-            chain = [primary, *[p for p in chain if p != primary]]
-
-        last_error: Exception | None = None
-        for name in chain:
-            if not _provider_available(name):
-                continue
-            try:
-                lazy_llm.reset(name)
-                model = lazy_llm.with_tools() if bind_tools else lazy_llm.get()
-                response = model.invoke(messages, config)
-                lazy_llm._provider_name = name
-                return response
-            except (TimeoutError, ConnectionError, OSError) as exc:
-                last_error = exc
-                logger.warning("Provider {} request failed: {}", name, exc)
-            except Exception as exc:
-                err_name = type(exc).__name__
-                if err_name in ("APITimeoutError", "RateLimitError", "APIConnectionError"):
-                    last_error = exc
-                    logger.warning("Provider {} API error: {}", name, exc)
-                    continue
-                raise
-
-        if last_error:
-            raise RuntimeError(f"All LLM providers unavailable: {last_error}") from last_error
-        raise RuntimeError("All LLM providers unavailable (no API keys configured)")
-
-    async def _ainvoke_with_fallback(messages: list, config: dict | None, meta: dict[str, Any]):
-        force_answer = meta.get("force_answer") or meta.get("tool_rounds", 0) >= MAX_TOOL_ROUNDS
-        bind_tools = bool(registry.get_enabled_tools()) and not force_answer
-
-        chain = get_fallback_chain()
-        primary = lazy_llm._primary
-        if primary and primary not in chain:
-            chain = [primary, *[p for p in chain if p != primary]]
-
-        last_error: Exception | None = None
-        for name in chain:
-            if not _provider_available(name):
-                continue
-            try:
-                lazy_llm.reset(name)
-                model = lazy_llm.with_tools() if bind_tools else lazy_llm.get()
-                coro = model.ainvoke(messages, config)
-                if asyncio.iscoroutine(coro):
-                    response = await coro
-                else:
-                    response = await asyncio.to_thread(model.invoke, messages, config)
-                lazy_llm._provider_name = name
-                return response
-            except (TimeoutError, ConnectionError, OSError) as exc:
-                last_error = exc
-                logger.warning("Provider {} request failed: {}", name, exc)
-            except Exception as exc:
-                err_name = type(exc).__name__
-                if err_name in ("APITimeoutError", "RateLimitError", "APIConnectionError"):
-                    last_error = exc
-                    logger.warning("Provider {} API error: {}", name, exc)
-                    continue
-                raise
-
-        if last_error:
-            raise RuntimeError(f"All LLM providers unavailable: {last_error}") from last_error
-        raise RuntimeError("All LLM providers unavailable (no API keys configured)")
-
-    def resolve_model(state: AgentState, runtime) -> RunnableCallable:
-        meta = _state_metadata(state)
-
-        def invoke_model(input_value, config=None):
-            messages = (
-                input_value.get("messages", input_value)
-                if isinstance(input_value, dict)
-                else input_value
-            )
-            return _invoke_with_fallback(messages, config, meta)
-
-        async def ainvoke_model(input_value, config=None):
-            messages = (
-                input_value.get("messages", input_value)
-                if isinstance(input_value, dict)
-                else input_value
-            )
-            return await _ainvoke_with_fallback(messages, config, meta)
-
-        return RunnableCallable(invoke_model, ainvoke_model)
-
-    return create_react_agent(
-        model=resolve_model,
-        tools=create_hitl_tool_node(registry),
+    return create_agent(
+        model=base_model,
+        tools=registry.get_enabled_tools(),
+        middleware=[middleware],
         state_schema=AgentState,
-        pre_model_hook=create_pre_model_hook(lazy_llm.get),
         checkpointer=checkpointer,
-        version="v2",
         name="personal_assistant",
     )

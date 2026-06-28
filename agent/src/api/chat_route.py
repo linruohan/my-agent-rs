@@ -1,14 +1,14 @@
 from __future__ import annotations
 
-from typing import Annotated, Any
+from typing import Any
 
-from fastapi import APIRouter, Depends, Header, HTTPException
+from fastapi import APIRouter, Depends, HTTPException
 from fastapi.responses import StreamingResponse
 from pydantic import BaseModel
 
 from agent.runner import AgentRunner
 from api.chat_sse import stream_runner_events
-from infra.auth import auth_required, verify_token
+from api.deps import require_auth
 from infra.session_store import SessionStore
 
 
@@ -20,18 +20,6 @@ class ChatSendBody(BaseModel):
 class ChatResumeBody(BaseModel):
     decision: str = "reject"
     edited_args: dict[str, Any] | None = None
-
-
-def _auth_dependency(
-    authorization: Annotated[str | None, Header()] = None,
-) -> None:
-    if not auth_required():
-        return
-    if not authorization or not authorization.startswith("Bearer "):
-        raise HTTPException(status_code=401, detail="Unauthorized")
-    token = authorization[7:].strip()
-    if not verify_token(token):
-        raise HTTPException(status_code=401, detail="Unauthorized")
 
 
 def _validate_chat_send(
@@ -61,7 +49,7 @@ def create_chat_router(
     async def chat_send(
         thread_id: str,
         body: ChatSendBody,
-        _: None = Depends(_auth_dependency),
+        _: None = Depends(require_auth),
     ) -> StreamingResponse:
         attachments = body.attachments or None
         _validate_chat_send(session_store, thread_id, body.content, attachments)
@@ -88,7 +76,7 @@ def create_chat_router(
     @router.post("/{thread_id}/chat/stop")
     async def chat_stop(
         thread_id: str,
-        _: None = Depends(_auth_dependency),
+        _: None = Depends(require_auth),
     ) -> dict:
         stopped = await runner.stop(thread_id)
         return {"ok": stopped, "thread_id": thread_id}
@@ -97,7 +85,7 @@ def create_chat_router(
     async def chat_resume(
         thread_id: str,
         body: ChatResumeBody,
-        _: None = Depends(_auth_dependency),
+        _: None = Depends(require_auth),
     ) -> StreamingResponse:
         if not thread_id:
             raise HTTPException(status_code=400, detail="thread_id required")

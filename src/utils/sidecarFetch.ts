@@ -1,6 +1,53 @@
 import { useSettingsStore } from '@/stores/settings';
 import { isTauriEnv } from '@/utils/tauri';
 
+const AUTH_STORAGE_KEY = 'pa-sidecar-auth-token';
+
+export function sidecarBaseUrl(port: number) {
+  return `http://127.0.0.1:${port}`;
+}
+
+export async function fetchSidecarAuthToken(port: number): Promise<string | null> {
+  if (isTauriEnv()) {
+    try {
+      const { invoke } = await import('@tauri-apps/api/core');
+      return await invoke<string>('get_sidecar_token');
+    } catch {
+      /* fall through */
+    }
+  }
+  try {
+    const cached = localStorage.getItem(AUTH_STORAGE_KEY);
+    if (cached) return cached;
+    const resp = await fetch(`${sidecarBaseUrl(port)}/auth/token`);
+    if (!resp.ok) return null;
+    const data = (await resp.json()) as { token?: string };
+    if (data.token) {
+      localStorage.setItem(AUTH_STORAGE_KEY, data.token);
+      return data.token;
+    }
+  } catch {
+    /* ignore */
+  }
+  return null;
+}
+
+export function sidecarAuthHeaders(
+  token: string | null,
+  opts?: { json?: boolean; sse?: boolean }
+): HeadersInit {
+  const headers: Record<string, string> = {
+    Accept: opts?.sse ? 'text/event-stream' : 'application/json',
+  };
+  if (opts?.json) {
+    headers['Content-Type'] = 'application/json';
+  }
+  if (token) {
+    headers.Authorization = `Bearer ${token}`;
+  }
+  return headers;
+}
+
 export async function parseResponseError(resp: Response): Promise<string> {
   try {
     const data = await resp.json();

@@ -1,34 +1,20 @@
 from __future__ import annotations
 
-from typing import Annotated
-
-from fastapi import APIRouter, Depends, Header, HTTPException
+from fastapi import APIRouter, Depends, HTTPException
 from pydantic import BaseModel
 
 from agent.runner import AgentRunner
+from api.deps import require_auth
 from api.session_ops import (
     create_session_record,
     delete_session_record,
     set_session_archived,
 )
-from infra.auth import auth_required, verify_token
 from infra.session_store import SessionStore
 
 
 class SessionCreateBody(BaseModel):
     title: str | None = None
-
-
-def _auth_dependency(
-    authorization: Annotated[str | None, Header()] = None,
-) -> None:
-    if not auth_required():
-        return
-    if not authorization or not authorization.startswith("Bearer "):
-        raise HTTPException(status_code=401, detail="Unauthorized")
-    token = authorization[7:].strip()
-    if not verify_token(token):
-        raise HTTPException(status_code=401, detail="Unauthorized")
 
 
 def create_sessions_router(
@@ -40,20 +26,20 @@ def create_sessions_router(
     @router.get("")
     async def list_sessions(
         include_archived: bool = False,
-        _: None = Depends(_auth_dependency),
+        _: None = Depends(require_auth),
     ) -> dict:
         sessions = session_store.list_sessions(include_archived=include_archived)
         return {"sessions": sessions}
 
     @router.get("/archived")
-    async def list_archived_sessions(_: None = Depends(_auth_dependency)) -> dict:
+    async def list_archived_sessions(_: None = Depends(require_auth)) -> dict:
         archived = session_store.list_archived_sessions()
         return {"sessions": archived}
 
     @router.post("")
     async def create_session(
         body: SessionCreateBody,
-        _: None = Depends(_auth_dependency),
+        _: None = Depends(require_auth),
     ) -> dict:
         session = create_session_record(session_store, body.title)
         return {"ok": True, **session}
@@ -61,7 +47,7 @@ def create_sessions_router(
     @router.get("/{thread_id}/history")
     async def session_history(
         thread_id: str,
-        _: None = Depends(_auth_dependency),
+        _: None = Depends(require_auth),
     ) -> dict:
         if not session_store.exists(thread_id):
             raise HTTPException(status_code=404, detail="Thread not found")
@@ -71,7 +57,7 @@ def create_sessions_router(
     @router.delete("/{thread_id}")
     async def delete_session(
         thread_id: str,
-        _: None = Depends(_auth_dependency),
+        _: None = Depends(require_auth),
     ) -> dict:
         ok = await delete_session_record(
             thread_id,
@@ -85,7 +71,7 @@ def create_sessions_router(
     @router.post("/{thread_id}/archive")
     async def archive_session(
         thread_id: str,
-        _: None = Depends(_auth_dependency),
+        _: None = Depends(require_auth),
     ) -> dict:
         if not session_store.exists(thread_id):
             raise HTTPException(status_code=404, detail="Thread not found")
@@ -95,7 +81,7 @@ def create_sessions_router(
     @router.post("/{thread_id}/unarchive")
     async def unarchive_session(
         thread_id: str,
-        _: None = Depends(_auth_dependency),
+        _: None = Depends(require_auth),
     ) -> dict:
         if not session_store.exists(thread_id):
             raise HTTPException(status_code=404, detail="Thread not found")

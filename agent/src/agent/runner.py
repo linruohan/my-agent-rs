@@ -443,7 +443,7 @@ class AgentRunner:
                     AIMessage(content=assistant_text),
                 ]
             },
-            as_node="agent",
+            as_node="model",
         )
 
     async def _emit_pending_interrupts(

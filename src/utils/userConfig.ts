@@ -1,6 +1,5 @@
 import type { useSettingsStore } from '@/stores/settings';
-
-type SettingsStore = ReturnType<typeof useSettingsStore>;
+import { parseResponseError, sidecarBaseUrl } from '@/utils/sidecarFetch';
 
 export type UserAppConfig = {
   hitl?: {
@@ -31,13 +30,11 @@ export type UserAppConfig = {
   };
 };
 
-function sidecarBase(port: number) {
-  return `http://127.0.0.1:${port}`;
-}
+type SettingsStore = ReturnType<typeof useSettingsStore>;
 
 export async function loadUserConfigFromSidecar(port: number): Promise<UserAppConfig | null> {
   try {
-    const resp = await fetch(`${sidecarBase(port)}/config/user`);
+    const resp = await fetch(`${sidecarBaseUrl(port)}/config/user`);
     if (!resp.ok) return null;
     return (await resp.json()) as UserAppConfig;
   } catch {
@@ -92,24 +89,13 @@ export async function syncUserConfigToSidecar(store: SettingsStore): Promise<voi
     );
   }
 
-  const resp = await fetch(`${sidecarBase(store.sidecarPort)}/config/user`, {
+  const resp = await fetch(`${sidecarBaseUrl(store.sidecarPort)}/config/user`, {
     method: 'PUT',
     headers: { 'Content-Type': 'application/json' },
     body: JSON.stringify(payload),
   });
   if (!resp.ok) {
-    let detail = '保存用户配置失败';
-    try {
-      const err = (await resp.json()) as { detail?: unknown };
-      if (Array.isArray(err.detail)) {
-        detail = err.detail.map((d) => d.msg || JSON.stringify(d)).join('; ');
-      } else if (typeof err.detail === 'string') {
-        detail = err.detail;
-      }
-    } catch {
-      /* ignore */
-    }
-    throw new Error(detail);
+    throw new Error(await parseResponseError(resp));
   }
 }
 

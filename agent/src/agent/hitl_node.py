@@ -34,8 +34,8 @@ def _extract_tool_citations(tool_name: str, output: str) -> list[dict[str, str]]
     return citations
 
 
-def create_hitl_tool_node(registry: ToolRegistry) -> ToolNode:
-    """ToolNode with HITL confirmation, WS events, and metrics."""
+def build_hitl_awrap_tool_call(registry: ToolRegistry):
+    """Build awrap_tool_call handler for HITL, WS events, and metrics."""
 
     async def awrap_tool_call(
         request: ToolCallRequest,
@@ -177,4 +177,12 @@ def create_hitl_tool_node(registry: ToolRegistry) -> ToolNode:
                 )
             return ToolMessage(content=err, tool_call_id=tool_id)
 
-    return ToolNode(registry.get_enabled_tools(), awrap_tool_call=awrap_tool_call)
+    return awrap_tool_call
+
+
+def create_hitl_tool_node(registry: ToolRegistry) -> ToolNode:
+    """ToolNode with HITL confirmation, WS events, and metrics."""
+    return ToolNode(
+        registry.get_enabled_tools(),
+        awrap_tool_call=build_hitl_awrap_tool_call(registry),
+    )

@@ -1,35 +1,9 @@
 import type { ChatAttachment } from '@/utils/attachments';
-
-function sidecarBase(port: number) {
-  return `http://127.0.0.1:${port}`;
-}
-
-function authHeaders(token: string | null, json = false): HeadersInit {
-  const headers: Record<string, string> = { Accept: 'text/event-stream' };
-  if (json) {
-    headers['Content-Type'] = 'application/json';
-  }
-  if (token) {
-    headers.Authorization = `Bearer ${token}`;
-  }
-  return headers;
-}
-
-async function fetchAuthToken(port: number): Promise<string | null> {
-  try {
-    const resp = await fetch(`${sidecarBase(port)}/auth/token`);
-    if (!resp.ok) return null;
-    const data = (await resp.json()) as { token?: string };
-    return data.token ?? null;
-  } catch {
-    try {
-      const { invoke } = await import('@tauri-apps/api/core');
-      return await invoke<string>('get_sidecar_token');
-    } catch {
-      return null;
-    }
-  }
-}
+import {
+  fetchSidecarAuthToken,
+  sidecarAuthHeaders,
+  sidecarBaseUrl,
+} from '@/utils/sidecarFetch';
 
 function parseSseChunk(chunk: string, onEvent: (msg: Record<string, unknown>) => void) {
   for (const block of chunk.split('\n\n')) {
@@ -75,10 +49,10 @@ export async function streamChatRest(
   attachments?: ChatAttachment[],
   signal?: AbortSignal
 ): Promise<void> {
-  const token = await fetchAuthToken(port);
-  const resp = await fetch(`${sidecarBase(port)}/sessions/${encodeURIComponent(threadId)}/chat`, {
+  const token = await fetchSidecarAuthToken(port);
+  const resp = await fetch(`${sidecarBaseUrl(port)}/sessions/${encodeURIComponent(threadId)}/chat`, {
     method: 'POST',
-    headers: authHeaders(token, true),
+    headers: sidecarAuthHeaders(token, { json: true, sse: true }),
     body: JSON.stringify({
       content,
       attachments: attachments?.length ? attachments : undefined,
@@ -99,12 +73,12 @@ export async function streamChatResumeRest(
   editedArgs?: Record<string, unknown>,
   signal?: AbortSignal
 ): Promise<void> {
-  const token = await fetchAuthToken(port);
+  const token = await fetchSidecarAuthToken(port);
   const resp = await fetch(
-    `${sidecarBase(port)}/sessions/${encodeURIComponent(threadId)}/chat/resume`,
+    `${sidecarBaseUrl(port)}/sessions/${encodeURIComponent(threadId)}/chat/resume`,
     {
       method: 'POST',
-      headers: authHeaders(token, true),
+      headers: sidecarAuthHeaders(token, { json: true, sse: true }),
       body: JSON.stringify({ decision, edited_args: editedArgs }),
       signal,
     }
@@ -120,12 +94,12 @@ export async function stopChatRest(
   threadId: string,
   token?: string | null
 ): Promise<boolean> {
-  const auth = token ?? (await fetchAuthToken(port));
+  const auth = token ?? (await fetchSidecarAuthToken(port));
   const resp = await fetch(
-    `${sidecarBase(port)}/sessions/${encodeURIComponent(threadId)}/chat/stop`,
+    `${sidecarBaseUrl(port)}/sessions/${encodeURIComponent(threadId)}/chat/stop`,
     {
       method: 'POST',
-      headers: authHeaders(auth),
+      headers: sidecarAuthHeaders(auth, { sse: true }),
     }
   );
   if (!resp.ok) {

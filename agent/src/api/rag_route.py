@@ -1,10 +1,11 @@
 from __future__ import annotations
 
-from typing import Annotated, Any
+from typing import Any
 
-from fastapi import APIRouter, Depends, Header, HTTPException, Request
+from fastapi import APIRouter, Depends, HTTPException, Request
 from pydantic import BaseModel
 
+from api.deps import require_auth
 from api.rag_ops import (
     RagRateLimitError,
     delete_rag_source,
@@ -12,7 +13,6 @@ from api.rag_ops import (
     list_rag_sources,
     search_rag,
 )
-from infra.auth import auth_required, verify_token
 
 
 class RagIngestBody(BaseModel):
@@ -30,18 +30,6 @@ class RagDeleteBody(BaseModel):
     source: str = ""
 
 
-def _auth_dependency(
-    authorization: Annotated[str | None, Header()] = None,
-) -> None:
-    if not auth_required():
-        return
-    if not authorization or not authorization.startswith("Bearer "):
-        raise HTTPException(status_code=401, detail="Unauthorized")
-    token = authorization[7:].strip()
-    if not verify_token(token):
-        raise HTTPException(status_code=401, detail="Unauthorized")
-
-
 def _client_key(request: Request) -> str:
     host = request.client.host if request.client else "rest"
     return f"rest:{host}"
@@ -51,14 +39,14 @@ def create_rag_router() -> APIRouter:
     router = APIRouter(prefix="/rag", tags=["rag"])
 
     @router.get("/sources")
-    async def rag_list(_: None = Depends(_auth_dependency)) -> dict:
+    async def rag_list(_: None = Depends(require_auth)) -> dict:
         return {"sources": list_rag_sources()}
 
     @router.post("/ingest")
     async def rag_ingest(
         body: RagIngestBody,
         request: Request,
-        _: None = Depends(_auth_dependency),
+        _: None = Depends(require_auth),
     ) -> dict:
         try:
             result = ingest_rag_payload(
@@ -88,7 +76,7 @@ def create_rag_router() -> APIRouter:
     @router.post("/search")
     async def rag_search(
         body: RagSearchBody,
-        _: None = Depends(_auth_dependency),
+        _: None = Depends(require_auth),
     ) -> dict:
         results = search_rag(body.query, top_k=body.top_k)
         return {"query": body.query, "results": results}
@@ -96,7 +84,7 @@ def create_rag_router() -> APIRouter:
     @router.post("/delete")
     async def rag_delete(
         body: RagDeleteBody,
-        _: None = Depends(_auth_dependency),
+        _: None = Depends(require_auth),
     ) -> dict:
         ok = delete_rag_source(body.source)
         return {"source": body.source, "ok": ok}

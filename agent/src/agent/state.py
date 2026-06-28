@@ -3,8 +3,7 @@ from __future__ import annotations
 from typing import Annotated
 
 from langgraph.graph.message import add_messages
-from langgraph.managed import RemainingSteps
-from typing_extensions import NotRequired, TypedDict
+from typing_extensions import TypedDict
 
 
 class AgentState(TypedDict):
@@ -14,4 +13,3 @@ class AgentState(TypedDict):
     retrieved_docs: list | None
     fresh_search_results: str | None
     metadata: dict
-    remaining_steps: NotRequired[RemainingSteps]

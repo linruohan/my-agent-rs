@@ -24,6 +24,7 @@ import {
   searchRagRest,
 } from '@/utils/sidecarRag';
 import { registerWsResumeHandler } from '@/utils/wsBridge';
+import { fetchSidecarAuthToken } from '@/utils/sidecarFetch';
 import {
   initWsLeaderElection,
   isWsLeader,
@@ -169,29 +170,8 @@ function setupChannelHandler(sessionStore: ReturnType<typeof useSessionStore>) {
 
 let pendingHistoryLoads = new Map<string, number>();
 
-const AUTH_STORAGE_KEY = 'pa-sidecar-auth-token';
-
 async function fetchAuthToken(port: number): Promise<string | null> {
-  try {
-    const { invoke } = await import('@tauri-apps/api/core');
-    return await invoke<string>('get_sidecar_token');
-  } catch {
-    /* web-only mode */
-  }
-  try {
-    const cached = localStorage.getItem(AUTH_STORAGE_KEY);
-    if (cached) return cached;
-    const resp = await fetch(`http://127.0.0.1:${port}/auth/token`);
-    if (!resp.ok) return null;
-    const data = (await resp.json()) as { token?: string };
-    if (data.token) {
-      localStorage.setItem(AUTH_STORAGE_KEY, data.token);
-      return data.token;
-    }
-  } catch {
-    /* ignore */
-  }
-  return null;
+  return fetchSidecarAuthToken(port);
 }
 
 function flushTokenBuffer(sessionStore: ReturnType<typeof useSessionStore>) {
@@ -388,6 +368,7 @@ export function useAgentWs() {
           role: 'assistant',
           content: `🔔 ${title}: ${body}`,
         });
+        void tasksStore.refreshIfRunning();
         if (!settingsStore.notificationPrefs.desktopEnabled) break;
         import('@tauri-apps/plugin-notification')
           .then(({ sendNotification, isPermissionGranted, requestPermission }) => {
@@ -733,20 +714,22 @@ export function useAgentWs() {
 
   function listSessions() {
     if (sendRaw({ type: 'session.list' })) return;
-    if (settingsStore.wsReadOnly) return;
-    if (!canUseSessionRest()) return;
+    if (!canUseRestRead()) return;
     void fetchSessionsRest(settingsStore.sidecarPort)
       .then((sessions) => {
         sessionStore.sessions = sessions;
-        bootstrapInitialSession();
+        if (settingsStore.wsReadOnly) {
+          bootstrapFollowerSession(sessionStore);
+        } else {
+          bootstrapInitialSession();
+        }
       })
       .catch(() => {});
   }
 
   function listArchivedSessions() {
     if (sendRaw({ type: 'session.archived' })) return;
-    if (settingsStore.wsReadOnly) return;
-    if (!canUseSessionRest()) return;
+    if (!canUseRestRead()) return;
     void fetchArchivedSessionsRest(settingsStore.sidecarPort)
       .then((sessions) => {
         sessionStore.archivedSessions = sessions;
@@ -821,21 +804,42 @@ export function useAgentWs() {
       .catch(() => {});
   }
 
+  function applyHistoryFromRest(threadId: string) {
+    const expectedGen =
+      pendingHistoryLoads.get(threadId) ?? sessionStore.historyLoadGeneration;
+    return fetchSessionHistoryRest(settingsStore.sidecarPort, threadId)
+      .then((messages) => {
+        if (
+          threadId === sessionStore.currentThreadId &&
+          expectedGen === sessionStore.historyLoadGeneration
+        ) {
+          sessionStore.loadHistory(messages, expectedGen);
+        }
+      })
+      .catch(() => {});
+  }
+
   function loadSessionHistory(threadId: string) {
     pendingHistoryLoads.set(threadId, sessionStore.historyLoadGeneration);
     if (settingsStore.wsReadOnly) {
       requestSyncFromLeader(threadId, { historyOnly: true });
+      if (canUseRestRead()) {
+        void applyHistoryFromRest(threadId);
+      }
       window.setTimeout(() => {
         if (
           threadId === sessionStore.currentThreadId &&
-          sessionStore.messages.length === 0
+          sessionStore.messages.length === 0 &&
+          canUseRestRead()
         ) {
-          void tryRestFollowerSync(sessionStore, settingsStore);
+          void applyHistoryFromRest(threadId);
         }
       }, 800);
       return;
     }
-    sendRaw({ type: 'session.history', thread_id: threadId });
+    if (sendRaw({ type: 'session.history', thread_id: threadId })) return;
+    if (!canUseRestRead()) return;
+    void applyHistoryFromRest(threadId);
   }
 
   function ping() {

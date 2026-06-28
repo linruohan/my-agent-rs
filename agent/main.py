@@ -30,6 +30,7 @@ from api.health import VERSION
 from api.chat_route import create_chat_router
 from api.memory_route import create_memory_router
 from api.rag_route import create_rag_router
+from api.scheduler_route import router as scheduler_router
 from api.sessions_route import create_sessions_router
 from api.tasks_route import router as tasks_router
 from api.tools_route import create_tools_router
@@ -66,6 +67,28 @@ def _uvicorn_log_config() -> dict:
     for handler in ("default", "access"):
         cfg["handlers"][handler]["stream"] = "ext://sys.stderr"
     return cfg
+
+
+_API_DESCRIPTION = """
+Personal Assistant Agent Sidecar API.
+
+## REST (Bearer token when `auth_required`)
+
+| Area | Endpoints |
+|------|-----------|
+| Health | `GET /health`, `GET /metrics`, `GET /metrics/prometheus` |
+| Sessions | `GET/POST /sessions`, archive/unarchive, `GET /sessions/{id}/history` |
+| Chat | `POST /sessions/{id}/chat` (SSE), `/chat/stop`, `/chat/resume` |
+| RAG | `GET /rag/sources`, `POST /rag/ingest`, `/search`, `/delete` |
+| Memory | `GET/PUT /memory/{namespace}/{key}` |
+| Scheduler | `GET /scheduler/jobs` |
+| Tasks / Tools / Config | see `/docs` tags |
+
+## WebSocket
+
+Primary real-time channel at `/ws` (auth, chat, sessions, RAG, scheduler).
+REST endpoints mirror read/write paths for Leader-offline fallback.
+"""
 
 
 def build_app(port: int = 8765) -> FastAPI:
@@ -173,7 +196,12 @@ def build_app(port: int = 8765) -> FastAPI:
             shutdown_tracing()
             await conn.close()
 
-    app = FastAPI(title="Personal Assistant Agent", version=VERSION, lifespan=lifespan)
+    app = FastAPI(
+        title="Personal Assistant Agent",
+        version=VERSION,
+        description=_API_DESCRIPTION,
+        lifespan=lifespan,
+    )
     app.add_middleware(
         CORSMiddleware,
         allow_origins=["*"],
@@ -188,6 +216,7 @@ def build_app(port: int = 8765) -> FastAPI:
     app.include_router(create_chat_router(runner, session_store))
     app.include_router(create_rag_router())
     app.include_router(create_memory_router())
+    app.include_router(scheduler_router)
     app.include_router(create_tools_router(registry, runner))
     ws_router = create_ws_router(runner, session_store, port)
     app.include_router(ws_router)
