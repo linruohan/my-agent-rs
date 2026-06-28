@@ -20,8 +20,8 @@ def tools_config():
             "web_search": {"enabled": True, "risk": "low", "backend": "mock", "max_results": 3},
         },
         "business": {
-            "create_todo": {"enabled": True, "risk": "low"},
-            "list_todos": {"enabled": True, "risk": "low"},
+            "add_task": {"enabled": True, "risk": "low"},
+            "list_tasks": {"enabled": True, "risk": "low"},
             "read_calendar": {"enabled": True, "risk": "low"},
             "create_calendar_event": {"enabled": True, "risk": "medium", "requires_confirmation": True},
         },
@@ -33,8 +33,8 @@ def test_register_and_get_enabled(tools_config):
     enabled = registry.get_enabled_tools()
     names = {t.name for t in enabled}
     assert "web_search" in names
-    assert "create_todo" in names
-    assert "list_todos" in names
+    assert "add_task" in names
+    assert "list_tasks" in names
     assert "read_calendar" in names
     assert "create_calendar_event" in names
 
@@ -48,7 +48,7 @@ def test_requires_confirmation(tools_config):
 def test_get_meta_category(tools_config):
     registry = build_registry(tools_config)
     assert registry.get_meta("web_search")["category"] == "capability"
-    assert registry.get_meta("create_todo")["category"] == "business"
+    assert registry.get_meta("add_task")["category"] == "business"
 
 
 def test_disabled_tool_excluded():

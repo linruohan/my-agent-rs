@@ -42,6 +42,10 @@ def set_notify_callback(cb: Callable[[str, str], None]) -> None:
     _notify_callback = cb
 
 
+def get_notify_callback() -> Callable[[str, str], None] | None:
+    return _notify_callback
+
+
 def _fire_reminder(job_id: str, title: str, message: str) -> None:
     logger.info("Reminder [{}]: {} - {}", job_id, title, message)
     _mark_job_done(job_id)

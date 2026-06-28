@@ -86,13 +86,31 @@ def build_app(port: int = 8765) -> FastAPI:
 
         get_scheduler()
 
+        from tools.task import TaskReminderService, TaskStore, migrate_legacy_todos_json
+        from tools.task.api_compat import migrate_todos_db
+
+        task_store = TaskStore()
+        migrated_json = migrate_legacy_todos_json(task_store)
+        migrated_db = migrate_todos_db(store=task_store)
+        if migrated_json or migrated_db:
+            logger.info(
+                "Task migration: {} from todos.json, {} from todos.db",
+                migrated_json,
+                migrated_db,
+            )
+
+        task_reminder = TaskReminderService(task_store)
+        task_reminder.start()
+        app.state.task_store = task_store
+        app.state.task_reminder = task_reminder
+
         from infra.scheduler import restore_pending_reminders
         from tools.business.reminders import resync_all_reminders
 
         restored = restore_pending_reminders()
         synced = resync_all_reminders()
         logger.info(
-            "Reminders: restored {} from DB, synced {} from tasks/projects",
+            "Reminders: restored {} from DB, synced {} project reminders",
             restored,
             synced,
         )
@@ -125,6 +143,8 @@ def build_app(port: int = 8765) -> FastAPI:
         try:
             yield
         finally:
+            if hasattr(app.state, "task_reminder"):
+                app.state.task_reminder.stop()
             shutdown_scheduler()
             await conn.close()
 

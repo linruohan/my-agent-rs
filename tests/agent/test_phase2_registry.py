@@ -13,8 +13,8 @@ def test_phase2_tools_registered():
             "code_execution": {"enabled": True, "risk": "high", "requires_confirmation": True},
         },
         "business": {
-            "create_todo": {"enabled": True, "risk": "low"},
-            "list_todos": {"enabled": True, "risk": "low"},
+            "add_task": {"enabled": True, "risk": "low"},
+            "list_tasks": {"enabled": True, "risk": "low"},
             "read_file": {"enabled": True, "risk": "low"},
             "write_file": {"enabled": True, "risk": "high", "requires_confirmation": True},
         },
@@ -26,8 +26,8 @@ def test_phase2_tools_registered():
         "web_fetch",
         "text_editor",
         "code_execution",
-        "create_todo",
-        "list_todos",
+        "add_task",
+        "list_tasks",
         "read_file",
         "write_file",
     }

@@ -10,7 +10,6 @@ if str(AGENT_SRC) not in sys.path:
 
 
 def _patch_data_dirs(monkeypatch, data_dir: Path) -> None:
-    monkeypatch.setattr("tools.business.todo.DB_PATH", data_dir / "todos.db")
     monkeypatch.setattr("tools.business.project.DB_PATH", data_dir / "projects.db")
     monkeypatch.setattr("infra.config.get_data_dir", lambda: data_dir)
 
@@ -55,7 +54,6 @@ def test_project_doc_rag_ingest(monkeypatch, tmp_path):
     data_dir.mkdir()
     workspace = data_dir / "workspace"
     workspace.mkdir()
-    monkeypatch.setattr("tools.business.todo.DB_PATH", data_dir / "todos.db")
     monkeypatch.setattr("tools.business.project.DB_PATH", data_dir / "projects.db")
     monkeypatch.setattr("infra.config.get_data_dir", lambda: data_dir)
     monkeypatch.setattr("infra.config.get_workspace_dir", lambda: workspace)
@@ -89,17 +87,18 @@ def test_project_tools_invoke(monkeypatch):
         _patch_data_dirs(monkeypatch, data_dir)
 
         from tools.business.project import create_project_tools
-        from tools.business.todo import create_todo_tools
+        from tools.business.todo import create_todo_record, get_todo_stats_for_project
 
         project_tools = {t.name: t for t in create_project_tools()}
-        todo_tools = {t.name: t for t in create_todo_tools()}
 
         created = project_tools["create_project"].invoke(
             {"name": "Sidecar", "status": "active"}
         )
         assert "Sidecar" in created
 
-        todo_tools["create_todo"].invoke({"title": "Build", "project_id": 1})
+        create_todo_record("Build", project_id=1)
+        stats = get_todo_stats_for_project(1)
+        assert stats["total"] == 1
         status = project_tools["get_project_status"].invoke({"project_id": 1})
         assert "任务进度" in status
         assert "0/1" in status

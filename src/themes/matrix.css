@@ -22,6 +22,20 @@ html[data-theme='matrix'][data-color-mode='light'] {
   --user-bubble: #00ff00;
   --assistant-bubble: #002900;
   --settings-nav-active: rgba(0, 255, 0, 0.067);
+  --syntax-keyword: #ff0000;
+  --syntax-string: #82d967;
+  --syntax-comment: #007700;
+  --syntax-function: #ffd700;
+  --syntax-number: #ff0000;
+  --syntax-type: #82d967;
+  --syntax-title: #82d967;
+  --syntax-boolean: #ffd700;
+  --syntax-attribute: #82d967;
+  --syntax-constant: #ffd700;
+  --syntax-tag: #82d967;
+  --syntax-property: #88ff88;
+  --syntax-string-escape: #82d967;
+  --syntax-string-special: #ffd700;
 }
 
 /* Matrix — dark */
@@ -48,4 +62,18 @@ html[data-theme='matrix'][data-color-mode='dark'] {
   --user-bubble: #00ff00;
   --assistant-bubble: #002900;
   --settings-nav-active: rgba(0, 255, 0, 0.067);
+  --syntax-keyword: #ff0000;
+  --syntax-string: #82d967;
+  --syntax-comment: #007700;
+  --syntax-function: #ffd700;
+  --syntax-number: #ff0000;
+  --syntax-type: #82d967;
+  --syntax-title: #82d967;
+  --syntax-boolean: #ffd700;
+  --syntax-attribute: #82d967;
+  --syntax-constant: #ffd700;
+  --syntax-tag: #82d967;
+  --syntax-property: #88ff88;
+  --syntax-string-escape: #82d967;
+  --syntax-string-special: #ffd700;
 }

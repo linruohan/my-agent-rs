@@ -22,6 +22,20 @@ html[data-theme='mellifluous'][data-color-mode='light'] {
   --user-bubble: #5a6599;
   --assistant-bubble: #d0d0d0;
   --settings-nav-active: rgba(90, 101, 153, 0.071);
+  --syntax-keyword: #e06c75;
+  --syntax-string: #828040;
+  --syntax-comment: #a0a0a0;
+  --syntax-function: #cbaa89;
+  --syntax-number: #e06c75;
+  --syntax-type: #727272;
+  --syntax-title: #727272;
+  --syntax-boolean: #cbaa89;
+  --syntax-attribute: #727272;
+  --syntax-constant: #cbaa89;
+  --syntax-tag: #727272;
+  --syntax-property: #383a42;
+  --syntax-string-escape: #828040;
+  --syntax-string-special: #cbaa89;
 }
 
 /* Mellifluous Dark — dark */
@@ -48,4 +62,18 @@ html[data-theme='mellifluous'][data-color-mode='dark'] {
   --user-bubble: #5a6599;
   --assistant-bubble: #292929;
   --settings-nav-active: rgba(90, 101, 153, 0.133);
+  --syntax-keyword: #e06c75;
+  --syntax-string: #828040;
+  --syntax-comment: #828997;
+  --syntax-function: #d19a66;
+  --syntax-number: #e06c75;
+  --syntax-type: #929292;
+  --syntax-title: #929292;
+  --syntax-boolean: #d19a66;
+  --syntax-attribute: #929292;
+  --syntax-constant: #d19a66;
+  --syntax-tag: #929292;
+  --syntax-property: #abb2bf;
+  --syntax-string-escape: #828040;
+  --syntax-string-special: #d19a66;
 }

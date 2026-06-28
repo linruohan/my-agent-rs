@@ -79,28 +79,22 @@ capability:
     default_risk: low
 
 business:
-  create_todo:
+  add_task:
     enabled: true
     risk: low
-  list_todos:
+  list_tasks:
     enabled: true
     risk: low
-  update_todo:
+  search_tasks:
     enabled: true
     risk: low
-  complete_todo:
+  complete_task:
     enabled: true
     risk: low
-  delete_todo:
+  delete_task:
     enabled: true
     risk: medium
     requires_confirmation: true
-  assign_todo_to_project:
-    enabled: true
-    risk: low
-  set_todo_reminder:
-    enabled: true
-    risk: low
   create_project:
     enabled: true
     risk: low

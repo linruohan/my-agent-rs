@@ -92,6 +92,34 @@ function pickHighlight(h, ...keys) {
   return null;
 }
 
+function mapSyntaxVars(highlight) {
+  if (!highlight?.syntax) return {};
+  const syn = highlight.syntax;
+  const entries = [
+    ['keyword', 'keyword'],
+    ['string', 'string'],
+    ['comment', 'comment'],
+    ['function', 'function'],
+    ['number', 'number'],
+    ['type', 'type'],
+    ['title', 'title'],
+    ['boolean', 'boolean'],
+    ['attribute', 'attribute'],
+    ['constant', 'constant'],
+    ['tag', 'tag'],
+    ['property', 'property'],
+    ['string.escape', 'string-escape'],
+    ['string.special', 'string-special'],
+  ];
+  const vars = {};
+  for (const [path, cssName] of entries) {
+    const node = syn[path];
+    const color = parseSolidColor(node?.color);
+    if (color) vars[`--syntax-${cssName}`] = color;
+  }
+  return vars;
+}
+
 function mapGpuiToCssVars(colors, highlight, mode) {
   const bg = pick(colors, 'background') ?? (mode === 'dark' ? '#0f1117' : '#ffffff');
   const fg = pick(colors, 'foreground') ?? (mode === 'dark' ? '#e4e4e7' : '#18181b');
@@ -143,6 +171,7 @@ function mapGpuiToCssVars(colors, highlight, mode) {
     '--user-bubble': userBubble,
     '--assistant-bubble': assistantBubble,
     '--settings-nav-active': settingsNavActive,
+    ...mapSyntaxVars(highlight),
   };
 }
 

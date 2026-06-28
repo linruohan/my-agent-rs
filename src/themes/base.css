@@ -24,6 +24,18 @@ html {
   --text-highlight: var(--warning);
   --text-danger-soft: color-mix(in srgb, var(--danger) 80%, var(--text-primary));
   --bg-code: var(--bg-input);
+  --syntax-keyword: var(--danger);
+  --syntax-string: var(--success);
+  --syntax-comment: var(--text-muted);
+  --syntax-function: var(--accent);
+  --syntax-number: var(--warning);
+  --syntax-type: color-mix(in srgb, var(--accent) 70%, #7dcfff);
+  --syntax-title: var(--accent);
+  --syntax-boolean: var(--warning);
+  --syntax-attribute: var(--warning);
+  --syntax-constant: var(--accent);
+  --syntax-tag: var(--danger);
+  --syntax-property: var(--text-primary);
   --bg-danger-subtle: color-mix(in srgb, var(--danger) 12%, var(--bg-app));
   --bg-success-subtle: color-mix(in srgb, var(--success) 18%, var(--bg-app));
   --text-success-soft: color-mix(in srgb, var(--success) 70%, var(--text-primary));

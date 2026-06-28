@@ -116,14 +116,10 @@ def cancel_project_reminder(project_id: int) -> None:
 
 
 def resync_all_reminders() -> int:
-    """Re-register future reminders from todos and projects (startup / reload)."""
+    """Re-register future project reminders (task reminders use TaskReminderService)."""
     from tools.business.project import list_project_records
-    from tools.business.todo import list_todo_records
 
     count = 0
-    for todo in list_todo_records(include_completed=True):
-        if schedule_todo_reminder(todo):
-            count += 1
     for project in list_project_records(""):
         if schedule_project_reminder(project):
             count += 1
@@ -132,10 +128,14 @@ def resync_all_reminders() -> int:
 
 def list_entity_reminders() -> list[dict[str, Any]]:
     from infra.scheduler import list_pending_jobs
+    from tools.task.api_compat import list_task_reminders
 
-    items: list[dict[str, Any]] = []
+    items: list[dict[str, Any]] = list_task_reminders()
+    seen = {item["job_id"] for item in items}
     for job in list_pending_jobs():
         job_id = job.get("id", "")
+        if job_id in seen:
+            continue
         payload = job.get("payload", "")
         title, _, message = payload.partition("|")
         entry: dict[str, Any] = {

@@ -22,6 +22,20 @@ html[data-theme='adventure'][data-color-mode='light'] {
   --user-bubble: #4384ad;
   --assistant-bubble: #171a1c;
   --settings-nav-active: rgba(93, 166, 2, 0.133);
+  --syntax-keyword: #417ab3;
+  --syntax-string: #5da602;
+  --syntax-comment: #5d6165;
+  --syntax-function: #5da602;
+  --syntax-number: #d84a33;
+  --syntax-type: #eebb6e;
+  --syntax-title: #97d7ef;
+  --syntax-boolean: #5da602;
+  --syntax-attribute: #eebb6e;
+  --syntax-constant: #d84a33;
+  --syntax-tag: #eebb6e;
+  --syntax-property: #feffff;
+  --syntax-string-escape: #5da602;
+  --syntax-string-special: #eebb6e;
 }
 
 /* Adventure — dark */
@@ -48,4 +62,18 @@ html[data-theme='adventure'][data-color-mode='dark'] {
   --user-bubble: #4384ad;
   --assistant-bubble: #171a1c;
   --settings-nav-active: rgba(93, 166, 2, 0.133);
+  --syntax-keyword: #417ab3;
+  --syntax-string: #5da602;
+  --syntax-comment: #5d6165;
+  --syntax-function: #5da602;
+  --syntax-number: #d84a33;
+  --syntax-type: #eebb6e;
+  --syntax-title: #97d7ef;
+  --syntax-boolean: #5da602;
+  --syntax-attribute: #eebb6e;
+  --syntax-constant: #d84a33;
+  --syntax-tag: #eebb6e;
+  --syntax-property: #feffff;
+  --syntax-string-escape: #5da602;
+  --syntax-string-special: #eebb6e;
 }

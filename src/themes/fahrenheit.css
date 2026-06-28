@@ -22,6 +22,20 @@ html[data-theme='fahrenheit'][data-color-mode='light'] {
   --user-bubble: #720202;
   --assistant-bubble: #202020;
   --settings-nav-active: rgba(114, 2, 2, 0.133);
+  --syntax-keyword: #cb4a05;
+  --syntax-string: #cc734d;
+  --syntax-comment: #828282;
+  --syntax-function: #fd9f4d;
+  --syntax-number: #cb4a05;
+  --syntax-type: #cda074;
+  --syntax-title: #cda074;
+  --syntax-boolean: #fd9f4d;
+  --syntax-attribute: #fecf75;
+  --syntax-constant: #fd9f4d;
+  --syntax-tag: #cb4a05;
+  --syntax-property: #dcdcdc;
+  --syntax-string-escape: #cc734d;
+  --syntax-string-special: #fd9f4d;
 }
 
 /* Fahrenheit — dark */
@@ -48,4 +62,18 @@ html[data-theme='fahrenheit'][data-color-mode='dark'] {
   --user-bubble: #720202;
   --assistant-bubble: #202020;
   --settings-nav-active: rgba(114, 2, 2, 0.133);
+  --syntax-keyword: #cb4a05;
+  --syntax-string: #cc734d;
+  --syntax-comment: #828282;
+  --syntax-function: #fd9f4d;
+  --syntax-number: #cb4a05;
+  --syntax-type: #cda074;
+  --syntax-title: #cda074;
+  --syntax-boolean: #fd9f4d;
+  --syntax-attribute: #fecf75;
+  --syntax-constant: #fd9f4d;
+  --syntax-tag: #cb4a05;
+  --syntax-property: #dcdcdc;
+  --syntax-string-escape: #cc734d;
+  --syntax-string-special: #fd9f4d;
 }

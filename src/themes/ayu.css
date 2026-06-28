@@ -22,6 +22,20 @@ html[data-theme='ayu'][data-color-mode='light'] {
   --user-bubble: #55b4d3;
   --assistant-bubble: #ececed;
   --settings-nav-active: rgba(85, 180, 212, 0.133);
+  --syntax-keyword: rgba(250, 141, 62, 1);
+  --syntax-string: rgba(134, 179, 0, 1);
+  --syntax-comment: rgba(137, 141, 144, 1);
+  --syntax-function: rgba(242, 173, 72, 1);
+  --syntax-number: rgba(163, 122, 204, 1);
+  --syntax-type: rgba(56, 158, 230, 1);
+  --syntax-title: rgba(92, 97, 102, 1);
+  --syntax-boolean: rgba(163, 122, 204, 1);
+  --syntax-attribute: rgba(59, 158, 229, 1);
+  --syntax-constant: rgba(163, 122, 204, 1);
+  --syntax-tag: rgba(59, 158, 229, 1);
+  --syntax-property: rgba(59, 158, 229, 1);
+  --syntax-string-escape: rgba(137, 141, 144, 1);
+  --syntax-string-special: rgba(230, 186, 126, 1);
 }
 
 /* Ayu Dark — dark */
@@ -48,4 +62,18 @@ html[data-theme='ayu'][data-color-mode='dark'] {
   --user-bubble: #5ac1fe;
   --assistant-bubble: #1f2127;
   --settings-nav-active: rgba(54, 163, 217, 0.133);
+  --syntax-keyword: rgba(255, 143, 63, 1);
+  --syntax-string: rgba(169, 217, 75, 1);
+  --syntax-comment: rgba(140, 139, 136, 1);
+  --syntax-function: rgba(255, 179, 83, 1);
+  --syntax-number: rgba(210, 166, 255, 1);
+  --syntax-type: rgba(89, 194, 255, 1);
+  --syntax-title: rgba(191, 189, 182, 1);
+  --syntax-boolean: rgba(210, 166, 255, 1);
+  --syntax-attribute: rgba(90, 193, 254, 1);
+  --syntax-constant: rgba(210, 166, 255, 1);
+  --syntax-tag: rgba(90, 193, 254, 1);
+  --syntax-property: rgba(90, 193, 254, 1);
+  --syntax-string-escape: rgba(140, 139, 136, 1);
+  --syntax-string-special: rgba(229, 181, 114, 1);
 }

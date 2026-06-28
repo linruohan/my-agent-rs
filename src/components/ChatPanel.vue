@@ -9,6 +9,7 @@ import MessageAttachments from '@/components/MessageAttachments.vue';
 import { hasFencedCodeBlock } from '@/utils/markdown';
 import { formatDuration } from '@/utils/formatDuration';
 import { buildMessageBlocks, type AssistantTurnBlock } from '@/utils/messageBlocks';
+import { extractSearchTerms } from '@/utils/highlightTerms';
 import type { Message } from '@/types';
 import type { ChatAttachment } from '@/utils/attachments';
 
@@ -68,6 +69,27 @@ function userHasAttachments(msg: Message) {
   return msg.role === 'user' && !!msg.attachments?.length;
 }
 
+function getHighlightTerms(block: AssistantTurnBlock, blockIndex: number): string[] {
+  const terms = new Set<string>();
+
+  const prev = messageBlocks.value[blockIndex - 1];
+  if (prev?.kind === 'user') {
+    extractSearchTerms(prev.message.content).forEach((term) => terms.add(term));
+  }
+
+  for (const tool of block.tools) {
+    if (tool.toolName === 'web_search') {
+      const tc = sessionStore.pendingToolCalls.get(tool.id);
+      const query = tc?.args?.query;
+      if (typeof query === 'string') {
+        extractSearchTerms(query).forEach((term) => terms.add(term));
+      }
+    }
+  }
+
+  return [...terms];
+}
+
 const showWelcome = computed(
   () =>
     sessionStore.currentThreadId &&
@@ -120,7 +142,11 @@ const showWelcome = computed(
               </div>
               <template v-else-if="block.assistant?.content.trim()">
                 <div class="bubble bubble-final">
-                  <MarkdownContent :content="block.assistant.content" variant="assistant" />
+                  <MarkdownContent
+                    :content="block.assistant.content"
+                    variant="assistant"
+                    :highlight-terms="getHighlightTerms(block, blockIndex)"
+                  />
                 </div>
                 <div v-if="block.assistant.durationMs != null && !block.tools.length" class="message-meta">
                   耗时 {{ formatDuration(block.assistant.durationMs) }}

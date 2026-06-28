@@ -22,6 +22,20 @@ html[data-theme='tokyonight'][data-color-mode='light'] {
   --user-bubble: #7aa2f7;
   --assistant-bubble: #292e42;
   --settings-nav-active: rgba(122, 162, 247, 0.133);
+  --syntax-keyword: #f7768e;
+  --syntax-string: #9ece6a;
+  --syntax-comment: #565f89;
+  --syntax-function: #7aa2f7;
+  --syntax-number: #e0af68;
+  --syntax-type: #7dcfff;
+  --syntax-title: #7aa2f7;
+  --syntax-boolean: #9ece6a;
+  --syntax-attribute: #e0af68;
+  --syntax-constant: #7aa2f7;
+  --syntax-tag: #f7768e;
+  --syntax-property: #c0caf5;
+  --syntax-string-escape: #7dcfff;
+  --syntax-string-special: #e0af68;
 }
 
 /* Tokyo Night — dark */
@@ -48,4 +62,18 @@ html[data-theme='tokyonight'][data-color-mode='dark'] {
   --user-bubble: #7aa2f7;
   --assistant-bubble: #292e42;
   --settings-nav-active: rgba(122, 162, 247, 0.133);
+  --syntax-keyword: #f7768e;
+  --syntax-string: #9ece6a;
+  --syntax-comment: #565f89;
+  --syntax-function: #7aa2f7;
+  --syntax-number: #e0af68;
+  --syntax-type: #7dcfff;
+  --syntax-title: #7aa2f7;
+  --syntax-boolean: #9ece6a;
+  --syntax-attribute: #e0af68;
+  --syntax-constant: #7aa2f7;
+  --syntax-tag: #f7768e;
+  --syntax-property: #c0caf5;
+  --syntax-string-escape: #7dcfff;
+  --syntax-string-special: #e0af68;
 }

@@ -6,9 +6,12 @@ import { openHref, openLocalPath } from '@/utils/nativeOpen';
 const props = defineProps<{
   content: string;
   variant?: 'assistant' | 'user';
+  highlightTerms?: string[];
 }>();
 
-const html = computed(() => renderMarkdown(props.content));
+const html = computed(() =>
+  renderMarkdown(props.content, { highlightTerms: props.highlightTerms })
+);
 
 const previewSrc = ref<string | null>(null);
 const previewAlt = ref('');
@@ -119,15 +122,37 @@ async function onClick(e: MouseEvent) {
 
 .markdown-body :deep(h1),
 .markdown-body :deep(h2),
+.markdown-body :deep(h3),
+.markdown-body :deep(h4) {
+  margin: 0.75em 0 0.35em;
+  font-weight: 650;
+  line-height: 1.35;
+}
+
+.markdown-body :deep(h1) {
+  font-size: 1.35em;
+  color: var(--syntax-title, var(--accent));
+}
+
+.markdown-body :deep(h2) {
+  font-size: 1.2em;
+  color: var(--syntax-title, var(--accent));
+}
+
 .markdown-body :deep(h3) {
-  margin: 0.6em 0 0.3em;
+  font-size: 1.08em;
+  color: color-mix(in srgb, var(--syntax-type, var(--accent)) 85%, var(--text-primary));
+}
+
+.markdown-body :deep(h4) {
   font-size: 1em;
-  font-weight: 600;
+  color: var(--text-primary);
 }
 
 .markdown-body :deep(h1:first-child),
 .markdown-body :deep(h2:first-child),
-.markdown-body :deep(h3:first-child) {
+.markdown-body :deep(h3:first-child),
+.markdown-body :deep(h4:first-child) {
   margin-top: 0;
 }
 
@@ -153,15 +178,23 @@ async function onClick(e: MouseEvent) {
 }
 
 .markdown-body :deep(:not(pre) > code) {
-  background: rgba(0, 0, 0, 0.25);
+  background: var(--bg-code, var(--bg-input));
+  border: 1px solid color-mix(in srgb, var(--border) 80%, transparent);
   border-radius: 4px;
   padding: 0.1em 0.35em;
   font-size: 0.9em;
   font-family: ui-monospace, 'Cascadia Code', monospace;
+  color: var(--syntax-string, var(--success));
+}
+
+.markdown-user :deep(:not(pre) > code) {
+  background: color-mix(in srgb, var(--text-on-accent) 12%, transparent);
+  border-color: color-mix(in srgb, var(--text-on-accent) 20%, transparent);
+  color: var(--text-on-accent);
 }
 
 .markdown-assistant :deep(:not(pre) > code) {
-  background: var(--bg-input);
+  background: var(--bg-code, var(--bg-input));
 }
 
 .markdown-body :deep(.md-code-block) {
@@ -224,13 +257,92 @@ async function onClick(e: MouseEvent) {
   font-family: ui-monospace, 'Cascadia Code', monospace;
   color: var(--text-primary);
   white-space: pre;
+  border: none;
+}
+
+.markdown-body :deep(.tok-keyword) {
+  color: var(--syntax-keyword, var(--danger));
+  font-weight: 600;
+}
+
+.markdown-body :deep(.tok-string) {
+  color: var(--syntax-string, var(--success));
+}
+
+.markdown-body :deep(.tok-comment) {
+  color: var(--syntax-comment, var(--text-muted));
+  font-style: italic;
+}
+
+.markdown-body :deep(.tok-number) {
+  color: var(--syntax-number, var(--warning));
+}
+
+.markdown-body :deep(.tok-function) {
+  color: var(--syntax-function, var(--accent));
+}
+
+.markdown-body :deep(.tok-type) {
+  color: var(--syntax-type, var(--accent));
+}
+
+.markdown-body :deep(.tok-boolean) {
+  color: var(--syntax-boolean, var(--warning));
+}
+
+.markdown-body :deep(strong) {
+  color: var(--syntax-keyword, var(--text-primary));
+  font-weight: 650;
+}
+
+.markdown-body :deep(em) {
+  color: var(--text-secondary);
+}
+
+.markdown-body :deep(del) {
+  color: var(--text-muted);
+  text-decoration: line-through;
+}
+
+.markdown-body :deep(.md-search-hit) {
+  background: var(--warning-muted);
+  color: var(--text-highlight);
+  padding: 0.05em 0.2em;
+  border-radius: 3px;
+  font-weight: 550;
+}
+
+.markdown-body :deep(table) {
+  width: 100%;
+  border-collapse: collapse;
+  margin: 0.6em 0;
+  font-size: 0.92em;
+}
+
+.markdown-body :deep(th),
+.markdown-body :deep(td) {
+  border: 1px solid var(--border);
+  padding: 6px 10px;
+  text-align: left;
+}
+
+.markdown-body :deep(th) {
+  background: var(--bg-panel);
+  color: var(--syntax-title, var(--accent));
+  font-weight: 600;
+}
+
+.markdown-body :deep(tr:nth-child(even) td) {
+  background: color-mix(in srgb, var(--bg-input) 55%, transparent);
 }
 
 .markdown-body :deep(blockquote) {
   margin: 0.5em 0;
-  padding-left: 12px;
+  padding: 0.35em 0 0.35em 12px;
   border-left: 3px solid var(--accent);
   color: var(--text-secondary);
+  background: color-mix(in srgb, var(--accent) 6%, transparent);
+  border-radius: 0 6px 6px 0;
 }
 
 .markdown-body :deep(hr) {

@@ -10,9 +10,11 @@ if str(AGENT_SRC) not in sys.path:
 
 
 def _patch_data_dirs(monkeypatch, data_dir: Path) -> None:
-    monkeypatch.setattr("tools.business.todo.DB_PATH", data_dir / "todos.db")
+    from infra.scheduler import shutdown_scheduler
+
     monkeypatch.setattr("tools.business.project.DB_PATH", data_dir / "projects.db")
     monkeypatch.setattr("infra.config.get_data_dir", lambda: data_dir)
+    shutdown_scheduler()
 
 
 def test_create_and_list_todos(monkeypatch):
@@ -60,19 +62,19 @@ def test_todo_crud_and_project_link(monkeypatch):
         assert list_todo_records(include_completed=True) == []
 
 
-def test_todo_tools_invoke(monkeypatch):
+def test_task_tools_invoke(monkeypatch):
     with tempfile.TemporaryDirectory() as tmp:
         data_dir = Path(tmp)
-        monkeypatch.setattr("tools.business.todo.DB_PATH", data_dir / "todos.db")
+        _patch_data_dirs(monkeypatch, data_dir)
 
-        from tools.business.todo import create_todo_tools
+        from tools.task.tools import TASK_TOOLS
 
-        tools = {t.name: t for t in create_todo_tools()}
-        result = tools["create_todo"].invoke({"title": "Write tests"})
+        tools = {t.name: t for t in TASK_TOOLS}
+        result = tools["add_task"].invoke({"title": "Write tests"})
         assert "Write tests" in result
 
-        list_result = tools["list_todos"].invoke({"include_completed": False})
+        list_result = tools["list_tasks"].invoke({"include_done": False})
         assert "Write tests" in list_result
 
-        complete_result = tools["complete_todo"].invoke({"todo_id": 1, "completed": True})
-        assert "已完成" in complete_result
+        complete_result = tools["complete_task"].invoke({"task_id": 1})
+        assert "完成" in complete_result

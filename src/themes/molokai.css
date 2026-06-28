@@ -22,6 +22,20 @@ html[data-theme='molokai'][data-color-mode='light'] {
   --user-bubble: #e14774;
   --assistant-bubble: #e4deda;
   --settings-nav-active: rgba(225, 71, 116, 0.067);
+  --syntax-keyword: #e14775;
+  --syntax-string: #269d69;
+  --syntax-comment: #767676;
+  --syntax-function: #e14775;
+  --syntax-number: #cc7a0a;
+  --syntax-type: #1c8ca8;
+  --syntax-title: #cc7a0a;
+  --syntax-boolean: #cc7a0a;
+  --syntax-attribute: #e14775;
+  --syntax-constant: #7058be;
+  --syntax-tag: #e14775;
+  --syntax-property: #7058be;
+  --syntax-string-escape: #7058be;
+  --syntax-string-special: #e14775;
 }
 
 /* Molokai Dark — dark */
@@ -48,4 +62,18 @@ html[data-theme='molokai'][data-color-mode='dark'] {
   --user-bubble: #dc1860;
   --assistant-bubble: #292c2e;
   --settings-nav-active: rgba(249, 38, 114, 0.067);
+  --syntax-keyword: #e19773;
+  --syntax-string: #76ba53;
+  --syntax-comment: #9e9e9e;
+  --syntax-function: #e1d797;
+  --syntax-number: #e19773;
+  --syntax-type: #a86d3b;
+  --syntax-title: #a76d3b;
+  --syntax-boolean: #e1d797;
+  --syntax-attribute: #be9a52;
+  --syntax-constant: #e1d797;
+  --syntax-tag: #b5af9a;
+  --syntax-property: #caccca;
+  --syntax-string-escape: #76ba53;
+  --syntax-string-special: #e1d797;
 }
