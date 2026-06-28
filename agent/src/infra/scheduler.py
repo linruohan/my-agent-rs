@@ -42,10 +42,37 @@ def set_notify_callback(cb: Callable[[str, str], None]) -> None:
     _notify_callback = cb
 
 
-def _fire_reminder(title: str, message: str) -> None:
-    logger.info("Reminder: {} - {}", title, message)
+def _fire_reminder(job_id: str, title: str, message: str) -> None:
+    logger.info("Reminder [{}]: {} - {}", job_id, title, message)
+    _mark_job_done(job_id)
     if _notify_callback:
         _notify_callback(title, message)
+
+
+def _mark_job_done(job_id: str) -> None:
+    _init_db()
+    with sqlite3.connect(_get_db()) as conn:
+        conn.execute(
+            "UPDATE scheduled_jobs SET status = 'done' WHERE id = ?",
+            (job_id,),
+        )
+        conn.commit()
+
+
+def cancel_reminder(job_id: str) -> bool:
+    _init_db()
+    sched = get_scheduler()
+    try:
+        sched.remove_job(job_id)
+    except Exception:
+        pass
+    with sqlite3.connect(_get_db()) as conn:
+        conn.execute(
+            "UPDATE scheduled_jobs SET status = 'cancelled' WHERE id = ?",
+            (job_id,),
+        )
+        conn.commit()
+    return True
 
 
 def schedule_reminder(job_id: str, title: str, message: str, run_at: datetime) -> str:
@@ -67,10 +94,42 @@ def schedule_reminder(job_id: str, title: str, message: str, run_at: datetime) -
         "date",
         run_date=run_at,
         id=job_id,
-        args=[title, message],
+        args=[job_id, title, message],
         replace_existing=True,
     )
     return f"Scheduled reminder `{title}` at {run_at.isoformat()}"
+
+
+def restore_pending_reminders() -> int:
+    """Reload future pending jobs from SQLite into APScheduler after restart."""
+    _init_db()
+    sched = get_scheduler()
+    now = datetime.now(timezone.utc)
+    restored = 0
+    with sqlite3.connect(_get_db()) as conn:
+        conn.row_factory = sqlite3.Row
+        rows = conn.execute(
+            "SELECT id, payload, run_at FROM scheduled_jobs WHERE status = 'pending'"
+        ).fetchall()
+    for row in rows:
+        run_at = datetime.fromisoformat(str(row["run_at"]).replace("Z", "+00:00"))
+        if run_at.tzinfo is None:
+            run_at = run_at.replace(tzinfo=timezone.utc)
+        if run_at <= now:
+            _mark_job_done(row["id"])
+            continue
+        payload = str(row["payload"])
+        title, _, message = payload.partition("|")
+        sched.add_job(
+            _fire_reminder,
+            "date",
+            run_date=run_at,
+            id=row["id"],
+            args=[row["id"], title, message or payload],
+            replace_existing=True,
+        )
+        restored += 1
+    return restored
 
 
 def get_scheduler() -> BackgroundScheduler:
@@ -86,7 +145,7 @@ def get_scheduler() -> BackgroundScheduler:
 def shutdown_scheduler() -> None:
     global _scheduler
     if _scheduler:
-        _scheduler.shutdown(wait=False)
+        _scheduler.shutdown(wait=True)
         _scheduler = None
 
 

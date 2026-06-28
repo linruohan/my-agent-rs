@@ -11,4 +11,5 @@ class AgentState(TypedDict):
     pending_action: dict | None
     task_plan: list[str] | None
     retrieved_docs: list | None
+    fresh_search_results: str | None
     metadata: dict

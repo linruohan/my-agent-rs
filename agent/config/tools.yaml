@@ -6,6 +6,7 @@ capability:
     enabled: true
     risk: low
     backend: duckduckgo
+    fallback_backends: []
     max_results: 5
     allowed_domains: []
   web_fetch:
@@ -60,6 +61,9 @@ business:
   assign_todo_to_project:
     enabled: true
     risk: low
+  set_todo_reminder:
+    enabled: true
+    risk: low
   create_project:
     enabled: true
     risk: low
@@ -73,6 +77,9 @@ business:
     enabled: true
     risk: low
   add_project_document:
+    enabled: true
+    risk: low
+  set_project_reminder:
     enabled: true
     risk: low
   read_calendar:

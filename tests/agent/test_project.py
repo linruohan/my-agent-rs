@@ -42,12 +42,45 @@ def test_project_lifecycle(monkeypatch):
         assert stats["total"] == 2
         assert stats["by_priority"]["high"] == 1
 
-        doc = add_project_doc_record(project["id"], "Spec", file_path="/docs/spec.md")
+        doc = add_project_doc_record(project["id"], "Spec", file_path="spec.md", auto_ingest=False)
         assert doc and doc["title"] == "Spec"
 
         active = list_project_records()
         assert len(active) == 1
         assert get_project_record(99) is None
+
+
+def test_project_doc_rag_ingest(monkeypatch, tmp_path):
+    data_dir = tmp_path / "data"
+    data_dir.mkdir()
+    workspace = data_dir / "workspace"
+    workspace.mkdir()
+    monkeypatch.setattr("tools.business.todo.DB_PATH", data_dir / "todos.db")
+    monkeypatch.setattr("tools.business.project.DB_PATH", data_dir / "projects.db")
+    monkeypatch.setattr("infra.config.get_data_dir", lambda: data_dir)
+    monkeypatch.setattr("infra.config.get_workspace_dir", lambda: workspace)
+
+    doc_file = workspace / "spec.md"
+    doc_file.write_text("# Spec\nProject requirements here.", encoding="utf-8")
+
+    from tools.business.project import add_project_doc_record, create_project_record
+
+    project = create_project_record("RAG Test")
+    doc = add_project_doc_record(
+        project["id"],
+        "Spec",
+        file_path="spec.md",
+        note="inline note",
+    )
+    assert doc
+    assert doc.get("rag_ingest")
+    assert "RAG" in doc["rag_ingest"]
+
+    from memory.rag import RagStore
+
+    rag = RagStore()
+    sources = rag.list_sources()
+    assert any("project-" in s for s in sources)
 
 
 def test_project_tools_invoke(monkeypatch):

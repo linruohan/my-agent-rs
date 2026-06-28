@@ -26,7 +26,8 @@ def _get_conn() -> sqlite3.Connection:
             created_at TEXT NOT NULL,
             project_id INTEGER,
             description TEXT DEFAULT '',
-            updated_at TEXT DEFAULT ''
+            updated_at TEXT DEFAULT '',
+            remind_at TEXT DEFAULT ''
         )
         """
     )
@@ -43,6 +44,8 @@ def _migrate_todos(conn: sqlite3.Connection) -> None:
         conn.execute("ALTER TABLE todos ADD COLUMN description TEXT DEFAULT ''")
     if "updated_at" not in cols:
         conn.execute("ALTER TABLE todos ADD COLUMN updated_at TEXT DEFAULT ''")
+    if "remind_at" not in cols:
+        conn.execute("ALTER TABLE todos ADD COLUMN remind_at TEXT DEFAULT ''")
 
 
 def _now() -> str:
@@ -58,6 +61,7 @@ def _row_to_todo(row: sqlite3.Row) -> dict[str, Any]:
         "completed": bool(row["completed"]),
         "project_id": row["project_id"],
         "description": row["description"] or "",
+        "remind_at": row["remind_at"] or "",
     }
 
 
@@ -67,6 +71,7 @@ def create_todo_record(
     priority: str = "normal",
     project_id: int | None = None,
     description: str = "",
+    remind_at: str = "",
 ) -> dict[str, Any]:
     if project_id is not None:
         from tools.business.project import get_project_record
@@ -79,13 +84,13 @@ def create_todo_record(
         ts = _now()
         cur = conn.execute(
             """
-            INSERT INTO todos (title, due_date, priority, created_at, project_id, description, updated_at)
-            VALUES (?, ?, ?, ?, ?, ?, ?)
+            INSERT INTO todos (title, due_date, priority, created_at, project_id, description, updated_at, remind_at)
+            VALUES (?, ?, ?, ?, ?, ?, ?, ?)
             """,
-            (title, due_date, priority, ts, project_id, description, ts),
+            (title, due_date, priority, ts, project_id, description, ts, remind_at),
         )
         conn.commit()
-        return {
+        record = {
             "id": cur.lastrowid,
             "title": title,
             "due_date": due_date,
@@ -93,7 +98,12 @@ def create_todo_record(
             "completed": False,
             "project_id": project_id,
             "description": description,
+            "remind_at": remind_at,
         }
+        from tools.business.reminders import schedule_todo_reminder
+
+        schedule_todo_reminder(record)
+        return record
     finally:
         conn.close()
 
@@ -148,6 +158,8 @@ def update_todo_record(
     completed: bool | None = None,
     project_id: int | None = None,
     clear_project: bool = False,
+    remind_at: str | None = None,
+    clear_reminder: bool = False,
 ) -> dict[str, Any] | None:
     todo = get_todo_record(todo_id)
     if not todo:
@@ -163,13 +175,19 @@ def update_todo_record(
             raise ValueError(f"Project #{project_id} not found")
         new_project_id = project_id
 
+    new_remind_at = todo.get("remind_at") or ""
+    if clear_reminder:
+        new_remind_at = ""
+    elif remind_at is not None:
+        new_remind_at = remind_at
+
     conn = _get_conn()
     try:
         conn.execute(
             """
             UPDATE todos
             SET title = ?, due_date = ?, priority = ?, description = ?,
-                completed = ?, project_id = ?, updated_at = ?
+                completed = ?, project_id = ?, updated_at = ?, remind_at = ?
             WHERE id = ?
             """,
             (
@@ -180,16 +198,25 @@ def update_todo_record(
                 int(completed) if completed is not None else int(todo["completed"]),
                 new_project_id,
                 _now(),
+                new_remind_at,
                 todo_id,
             ),
         )
         conn.commit()
-        return get_todo_record(todo_id)
+        updated = get_todo_record(todo_id)
+        if updated:
+            from tools.business.reminders import schedule_todo_reminder
+
+            schedule_todo_reminder(updated)
+        return updated
     finally:
         conn.close()
 
 
 def delete_todo_record(todo_id: int) -> bool:
+    from tools.business.reminders import cancel_todo_reminder
+
+    cancel_todo_reminder(todo_id)
     conn = _get_conn()
     try:
         cur = conn.execute("DELETE FROM todos WHERE id = ?", (todo_id,))
@@ -224,30 +251,27 @@ def _format_todo_line(r: dict[str, Any]) -> str:
     line = f"{status} #{r['id']} [{r['priority']}] {r['title']}"
     if r["due_date"]:
         line += f" (截止: {r['due_date']})"
+    if r.get("remind_at"):
+        line += f" [提醒: {r['remind_at']}]"
+    elif r["due_date"]:
+        line += " [到期提醒]"
     if r.get("project_id"):
         line += f" [项目 #{r['project_id']}]"
     return line
 
 
-def _schedule_due_reminder(record: dict[str, Any], due_date: str) -> str:
-    if not due_date:
-        return ""
-    try:
-        from infra.scheduler import schedule_reminder
+def _reminder_note(record: dict[str, Any]) -> str:
+    from tools.business.reminders import effective_todo_remind_at, parse_remind_time
 
-        parsed = datetime.fromisoformat(due_date.replace("Z", "+00:00"))
-        if parsed.tzinfo is None:
-            parsed = parsed.replace(tzinfo=timezone.utc)
-        job_id = f"todo-{record['id']}"
-        schedule_reminder(
-            job_id,
-            "待办提醒",
-            f"待办 #{record['id']}: {record['title']}",
-            parsed,
-        )
-        return f"，已设置 {due_date} 提醒"
-    except (ValueError, TypeError):
-        return "（截止日格式无效，未设置提醒；请用 ISO 8601 如 2026-06-28T09:00:00）"
+    when = effective_todo_remind_at(record)
+    if not when:
+        return ""
+    parsed = parse_remind_time(when)
+    if not parsed:
+        return "（提醒时间格式无效，请用 ISO 8601）"
+    if parsed <= datetime.now(timezone.utc):
+        return "（提醒时间已过）"
+    return f"，已设置提醒 {when}"
 
 
 def create_todo_tools():
@@ -260,14 +284,17 @@ def create_todo_tools():
         priority: str = "normal",
         project_id: int = 0,
         description: str = "",
+        remind_at: str = "",
     ) -> str:
-        """创建一条待办事项，可选关联项目 ID。"""
+        """创建一条待办事项，可选关联项目 ID。due_date/remind_at 支持 ISO 8601 到期与提醒。"""
         try:
             pid = project_id if project_id > 0 else None
-            record = create_todo_record(title, due_date, priority, pid, description)
+            record = create_todo_record(
+                title, due_date, priority, pid, description, remind_at
+            )
         except ValueError as e:
             return str(e)
-        reminder_note = _schedule_due_reminder(record, due_date)
+        reminder_note = _reminder_note(record)
         proj_note = f"，项目 #{pid}" if pid else ""
         return (
             f"已创建待办 #{record['id']}: {record['title']} "
@@ -294,8 +321,9 @@ def create_todo_tools():
         due_date: str = "",
         priority: str = "",
         description: str = "",
+        remind_at: str = "",
     ) -> str:
-        """更新待办标题、截止日、优先级或描述。"""
+        """更新待办标题、截止日、优先级、描述或提醒时间。"""
         try:
             updated = update_todo_record(
                 todo_id,
@@ -303,13 +331,28 @@ def create_todo_tools():
                 due_date=due_date or None,
                 priority=priority or None,
                 description=description or None,
+                remind_at=remind_at or None,
             )
         except ValueError as e:
             return str(e)
         if not updated:
             return f"待办 #{todo_id} 不存在。"
-        reminder = _schedule_due_reminder(updated, updated["due_date"]) if updated["due_date"] else ""
+        reminder = _reminder_note(updated)
         return f"已更新待办 #{todo_id}: {updated['title']}{reminder}"
+
+    @tool
+    def set_todo_reminder(todo_id: int, remind_at: str) -> str:
+        """设置待办提醒时间（ISO 8601）。传空字符串清除提醒。"""
+        if remind_at.strip():
+            updated = update_todo_record(todo_id, remind_at=remind_at.strip())
+        else:
+            updated = update_todo_record(todo_id, clear_reminder=True)
+        if not updated:
+            return f"待办 #{todo_id} 不存在。"
+        if updated.get("completed"):
+            return f"待办 #{todo_id} 已完成，无需提醒。"
+        note = _reminder_note(updated)
+        return f"待办 #{todo_id} 提醒已更新{note or '（已清除）'}"
 
     @tool
     def complete_todo(todo_id: int, completed: bool = True) -> str:
@@ -340,4 +383,12 @@ def create_todo_tools():
             return f"待办 #{todo_id} 不存在。"
         return f"待办 #{todo_id} 已分配到项目 #{project_id}"
 
-    return [create_todo, list_todos, update_todo, complete_todo, delete_todo, assign_todo_to_project]
+    return [
+        create_todo,
+        list_todos,
+        update_todo,
+        complete_todo,
+        delete_todo,
+        assign_todo_to_project,
+        set_todo_reminder,
+    ]

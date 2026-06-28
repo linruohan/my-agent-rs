@@ -6,8 +6,10 @@ import ConfirmModal from '@/components/ConfirmModal.vue';
 import StatusBar from '@/components/StatusBar.vue';
 import SettingsView from '@/views/SettingsView.vue';
 import KnowledgeBaseView from '@/views/KnowledgeBaseView.vue';
+import TasksView from '@/views/TasksView.vue';
+import StartupOverlay from '@/components/StartupOverlay.vue';
 
-const tab = ref<'chat' | 'knowledge' | 'settings'>('chat');
+const tab = ref<'chat' | 'tasks' | 'knowledge' | 'settings'>('chat');
 </script>
 
 <template>
@@ -16,15 +18,18 @@ const tab = ref<'chat' | 'knowledge' | 'settings'>('chat');
     <div class="main-area">
       <nav class="tabs">
         <button :class="{ active: tab === 'chat' }" @click="tab = 'chat'">聊天</button>
+        <button :class="{ active: tab === 'tasks' }" @click="tab = 'tasks'">任务</button>
         <button :class="{ active: tab === 'knowledge' }" @click="tab = 'knowledge'">知识库</button>
         <button :class="{ active: tab === 'settings' }" @click="tab = 'settings'">设置</button>
       </nav>
       <ChatPanel v-show="tab === 'chat'" />
+      <TasksView v-show="tab === 'tasks'" />
       <KnowledgeBaseView v-show="tab === 'knowledge'" />
       <SettingsView v-show="tab === 'settings'" />
       <StatusBar />
     </div>
     <ConfirmModal />
+    <StartupOverlay />
   </div>
 </template>
 

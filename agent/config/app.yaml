@@ -2,6 +2,8 @@ host: 127.0.0.1
 port: 0
 data_dir: ../data
 version: "0.1.0"
+# Optional IANA timezone override (e.g. Asia/Shanghai). Defaults to system local time.
+timezone: Asia/Shanghai
 
 hitl:
   timeout_sec: 300

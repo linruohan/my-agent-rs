@@ -11,6 +11,7 @@ from tools.capability.web_search import (
     MockSearchBackend,
     format_results_with_citations,
     get_search_backend,
+    run_web_search,
 )
 
 
@@ -31,6 +32,14 @@ def test_format_results_with_citations():
 
 
 def test_get_search_backend_mock():
-    # Register mock is internal; verify duckduckgo exists
     backend = get_search_backend("duckduckgo")
     assert backend is not None
+
+
+def test_run_web_search_uses_mock_backend():
+    from tools.capability import web_search as ws_mod
+
+    ws_mod.register_search_backend("mock_chain", MockSearchBackend())
+    results = run_web_search("Rust", {"backend": "mock_chain", "max_results": 2})
+    assert len(results) == 1
+    assert "Rust" in results[0].title

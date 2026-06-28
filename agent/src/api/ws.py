@@ -68,14 +68,6 @@ def create_ws_router(
     async def websocket_endpoint(ws: WebSocket):
         await manager.connect(ws)
         ws_id = id(ws)
-        await ws.send_json(
-            {
-                "type": "connected",
-                "port": port,
-                "version": VERSION,
-                "auth_required": auth_required(),
-            }
-        )
 
         async def emit(msg: dict[str, Any]):
             await ws.send_json(msg)
@@ -101,6 +93,15 @@ def create_ws_router(
         hitl_timeout_manager.set_notify_callback(hitl_notify)
 
         try:
+            await ws.send_json(
+                {
+                    "type": "connected",
+                    "port": port,
+                    "version": VERSION,
+                    "auth_required": auth_required(),
+                }
+            )
+
             while True:
                 raw = await ws.receive_text()
                 data = json.loads(raw)
@@ -318,6 +319,8 @@ def create_ws_router(
                 )
 
         except WebSocketDisconnect:
+            pass
+        finally:
             manager.disconnect(ws)
             _authenticated_ws.discard(ws_id)
 

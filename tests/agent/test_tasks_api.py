@@ -1,0 +1,100 @@
+from __future__ import annotations
+
+import pytest
+from starlette.testclient import TestClient
+
+
+@pytest.fixture
+def tasks_client(monkeypatch, tmp_path):
+    from pathlib import Path
+    from unittest.mock import MagicMock
+
+    config_dir = Path(__file__).resolve().parents[2] / "agent" / "config"
+    monkeypatch.setenv("AGENT_DATA_DIR", str(tmp_path))
+    monkeypatch.setenv("AGENT_CONFIG_DIR", str(config_dir))
+    monkeypatch.setattr("tools.business.todo.DB_PATH", tmp_path / "todos.db")
+    monkeypatch.setattr("tools.business.project.DB_PATH", tmp_path / "projects.db")
+
+    from langgraph.checkpoint.memory import MemorySaver
+
+    monkeypatch.setattr("agent.graph.get_checkpointer", lambda: MemorySaver())
+    mock_llm = MagicMock()
+    mock_llm.bind_tools.return_value = mock_llm
+    monkeypatch.setattr(
+        "agent.graph.create_llm_with_fallback",
+        lambda *a, **k: (mock_llm, "mock"),
+    )
+    monkeypatch.setattr(
+        "agent.graph.invoke_with_fallback",
+        lambda fn, **k: (fn(mock_llm), "mock"),
+    )
+
+    from main import build_app
+
+    with TestClient(build_app(port=8765)) as client:
+        yield client
+
+
+def test_tasks_api_flow(tasks_client):
+    proj = tasks_client.post(
+        "/tasks/projects",
+        json={"name": "API Test", "status": "active"},
+    )
+    assert proj.status_code == 200
+    project_id = proj.json()["project"]["id"]
+
+    todo = tasks_client.post(
+        "/tasks/todos",
+        json={"title": "From API", "project_id": project_id, "priority": "high"},
+    )
+    assert todo.status_code == 200
+    todo_id = todo.json()["todo"]["id"]
+
+    listed = tasks_client.get(f"/tasks/todos?project_id={project_id}")
+    assert len(listed.json()["todos"]) == 1
+
+    patched = tasks_client.patch(
+        f"/tasks/todos/{todo_id}",
+        json={"completed": True},
+    )
+    assert patched.json()["todo"]["completed"] is True
+
+    detail = tasks_client.get(f"/tasks/projects/{project_id}")
+    assert detail.status_code == 200
+    assert detail.json()["stats"]["completed"] == 1
+
+    projects = tasks_client.get("/tasks/projects")
+    assert any(p["id"] == project_id for p in projects.json()["projects"])
+
+    doc = tasks_client.post(
+        f"/tasks/projects/{project_id}/docs",
+        json={"title": "README", "note": "project notes"},
+    )
+    assert doc.status_code == 200
+
+    patched_proj = tasks_client.patch(
+        f"/tasks/projects/{project_id}",
+        json={"status": "completed"},
+    )
+    assert patched_proj.json()["project"]["status"] == "completed"
+
+    todo2 = tasks_client.post(
+        "/tasks/todos",
+        json={
+            "title": "Reminder test",
+            "remind_at": "2099-06-01T09:00:00+00:00",
+        },
+    )
+    tid2 = todo2.json()["todo"]["id"]
+    rem = tasks_client.put(
+        f"/tasks/todos/{tid2}/reminder",
+        json={"remind_at": "2099-07-01T10:00:00+00:00"},
+    )
+    assert rem.status_code == 200
+
+    pending = tasks_client.get("/tasks/reminders")
+    assert pending.status_code == 200
+    assert any(r["entity_type"] == "todo" for r in pending.json()["reminders"])
+
+    deleted = tasks_client.delete(f"/tasks/todos/{todo_id}")
+    assert deleted.status_code == 200

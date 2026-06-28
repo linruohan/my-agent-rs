@@ -12,7 +12,12 @@ from langgraph.types import interrupt, RunnableConfig
 
 from agent.planner import format_plan_for_prompt, generate_task_plan, needs_planning
 from agent.state import AgentState
-from infra.config import get_data_dir
+from infra.config import get_data_dir, load_effective_tools_config
+from infra.time_context import (
+    format_current_time_context,
+    format_user_turn_time_hint,
+    is_fresh_info_query,
+)
 from llm.factory import get_default_provider
 from llm.fallback import create_llm_with_fallback, invoke_with_fallback
 from memory.rag import RagStore, is_knowledge_query
@@ -51,7 +56,10 @@ def _get_rag_store() -> RagStore:
 
 def _build_system_prompt(state: AgentState) -> str:
     prefs = get_user_preferences()
-    parts = ["You are a helpful personal assistant agent with access to local tools."]
+    parts = [
+        format_current_time_context(),
+        "You are a helpful personal assistant agent with access to local tools.",
+    ]
 
     if prefs:
         parts.append(f"User preferences:\n{json.dumps(prefs, ensure_ascii=False)}")
@@ -64,7 +72,53 @@ def _build_system_prompt(state: AgentState) -> str:
     if retrieved:
         parts.append(_get_rag_store().format_for_prompt(retrieved))
 
+    fresh = state.get("fresh_search_results")
+    if fresh:
+        parts.append(
+            "Pre-fetched web search results for this question (prefer over training memory):\n"
+            f"{fresh}"
+        )
+
     return "\n\n".join(parts)
+
+
+def _prefetch_web_context(query: str) -> str | None:
+    tools_cfg = load_effective_tools_config()
+    ws_cfg = tools_cfg.get("capability", {}).get("web_search", {})
+    if not ws_cfg.get("enabled", True):
+        return None
+    try:
+        from tools.capability.web_search import format_results_with_citations, run_web_search
+
+        results = run_web_search(query, ws_cfg)
+        if not results:
+            return None
+        text, _ = format_results_with_citations(results)
+        return text
+    except Exception:
+        return None
+
+
+def _messages_for_llm(state: AgentState) -> list:
+    from langchain_core.messages import SystemMessage
+
+    messages = list(state["messages"])
+    system_content = _build_system_prompt(state)
+    if not messages or not isinstance(messages[0], SystemMessage):
+        messages = [SystemMessage(content=system_content)] + messages
+    else:
+        messages[0] = SystemMessage(content=system_content)
+
+    for i in range(len(messages) - 1, -1, -1):
+        if isinstance(messages[i], HumanMessage):
+            raw = messages[i].content
+            if isinstance(raw, str):
+                messages[i] = HumanMessage(
+                    content=raw + format_user_turn_time_hint(raw),
+                    id=getattr(messages[i], "id", None),
+                )
+            break
+    return messages
 
 
 def create_preprocess_node(
@@ -95,6 +149,17 @@ def create_preprocess_node(
 
         if needs_planning(content):
             updates["task_plan"] = generate_task_plan(content, _resolve_llm())
+
+        if is_fresh_info_query(content):
+            updates["task_plan"] = [
+                "确认系统提示中的当前日期",
+                "使用 web_search 或预检索结果获取最新信息",
+                "结合检索结果回答用户",
+            ]
+            prefetched = _prefetch_web_context(content)
+            updates["fresh_search_results"] = prefetched
+        else:
+            updates["fresh_search_results"] = None
 
         return updates
 
@@ -325,14 +390,7 @@ def create_agent_graph(
     lazy_llm = _LazyLlm(registry, llm=llm)
 
     def call_model(state: AgentState) -> dict[str, Any]:
-        from langchain_core.messages import SystemMessage
-
-        messages = list(state["messages"])
-        system_content = _build_system_prompt(state)
-        if not messages or not isinstance(messages[0], SystemMessage):
-            messages = [SystemMessage(content=system_content)] + messages
-        else:
-            messages[0] = SystemMessage(content=system_content)
+        messages = _messages_for_llm(state)
 
         tools = registry.get_enabled_tools()
 

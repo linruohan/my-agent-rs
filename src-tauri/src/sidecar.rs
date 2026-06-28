@@ -1,5 +1,5 @@
 use std::io::{BufRead, BufReader};
-use std::path::PathBuf;
+use std::path::{Path, PathBuf};
 use std::process::{Child, Command, Stdio};
 use std::time::Duration;
 
@@ -54,6 +54,7 @@ impl SidecarManager {
 
     fn apply_native_env(&self, cmd: &mut Command) {
         cmd.env("AGENT_EXPECTED_VERSION", env!("CARGO_PKG_VERSION"));
+        cmd.env("AGENT_API_VERSION", env!("CARGO_PKG_VERSION"));
         if let Some(ref token) = self.auth_token {
             cmd.env("SIDECAR_AUTH_TOKEN", token);
         }
@@ -70,6 +71,7 @@ impl SidecarManager {
         sidecar: tauri_plugin_shell::process::Command,
     ) -> tauri_plugin_shell::process::Command {
         let mut cmd = sidecar.env("AGENT_EXPECTED_VERSION", env!("CARGO_PKG_VERSION"));
+        cmd = cmd.env("AGENT_API_VERSION", env!("CARGO_PKG_VERSION"));
         if let Some(ref token) = self.auth_token {
             cmd = cmd.env("SIDECAR_AUTH_TOKEN", token);
         }
@@ -138,8 +140,22 @@ impl SidecarManager {
             .map_err(|e| e.to_string())?;
         std::fs::create_dir_all(&data_dir).map_err(|e| e.to_string())?;
 
-        // Config is embedded in the PyInstaller binary (_MEIPASS/config).
-        // Do not override AGENT_CONFIG_DIR with a non-existent resource path.
+        match crate::sidecar_update::sync_from_bundle(app, &data_dir) {
+            Ok(true) => {
+                let _ = app.emit("sidecar-updated", env!("CARGO_PKG_VERSION"));
+            }
+            Ok(false) => {}
+            Err(e) => log::warn!("Sidecar sync skipped: {e}"),
+        }
+
+        let installed = crate::sidecar_update::installed_binary(&data_dir);
+        if installed.is_file() {
+            return self
+                .start_production_from_path(app, &data_dir, &installed)
+                .await;
+        }
+
+        // Fallback: Tauri shell sidecar (dev stub or missing sync)
         let sidecar = app
             .shell()
             .sidecar("agent-api")
@@ -184,6 +200,42 @@ impl SidecarManager {
         self.port = Some(port);
         if let Err(e) = Self::wait_for_health(port).await {
             if let Some(child) = self.sidecar_child.take() {
+                let _ = child.kill();
+            }
+            self.port = None;
+            self.status = SidecarStatus::Error;
+            let _ = app.emit("sidecar-status", &self.status);
+            return Err(e);
+        }
+        self.status = SidecarStatus::Running;
+        let _ = app.emit("sidecar-status", &self.status);
+        let _ = app.emit("sidecar-port", port);
+        Ok(port)
+    }
+
+    async fn start_production_from_path(
+        &mut self,
+        app: &AppHandle,
+        data_dir: &Path,
+        binary: &Path,
+    ) -> Result<u16, String> {
+        let mut child = Command::new(binary);
+        child.args(["--host", "127.0.0.1", "--port", "0"]);
+        child.env("AGENT_DATA_DIR", data_dir);
+        self.apply_native_env(&mut child);
+        child.stdout(Stdio::piped());
+        child.stderr(Stdio::inherit());
+        crate::keyring::inject_api_keys(&mut child, data_dir);
+
+        let mut child = child
+            .spawn()
+            .map_err(|e| format!("Failed to start synced sidecar: {e}"))?;
+
+        let port = Self::wait_for_ready_stdout(&mut child, Duration::from_secs(120))?;
+        self.child = Some(child);
+        self.port = Some(port);
+        if let Err(e) = Self::wait_for_health(port).await {
+            if let Some(mut child) = self.child.take() {
                 let _ = child.kill();
             }
             self.port = None;
@@ -313,6 +365,16 @@ pub async fn start_sidecar(
 pub async fn stop_sidecar(state: State<'_, Mutex<SidecarManager>>) -> Result<(), String> {
     let mut manager = state.lock().await;
     manager.stop_async().await
+}
+
+#[tauri::command]
+pub async fn restart_sidecar(
+    state: State<'_, Mutex<SidecarManager>>,
+    app: AppHandle,
+) -> Result<u16, String> {
+    let mut manager = state.lock().await;
+    manager.stop_async().await?;
+    manager.start(&app).await
 }
 
 #[tauri::command]

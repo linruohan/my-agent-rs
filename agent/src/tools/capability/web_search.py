@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import os
 from dataclasses import dataclass
 from typing import Any, Protocol
 
@@ -21,28 +22,57 @@ class SearchBackend(Protocol):
 
 
 class DuckDuckGoBackend:
+    """DuckDuckGo text search via the maintained `ddgs` package."""
+
     def search(
         self,
         query: str,
         max_results: int = 5,
         allowed_domains: list[str] | None = None,
     ) -> list[SearchResult]:
-        from duckduckgo_search import DDGS
+        last_error: Exception | None = None
 
-        results: list[SearchResult] = []
-        with DDGS() as ddgs:
-            for item in ddgs.text(query, max_results=max_results):
-                url = item.get("href", item.get("link", ""))
-                if allowed_domains and not any(d in url for d in allowed_domains):
-                    continue
-                results.append(
-                    SearchResult(
-                        title=item.get("title", ""),
-                        url=url,
-                        snippet=item.get("body", item.get("snippet", "")),
+        for factory in (_ddgs_client, _legacy_ddgs_client):
+            try:
+                ddgs = factory()
+            except ImportError as exc:
+                last_error = exc
+                continue
+
+            results: list[SearchResult] = []
+            try:
+                for item in ddgs.text(query, max_results=max_results):
+                    url = item.get("href", item.get("link", ""))
+                    if allowed_domains and not any(d in url for d in allowed_domains):
+                        continue
+                    results.append(
+                        SearchResult(
+                            title=item.get("title", ""),
+                            url=url,
+                            snippet=item.get("body", item.get("snippet", "")),
+                        )
                     )
-                )
-        return results
+                if results:
+                    return results
+            except Exception as exc:
+                last_error = exc
+                continue
+
+        if last_error is not None:
+            raise RuntimeError(f"DuckDuckGo search failed: {last_error}") from last_error
+        return []
+
+
+def _ddgs_client():
+    from ddgs import DDGS
+
+    return DDGS()
+
+
+def _legacy_ddgs_client():
+    from duckduckgo_search import DDGS
+
+    return DDGS()
 
 
 class MockSearchBackend:
@@ -72,8 +102,6 @@ class TavilyBackend:
         max_results: int = 5,
         allowed_domains: list[str] | None = None,
     ) -> list[SearchResult]:
-        import os
-
         api_key = os.environ.get("TAVILY_API_KEY", "")
         if not api_key:
             raise RuntimeError("TAVILY_API_KEY not configured")
@@ -151,6 +179,48 @@ def get_search_backend(name: str, config: dict[str, Any] | None = None) -> Searc
     return _backends[name]
 
 
+def _backend_chain(config: dict[str, Any]) -> list[str]:
+    primary = config.get("backend", "duckduckgo")
+    fallbacks = config.get("fallback_backends") or []
+    chain: list[str] = []
+    for name in [primary, *fallbacks, "tavily"]:
+        if name and name not in chain:
+            chain.append(name)
+    return chain
+
+
+def run_web_search(
+    query: str,
+    config: dict[str, Any] | None = None,
+    *,
+    max_results: int | None = None,
+) -> list[SearchResult]:
+    """Run search with configured backend chain and graceful fallback."""
+    cfg = config or {}
+    limit = max_results or cfg.get("max_results", 5)
+    allowed_domains = cfg.get("allowed_domains") or None
+    errors: list[str] = []
+
+    for backend_name in _backend_chain(cfg):
+        if backend_name == "tavily" and not os.environ.get("TAVILY_API_KEY"):
+            continue
+        try:
+            backend = get_search_backend(backend_name, cfg)
+            results = backend.search(
+                query,
+                max_results=limit,
+                allowed_domains=allowed_domains,
+            )
+            if results:
+                return results
+        except Exception as exc:
+            errors.append(f"{backend_name}: {exc}")
+
+    if errors:
+        raise RuntimeError("; ".join(errors))
+    return []
+
+
 def format_results_with_citations(results: list[SearchResult]) -> tuple[str, list[dict[str, str]]]:
     if not results:
         return "No results found.", []
@@ -166,16 +236,24 @@ def format_results_with_citations(results: list[SearchResult]) -> tuple[str, lis
 def create_web_search_tool(config: dict[str, Any]):
     from langchain_core.tools import tool
 
-    backend_name = config.get("backend", "duckduckgo")
     max_results = config.get("max_results", 5)
     allowed_domains = config.get("allowed_domains") or None
 
     @tool
     def web_search(query: str, max_results_override: int = 0) -> str:
         """Search the web for current information. Returns summarized results with source URLs."""
-        backend = get_search_backend(backend_name, config)
         limit = max_results_override or max_results
-        results = backend.search(query, max_results=limit, allowed_domains=allowed_domains)
+        try:
+            results = run_web_search(
+                query,
+                {**config, "allowed_domains": allowed_domains},
+                max_results=limit,
+            )
+        except Exception as exc:
+            return (
+                f"Web search failed for query '{query}'. "
+                f"Try web_fetch on a known official URL instead. Details: {exc}"
+            )
         text, _ = format_results_with_citations(results)
         return text
 

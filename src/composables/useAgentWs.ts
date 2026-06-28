@@ -280,7 +280,9 @@ export function useAgentWs() {
     }
 
     const url = wsUrl();
-    if (ws?.readyState === WebSocket.OPEN && ws.url === url) return;
+    const state = ws?.readyState;
+    if (state === WebSocket.OPEN && ws!.url === url) return;
+    if (state === WebSocket.CONNECTING && ws!.url === url) return;
 
     ws?.close();
     ws = new WebSocket(url);

@@ -3,6 +3,7 @@ mod keyring;
 mod llm_config;
 mod native_bridge;
 mod sidecar;
+mod sidecar_update;
 mod tray;
 
 use sidecar::SidecarManager;
@@ -20,6 +21,7 @@ pub fn run() {
         .invoke_handler(tauri::generate_handler![
             sidecar::start_sidecar,
             sidecar::stop_sidecar,
+            sidecar::restart_sidecar,
             sidecar::get_sidecar_status,
             keyring::store_api_key,
             keyring::get_api_key,

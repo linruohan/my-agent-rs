@@ -25,6 +25,7 @@ from agent.runner import AgentRunner
 from api.config_route import router as config_router
 from api.health import router as health_router
 from api.health import VERSION
+from api.tasks_route import router as tasks_router
 from api.tools_route import create_tools_router
 from api.ws import create_ws_router, manager
 from infra.hitl import hitl_timeout_manager
@@ -68,6 +69,17 @@ def build_app(port: int = 8765) -> FastAPI:
 
         get_scheduler()
 
+        from infra.scheduler import restore_pending_reminders
+        from tools.business.reminders import resync_all_reminders
+
+        restored = restore_pending_reminders()
+        synced = resync_all_reminders()
+        logger.info(
+            "Reminders: restored {} from DB, synced {} from tasks/projects",
+            restored,
+            synced,
+        )
+
         async def _scheduler_notify(title: str, message: str) -> None:
             await manager.broadcast(
                 {
@@ -96,6 +108,7 @@ def build_app(port: int = 8765) -> FastAPI:
     app = FastAPI(title="Personal Assistant Agent", version=VERSION, lifespan=lifespan)
     app.include_router(health_router)
     app.include_router(config_router)
+    app.include_router(tasks_router)
     app.include_router(create_tools_router(registry, runner))
     ws_router = create_ws_router(runner, session_store, port)
     app.include_router(ws_router)
