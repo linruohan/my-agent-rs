@@ -1,0 +1,77 @@
+/* Theme tokens — applied via data-theme + data-color-mode on <html> */
+
+html {
+  --window-transparency: 0;
+  --bg-app: #0f1117;
+  --bg-sidebar: #12141a;
+  --bg-panel: #16181d;
+  --bg-elevated: #1f2128;
+  --bg-input: #0f1117;
+  --bg-hover: var(--bg-elevated);
+  --bg-popover: var(--bg-elevated);
+  --bg-subtle: var(--bg-panel);
+  --border: #2a2d35;
+  --border-subtle: var(--border);
+  --text-primary: #e4e4e7;
+  --text-secondary: #a1a1aa;
+  --text-muted: #71717a;
+  --text-on-accent: #ffffff;
+  --accent: #3b82f6;
+  --accent-hover: #2563eb;
+  --accent-subtle: #1e3a5f;
+  --accent-muted: color-mix(in srgb, var(--accent) 12%, transparent);
+  --text-link: var(--accent);
+  --text-highlight: var(--warning);
+  --text-danger-soft: color-mix(in srgb, var(--danger) 80%, var(--text-primary));
+  --bg-code: var(--bg-input);
+  --bg-danger-subtle: color-mix(in srgb, var(--danger) 12%, var(--bg-app));
+  --bg-success-subtle: color-mix(in srgb, var(--success) 18%, var(--bg-app));
+  --text-success-soft: color-mix(in srgb, var(--success) 70%, var(--text-primary));
+  --tool-mcp: color-mix(in srgb, var(--accent) 65%, #8b5cf6);
+  --success: #10b981;
+  --success-muted: color-mix(in srgb, var(--success) 12%, transparent);
+  --warning: #f59e0b;
+  --warning-muted: color-mix(in srgb, var(--warning) 12%, transparent);
+  --danger: #ef4444;
+  --danger-hover: #dc2626;
+  --danger-muted: color-mix(in srgb, var(--danger) 12%, transparent);
+  --btn-secondary-bg: var(--bg-elevated);
+  --shadow-color: rgba(0, 0, 0, 0.4);
+  --overlay-bg: rgba(0, 0, 0, 0.85);
+  --user-bubble: #2563eb;
+  --assistant-bubble: #1f2128;
+  --settings-nav-active: #2a2520;
+}
+
+html[data-color-mode='light'] {
+  --shadow-color: rgba(0, 0, 0, 0.12);
+  --overlay-bg: rgba(0, 0, 0, 0.55);
+}
+
+body {
+  background: var(--bg-app);
+  color: var(--text-primary);
+}
+
+#app {
+  opacity: calc(1 - var(--window-transparency) * 0.35);
+}
+
+.boot-error {
+  padding: 24px;
+  color: var(--danger);
+  background: var(--bg-app);
+  height: 100vh;
+  font-family: sans-serif;
+}
+
+.boot-error h2 {
+  color: var(--text-primary);
+  margin-bottom: 12px;
+}
+
+.boot-error pre {
+  font-size: 12px;
+  white-space: pre-wrap;
+  color: var(--text-secondary);
+}

@@ -71,8 +71,8 @@ async function retry() {
   text-align: center;
   max-width: 360px;
   padding: 32px;
-  background: #16181d;
-  border: 1px solid #2a2d35;
+  background: var(--bg-panel);
+  border: 1px solid var(--border);
   border-radius: 12px;
 }
 
@@ -80,8 +80,8 @@ async function retry() {
   width: 36px;
   height: 36px;
   margin: 0 auto 16px;
-  border: 3px solid #2a2d35;
-  border-top-color: #3b82f6;
+  border: 3px solid var(--border);
+  border-top-color: var(--accent);
   border-radius: 50%;
   animation: spin 0.8s linear infinite;
 }
@@ -95,24 +95,24 @@ async function retry() {
 h3 {
   font-size: 16px;
   margin-bottom: 8px;
-  color: #e4e4e7;
+  color: var(--text-primary);
 }
 
 p {
   font-size: 13px;
-  color: #71717a;
+  color: var(--text-muted);
   line-height: 1.5;
 }
 
 .port {
   margin-top: 8px;
-  color: #a1a1aa;
+  color: var(--text-secondary);
 }
 
 .retry {
   margin-top: 16px;
-  background: #3b82f6;
-  color: white;
+  background: var(--accent);
+  color: var(--text-on-accent);
   border: none;
   padding: 8px 20px;
   border-radius: 6px;

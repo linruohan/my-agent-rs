@@ -1,0 +1,17 @@
+/* Mellifluous */
+html[data-theme='mellifluous'][data-color-mode='dark'] {
+  --bg-app: #1a1820;
+  --bg-sidebar: #141218;
+  --bg-panel: #252230;
+  --bg-elevated: #302c3c;
+  --bg-input: #141218;
+  --border: #3c3848;
+  --text-primary: #e0dce8;
+  --text-secondary: #c4a7e7;
+  --text-muted: #9088a0;
+  --accent: #c4a7e7;
+  --accent-subtle: #302c3c;
+  --user-bubble: #a080c0;
+  --assistant-bubble: #302c3c;
+  --settings-nav-active: #302c3c;
+}

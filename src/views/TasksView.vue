@@ -355,14 +355,14 @@ header h2 {
 
 .hint {
   flex: 1;
-  color: #71717a;
+  color: var(--text-muted);
   font-size: 13px;
   margin: 0;
 }
 
 .btn-refresh {
-  background: #374151;
-  color: #e4e4e7;
+  background: var(--btn-secondary-bg);
+  color: var(--text-primary);
   border: none;
   padding: 6px 12px;
   border-radius: 6px;
@@ -371,20 +371,20 @@ header h2 {
 }
 
 .error {
-  color: #ef4444;
+  color: var(--danger);
   font-size: 13px;
   margin-bottom: 12px;
 }
 
 .warn {
-  color: #fbbf24;
+  color: var(--text-highlight);
   font-size: 13px;
   margin-bottom: 12px;
 }
 
 .reminders-banner {
-  background: #1e3a5f33;
-  border: 1px solid #2563eb44;
+  background: var(--accent-subtle)33;
+  border: 1px solid var(--user-bubble)44;
   border-radius: 8px;
   padding: 12px 16px;
   margin-bottom: 16px;
@@ -392,14 +392,14 @@ header h2 {
 
 .reminders-banner h3 {
   font-size: 13px;
-  color: #93c5fd;
+  color: var(--text-link);
   margin: 0 0 8px;
 }
 
 .reminders-banner ul {
   list-style: none;
   font-size: 12px;
-  color: #cbd5e1;
+  color: var(--text-secondary);
 }
 
 .reminders-banner li {
@@ -407,7 +407,7 @@ header h2 {
 }
 
 .remind-time {
-  color: #fbbf24;
+  color: var(--text-highlight);
   margin-right: 8px;
 }
 
@@ -421,17 +421,17 @@ header h2 {
 .datetime-row input {
   flex: 1;
   min-width: 140px;
-  background: #0f1115;
-  border: 1px solid #2a2d35;
+  background: var(--bg-code);
+  border: 1px solid var(--border);
   border-radius: 6px;
-  color: #e4e4e7;
+  color: var(--text-primary);
   padding: 4px 8px;
   font-size: 11px;
 }
 
 .btn-small {
-  background: #374151;
-  color: #e4e4e7;
+  background: var(--btn-secondary-bg);
+  color: var(--text-primary);
   border: none;
   padding: 4px 10px;
   border-radius: 6px;
@@ -448,8 +448,8 @@ header h2 {
 
 .projects-panel,
 .todos-panel {
-  background: #16181d;
-  border: 1px solid #2a2d35;
+  background: var(--bg-panel);
+  border: 1px solid var(--border);
   border-radius: 10px;
   padding: 12px;
   display: flex;
@@ -463,7 +463,7 @@ header h2 {
 
 .panel-head h3 {
   font-size: 14px;
-  color: #a1a1aa;
+  color: var(--text-secondary);
   margin: 0 0 8px;
 }
 
@@ -474,17 +474,17 @@ header h2 {
 
 .inline-add input {
   flex: 1;
-  background: #0f1115;
-  border: 1px solid #2a2d35;
+  background: var(--bg-code);
+  border: 1px solid var(--border);
   border-radius: 6px;
-  color: #e4e4e7;
+  color: var(--text-primary);
   padding: 6px 10px;
   font-size: 13px;
 }
 
 .inline-add button {
-  background: #3b82f6;
-  color: white;
+  background: var(--accent);
+  color: var(--text-on-accent);
   border: none;
   border-radius: 6px;
   padding: 0 10px;
@@ -507,12 +507,12 @@ header h2 {
 }
 
 .project-list li:hover {
-  background: #1f2128;
+  background: var(--bg-hover);
 }
 
 .project-list li.active {
-  background: #1e3a5f;
-  border-color: #2563eb;
+  background: var(--accent-subtle);
+  border-color: var(--user-bubble);
 }
 
 .row {
@@ -524,13 +524,13 @@ header h2 {
 
 .badge {
   font-size: 10px;
-  color: #93c5fd;
+  color: var(--text-link);
   white-space: nowrap;
 }
 
 .progress-wrap {
   height: 4px;
-  background: #2a2d35;
+  background: var(--border);
   border-radius: 2px;
   margin: 6px 0 4px;
   overflow: hidden;
@@ -538,13 +538,13 @@ header h2 {
 
 .progress-bar {
   height: 100%;
-  background: #3b82f6;
+  background: var(--accent);
   transition: width 0.2s;
 }
 
 .meta {
   font-size: 11px;
-  color: #71717a;
+  color: var(--text-muted);
 }
 
 .todo-add {
@@ -553,7 +553,7 @@ header h2 {
 
 .toggle {
   font-size: 12px;
-  color: #71717a;
+  color: var(--text-muted);
   display: flex;
   align-items: center;
   gap: 6px;
@@ -564,13 +564,13 @@ header h2 {
   align-items: flex-start;
   gap: 10px;
   padding: 10px 4px;
-  border-bottom: 1px solid #1f2128;
+  border-bottom: 1px solid var(--bg-hover);
   font-size: 13px;
 }
 
 .todo-list li.done .title {
   text-decoration: line-through;
-  color: #71717a;
+  color: var(--text-muted);
 }
 
 .todo-body {
@@ -587,31 +587,31 @@ header h2 {
 
 .tag {
   font-size: 10px;
-  background: #2a2d35;
-  color: #a1a1aa;
+  background: var(--border);
+  color: var(--text-secondary);
   padding: 2px 6px;
   border-radius: 4px;
 }
 
 .tag.priority {
-  color: #fcd34d;
+  color: var(--text-highlight);
 }
 
 .tag.due {
-  color: #93c5fd;
+  color: var(--text-link);
 }
 
 .empty {
-  color: #71717a;
+  color: var(--text-muted);
   font-size: 12px;
   padding: 12px 4px;
   cursor: default;
 }
 
 .status-row select {
-  background: #0f1115;
-  border: 1px solid #2a2d35;
-  color: #e4e4e7;
+  background: var(--bg-code);
+  border: 1px solid var(--border);
+  color: var(--text-primary);
   border-radius: 6px;
   padding: 4px 8px;
   font-size: 12px;
@@ -621,25 +621,25 @@ header h2 {
 .btn-del {
   background: none;
   border: none;
-  color: #71717a;
+  color: var(--text-muted);
   cursor: pointer;
   font-size: 18px;
   padding: 0 4px;
 }
 
 .btn-del:hover {
-  color: #ef4444;
+  color: var(--danger);
 }
 
 .docs-section {
   margin-top: 16px;
   padding-top: 12px;
-  border-top: 1px solid #2a2d35;
+  border-top: 1px solid var(--border);
 }
 
 .docs-section h4 {
   font-size: 13px;
-  color: #a1a1aa;
+  color: var(--text-secondary);
   margin-bottom: 8px;
 }
 
@@ -652,18 +652,18 @@ header h2 {
 
 .doc-form input,
 .doc-form textarea {
-  background: #0f1115;
-  border: 1px solid #2a2d35;
+  background: var(--bg-code);
+  border: 1px solid var(--border);
   border-radius: 6px;
-  color: #e4e4e7;
+  color: var(--text-primary);
   padding: 6px 10px;
   font-size: 12px;
 }
 
 .doc-form button {
   align-self: flex-start;
-  background: #374151;
-  color: #e4e4e7;
+  background: var(--btn-secondary-bg);
+  color: var(--text-primary);
   border: none;
   padding: 6px 12px;
   border-radius: 6px;
@@ -673,7 +673,7 @@ header h2 {
 
 .doc-msg {
   font-size: 12px;
-  color: #10b981;
+  color: var(--success);
   margin-bottom: 8px;
 }
 
@@ -684,12 +684,12 @@ header h2 {
 
 .doc-list li {
   padding: 6px 0;
-  border-bottom: 1px solid #1f2128;
+  border-bottom: 1px solid var(--bg-hover);
 }
 
 .doc-path {
   display: block;
-  color: #71717a;
+  color: var(--text-muted);
   font-size: 11px;
 }
 </style>

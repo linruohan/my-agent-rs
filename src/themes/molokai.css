@@ -1,0 +1,17 @@
+/* Molokai */
+html[data-theme='molokai'][data-color-mode='dark'] {
+  --bg-app: #1b1d1e;
+  --bg-sidebar: #121212;
+  --bg-panel: #272822;
+  --bg-elevated: #3e3d32;
+  --bg-input: #121212;
+  --border: #49483e;
+  --text-primary: #f8f8f2;
+  --text-secondary: #cfcfc2;
+  --text-muted: #75715e;
+  --accent: #66d9ef;
+  --accent-subtle: #3e3d32;
+  --user-bubble: #a6e22e;
+  --assistant-bubble: #3e3d32;
+  --settings-nav-active: #3e3d32;
+}

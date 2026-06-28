@@ -1,0 +1,17 @@
+/* Tokyo Night */
+html[data-theme='tokyonight'][data-color-mode='dark'] {
+  --bg-app: #1a1b26;
+  --bg-sidebar: #16161e;
+  --bg-panel: #24283b;
+  --bg-elevated: #292e42;
+  --bg-input: #16161e;
+  --border: #414868;
+  --text-primary: #c0caf5;
+  --text-secondary: #9aa5ce;
+  --text-muted: #565f89;
+  --accent: #7aa2f7;
+  --accent-subtle: #1f2335;
+  --user-bubble: #7aa2f7;
+  --assistant-bubble: #292e42;
+  --settings-nav-active: #292e42;
+}

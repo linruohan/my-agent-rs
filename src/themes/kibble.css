@@ -1,0 +1,17 @@
+/* Kibble */
+html[data-theme='kibble'][data-color-mode='dark'] {
+  --bg-app: #0e0e0e;
+  --bg-sidebar: #080808;
+  --bg-panel: #1a1a2e;
+  --bg-elevated: #242438;
+  --bg-input: #080808;
+  --border: #303048;
+  --text-primary: #d0d0e0;
+  --text-secondary: #6fb3d2;
+  --text-muted: #606080;
+  --accent: #6fb3d2;
+  --accent-subtle: #242438;
+  --user-bubble: #5090b0;
+  --assistant-bubble: #242438;
+  --settings-nav-active: #242438;
+}

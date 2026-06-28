@@ -3,7 +3,8 @@
   margin: 0;
   padding: 0;
   scrollbar-width: thin;
-  scrollbar-color: rgba(255, 255, 255, 0.2) rgba(255, 255, 255, 0.06);
+  scrollbar-color: color-mix(in srgb, var(--text-primary) 20%, transparent)
+    color-mix(in srgb, var(--text-primary) 6%, transparent);
 }
 
 body {
@@ -24,30 +25,16 @@ body {
 
 ::-webkit-scrollbar-track {
   border-radius: 4px;
-  background: rgba(255, 255, 255, 0.06);
-  -webkit-box-shadow: inset 0 0 5px rgba(255, 255, 255, 0.08);
+  background: color-mix(in srgb, var(--text-primary) 6%, transparent);
+  -webkit-box-shadow: inset 0 0 5px color-mix(in srgb, var(--text-primary) 8%, transparent);
 }
 
 ::-webkit-scrollbar-thumb {
   margin: 0 2px;
   border: 1px solid transparent;
-  background: rgba(255, 255, 255, 0.2);
+  background: color-mix(in srgb, var(--text-primary) 20%, transparent);
   background-clip: content-box;
   transition: 0.3s;
   border-radius: 4px;
-  -webkit-box-shadow: inset 0 0 10px rgba(255, 255, 255, 0.12);
-}
-
-html[data-color-mode='light'] * {
-  scrollbar-color: rgba(0, 0, 0, 0.2) rgba(0, 0, 0, 0.06);
-}
-
-html[data-color-mode='light'] ::-webkit-scrollbar-track {
-  background: rgba(0, 0, 0, 0.06);
-  -webkit-box-shadow: inset 0 0 5px rgba(0, 0, 0, 0.08);
-}
-
-html[data-color-mode='light'] ::-webkit-scrollbar-thumb {
-  background: rgba(0, 0, 0, 0.2);
-  -webkit-box-shadow: inset 0 0 10px rgba(0, 0, 0, 0.2);
+  -webkit-box-shadow: inset 0 0 10px color-mix(in srgb, var(--text-primary) 12%, transparent);
 }

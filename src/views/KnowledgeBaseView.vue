@@ -126,31 +126,31 @@ header h2 {
 }
 
 .hint {
-  color: #71717a;
+  color: var(--text-muted);
   font-size: 13px;
   margin-bottom: 20px;
 }
 
 .drop-zone {
-  border: 2px dashed #2a2d35;
+  border: 2px dashed var(--border);
   border-radius: 12px;
   padding: 32px;
   text-align: center;
-  color: #71717a;
+  color: var(--text-muted);
   margin-bottom: 16px;
   transition: border-color 0.2s, background 0.2s;
 }
 
 .drop-zone.over {
-  border-color: #3b82f6;
-  background: #1e3a5f33;
+  border-color: var(--accent);
+  background: var(--accent-subtle)33;
 }
 
 .file-btn {
   display: inline-block;
   margin-top: 12px;
-  background: #3b82f6;
-  color: white;
+  background: var(--accent);
+  color: var(--text-on-accent);
   padding: 6px 14px;
   border-radius: 6px;
   cursor: pointer;
@@ -159,7 +159,7 @@ header h2 {
 
 .status {
   font-size: 13px;
-  color: #10b981;
+  color: var(--success);
   margin-bottom: 16px;
 }
 
@@ -167,7 +167,7 @@ header h2 {
 .search h3 {
   font-size: 14px;
   margin-bottom: 8px;
-  color: #a1a1aa;
+  color: var(--text-secondary);
 }
 
 .sources ul {
@@ -178,7 +178,7 @@ header h2 {
 .sources li {
   padding: 6px 0;
   font-size: 13px;
-  border-bottom: 1px solid #1f2128;
+  border-bottom: 1px solid var(--bg-hover);
   display: flex;
   justify-content: space-between;
   align-items: center;
@@ -187,13 +187,13 @@ header h2 {
 .btn-delete {
   background: none;
   border: none;
-  color: #ef4444;
+  color: var(--danger);
   cursor: pointer;
   font-size: 12px;
 }
 
 .empty {
-  color: #71717a;
+  color: var(--text-muted);
   font-size: 13px;
 }
 
@@ -205,16 +205,16 @@ header h2 {
 
 .search-row input {
   flex: 1;
-  background: #16181d;
-  border: 1px solid #2a2d35;
+  background: var(--bg-panel);
+  border: 1px solid var(--border);
   border-radius: 6px;
-  color: #e4e4e7;
+  color: var(--text-primary);
   padding: 8px 12px;
 }
 
 .search-row button {
-  background: #3b82f6;
-  color: white;
+  background: var(--accent);
+  color: var(--text-on-accent);
   border: none;
   padding: 8px 16px;
   border-radius: 6px;
@@ -222,8 +222,8 @@ header h2 {
 }
 
 .result {
-  background: #16181d;
-  border: 1px solid #2a2d35;
+  background: var(--bg-panel);
+  border: 1px solid var(--border);
   border-radius: 8px;
   padding: 12px;
   margin-bottom: 8px;
@@ -231,7 +231,7 @@ header h2 {
 }
 
 .meta {
-  color: #71717a;
+  color: var(--text-muted);
   font-size: 11px;
   margin-bottom: 6px;
 }

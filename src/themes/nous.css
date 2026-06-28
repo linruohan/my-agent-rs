@@ -1,0 +1,35 @@
+/* Nous — light */
+html[data-theme='nous'][data-color-mode='light'] {
+  --bg-app: #eef2f7;
+  --bg-sidebar: #e8edf4;
+  --bg-panel: #f8fafc;
+  --bg-elevated: #ffffff;
+  --bg-input: #fff;
+  --border: #dbeafe;
+  --text-primary: #1e293b;
+  --text-secondary: #64748b;
+  --text-muted: #94a3b8;
+  --accent: #3b82f6;
+  --accent-hover: #2563eb;
+  --accent-subtle: #dbeafe;
+  --user-bubble: #3b82f6;
+  --assistant-bubble: #f1f5f9;
+  --settings-nav-active: #dbeafe;
+}
+
+/* Nous — dark */
+html[data-theme='nous'][data-color-mode='dark'] {
+  --bg-app: #0f172a;
+  --bg-sidebar: #0c1222;
+  --bg-panel: #1e293b;
+  --bg-elevated: #334155;
+  --bg-input: #0f172a;
+  --border: #334155;
+  --text-primary: #f1f5f9;
+  --text-secondary: #94a3b8;
+  --accent: #60a5fa;
+  --accent-subtle: #1e3a5f;
+  --user-bubble: #2563eb;
+  --assistant-bubble: #1e293b;
+  --settings-nav-active: #1e3a5f;
+}

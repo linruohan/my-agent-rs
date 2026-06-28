@@ -1,0 +1,17 @@
+/* Spaceduck */
+html[data-theme='spaceduck'][data-color-mode='dark'] {
+  --bg-app: #161320;
+  --bg-sidebar: #0f0d14;
+  --bg-panel: #262427;
+  --bg-elevated: #322c39;
+  --bg-input: #0f0d14;
+  --border: #3e3545;
+  --text-primary: #ecf0c1;
+  --text-secondary: #b3a1c8;
+  --text-muted: #8794b3;
+  --accent: #72b7bf;
+  --accent-subtle: #322c39;
+  --user-bubble: #e33400;
+  --assistant-bubble: #322c39;
+  --settings-nav-active: #322c39;
+}

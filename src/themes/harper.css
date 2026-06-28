@@ -1,0 +1,17 @@
+/* Harper */
+html[data-theme='harper'][data-color-mode='dark'] {
+  --bg-app: #131018;
+  --bg-sidebar: #0c080e;
+  --bg-panel: #1e1828;
+  --bg-elevated: #282038;
+  --bg-input: #0c080e;
+  --border: #383048;
+  --text-primary: #e8e0f0;
+  --text-secondary: #c4b0e0;
+  --text-muted: #8878a8;
+  --accent: #a78bfa;
+  --accent-subtle: #282038;
+  --user-bubble: #8b5cf6;
+  --assistant-bubble: #282038;
+  --settings-nav-active: #282038;
+}

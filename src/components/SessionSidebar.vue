@@ -53,8 +53,8 @@ function handleDelete(threadId: string, e: Event) {
 <style scoped>
 .sidebar {
   width: 240px;
-  background: #16181d;
-  border-right: 1px solid #2a2d35;
+  background: var(--bg-panel);
+  border-right: 1px solid var(--border);
   display: flex;
   flex-direction: column;
 }
@@ -64,18 +64,18 @@ function handleDelete(threadId: string, e: Event) {
   display: flex;
   justify-content: space-between;
   align-items: center;
-  border-bottom: 1px solid #2a2d35;
+  border-bottom: 1px solid var(--border);
 }
 
 .sidebar-header h2 {
   font-size: 14px;
   font-weight: 600;
-  color: #a1a1aa;
+  color: var(--text-secondary);
 }
 
 .btn-new {
-  background: #3b82f6;
-  color: white;
+  background: var(--accent);
+  color: var(--text-on-accent);
   border: none;
   padding: 4px 10px;
   border-radius: 6px;
@@ -84,7 +84,7 @@ function handleDelete(threadId: string, e: Event) {
 }
 
 .btn-new:hover {
-  background: #2563eb;
+  background: var(--user-bubble);
 }
 
 .session-list {
@@ -99,15 +99,15 @@ function handleDelete(threadId: string, e: Event) {
   display: flex;
   justify-content: space-between;
   align-items: center;
-  border-bottom: 1px solid #1f2128;
+  border-bottom: 1px solid var(--bg-hover);
 }
 
 .session-list li:hover {
-  background: #1f2128;
+  background: var(--bg-hover);
 }
 
 .session-list li.active {
-  background: #1e3a5f;
+  background: var(--accent-subtle);
 }
 
 .title {
@@ -121,18 +121,18 @@ function handleDelete(threadId: string, e: Event) {
 .btn-delete {
   background: none;
   border: none;
-  color: #71717a;
+  color: var(--text-muted);
   cursor: pointer;
   font-size: 16px;
   padding: 0 4px;
 }
 
 .btn-delete:hover {
-  color: #ef4444;
+  color: var(--danger);
 }
 
 .empty {
-  color: #71717a;
+  color: var(--text-muted);
   font-size: 12px;
   cursor: default;
 }

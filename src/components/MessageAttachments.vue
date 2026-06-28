@@ -91,10 +91,10 @@ function onImageClick(att: ChatAttachment) {
 
 .image-thumb {
   padding: 0;
-  border: 1px solid #2a2d35;
+  border: 1px solid var(--border);
   border-radius: 8px;
   overflow: hidden;
-  background: #0f1117;
+  background: var(--bg-input);
   cursor: pointer;
   max-width: 240px;
   line-height: 0;
@@ -108,7 +108,7 @@ function onImageClick(att: ChatAttachment) {
 }
 
 .image-thumb:hover {
-  border-color: #3b82f6;
+  border-color: var(--accent);
 }
 
 .attachment-list {
@@ -123,9 +123,9 @@ function onImageClick(att: ChatAttachment) {
   gap: 4px;
   padding: 4px 10px;
   border-radius: 6px;
-  border: 1px solid #2a2d35;
-  background: #16181d;
-  color: #a1a1aa;
+  border: 1px solid var(--border);
+  background: var(--bg-panel);
+  color: var(--text-secondary);
   font-size: 12px;
   cursor: default;
 }
@@ -135,8 +135,8 @@ function onImageClick(att: ChatAttachment) {
 }
 
 .attachment-chip.clickable:hover {
-  border-color: #3b82f6;
-  color: #e4e4e7;
+  border-color: var(--accent);
+  color: var(--text-primary);
 }
 
 .att-name {

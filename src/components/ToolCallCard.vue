@@ -1,6 +1,7 @@
 <script setup lang="ts">
 import { computed } from 'vue';
 import { useSettingsStore } from '@/stores/settings';
+import { openExternalUrl } from '@/utils/nativeOpen';
 
 defineProps<{
   name: string;
@@ -9,6 +10,7 @@ defineProps<{
   args?: Record<string, unknown>;
   status?: 'running' | 'done' | 'error';
   citations?: Array<{ title: string; url: string }>;
+  compact?: boolean;
 }>();
 
 const settings = useSettingsStore();
@@ -21,18 +23,23 @@ const categoryLabels: Record<string, string> = {
 };
 
 const categoryColors: Record<string, string> = {
-  capability: '#3b82f6',
-  business: '#10b981',
-  mcp: '#8b5cf6',
+  capability: 'var(--accent)',
+  business: 'var(--success)',
+  mcp: 'var(--tool-mcp)',
 };
+
+async function onCitationClick(e: MouseEvent, url: string) {
+  e.preventDefault();
+  await openExternalUrl(url);
+}
 </script>
 
 <template>
-  <div class="tool-card">
-    <div class="header">
+  <div class="tool-card" :class="{ compact }">
+    <div class="header" :class="{ 'no-body': compact && !showTechnical && !content && !citations?.length }">
       <span
         class="badge"
-        :style="{ background: categoryColors[category || 'capability'] || '#71717a' }"
+        :style="{ background: categoryColors[category || 'capability'] || 'var(--text-muted)' }"
       >
         {{ categoryLabels[category || 'capability'] || category }}
       </span>
@@ -45,16 +52,49 @@ const categoryColors: Record<string, string> = {
     <div v-if="content" class="content">{{ content }}</div>
     <ul v-if="citations?.length" class="citations">
       <li v-for="(c, i) in citations" :key="i">
-        <a :href="c.url" target="_blank" rel="noopener">{{ c.title || c.url }}</a>
+        <a href="#" @click="onCitationClick($event, c.url)">{{ c.title || c.url }}</a>
       </li>
     </ul>
   </div>
 </template>
 
 <style scoped>
+.tool-card.compact {
+  padding: 8px 10px;
+  font-size: 12px;
+  background: var(--bg-panel);
+}
+
+.tool-card.compact .header {
+  margin-bottom: 0;
+}
+
+.tool-card.compact .header.no-body {
+  margin-bottom: 0;
+}
+
+.tool-card.compact .header:not(.no-body) {
+  margin-bottom: 6px;
+}
+
+.tool-card.compact .content {
+  font-size: 11px;
+  max-height: 120px;
+  overflow-y: auto;
+}
+
+.tool-card.compact .badge {
+  font-size: 9px;
+  padding: 1px 5px;
+}
+
+.tool-card.compact .name {
+  font-size: 12px;
+}
+
 .tool-card {
-  background: #16181d;
-  border: 1px solid #2a2d35;
+  background: var(--bg-panel);
+  border: 1px solid var(--border);
   border-radius: 8px;
   padding: 12px;
   font-size: 13px;
@@ -71,13 +111,13 @@ const categoryColors: Record<string, string> = {
   font-size: 10px;
   padding: 2px 6px;
   border-radius: 4px;
-  color: white;
+  color: var(--text-on-accent);
   font-weight: 500;
 }
 
 .name {
   font-weight: 600;
-  color: #e4e4e7;
+  color: var(--text-primary);
 }
 
 .spinner {
@@ -85,7 +125,7 @@ const categoryColors: Record<string, string> = {
 }
 
 .args {
-  background: #0f1117;
+  background: var(--bg-input);
   border-radius: 4px;
   padding: 8px;
   margin-bottom: 8px;
@@ -94,11 +134,11 @@ const categoryColors: Record<string, string> = {
 
 .args code {
   font-size: 11px;
-  color: #a1a1aa;
+  color: var(--text-secondary);
 }
 
 .content {
-  color: #a1a1aa;
+  color: var(--text-secondary);
   line-height: 1.4;
 }
 
@@ -108,7 +148,13 @@ const categoryColors: Record<string, string> = {
 }
 
 .citations a {
-  color: #3b82f6;
+  color: var(--accent);
   font-size: 12px;
+  cursor: pointer;
+  text-decoration: none;
+}
+
+.citations a:hover {
+  text-decoration: underline;
 }
 </style>

@@ -64,15 +64,15 @@ header h2 {
 }
 
 .hint {
-  color: #71717a;
+  color: var(--text-muted);
   font-size: 13px;
   margin-bottom: 12px;
 }
 
 .btn-refresh {
-  background: #1f2128;
-  border: 1px solid #2a2d35;
-  color: #e4e4e7;
+  background: var(--bg-hover);
+  border: 1px solid var(--border);
+  color: var(--text-primary);
   padding: 6px 14px;
   border-radius: 6px;
   cursor: pointer;
@@ -81,11 +81,11 @@ header h2 {
 }
 
 .btn-refresh:hover {
-  background: #252830;
+  background: var(--bg-hover);
 }
 
 .status {
-  color: #71717a;
+  color: var(--text-muted);
   font-size: 14px;
 }
 
@@ -97,8 +97,8 @@ header h2 {
 }
 
 .tool-grid li {
-  background: #16181d;
-  border: 1px solid #2a2d35;
+  background: var(--bg-panel);
+  border: 1px solid var(--border);
   border-radius: 12px;
   padding: 16px;
 }
@@ -110,25 +110,25 @@ header h2 {
 .tool-name {
   font-size: 14px;
   font-weight: 600;
-  color: #e4e4e7;
+  color: var(--text-primary);
   margin-bottom: 4px;
 }
 
 .tool-cat {
   font-size: 11px;
-  color: #3b82f6;
+  color: var(--accent);
   margin-bottom: 6px;
 }
 
 .tool-desc {
   font-size: 12px;
-  color: #a1a1aa;
+  color: var(--text-secondary);
   margin: 0 0 8px;
   line-height: 1.5;
 }
 
 .tool-status {
   font-size: 11px;
-  color: #71717a;
+  color: var(--text-muted);
 }
 </style>

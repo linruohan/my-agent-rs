@@ -1,0 +1,17 @@
+/* Aurora */
+html[data-theme='aurora'][data-color-mode='dark'] {
+  --bg-app: #23262e;
+  --bg-sidebar: #1a1d23;
+  --bg-panel: #2e3440;
+  --bg-elevated: #3b4252;
+  --bg-input: #1a1d23;
+  --border: #434c5e;
+  --text-primary: #d8dee9;
+  --text-secondary: #e5e9f0;
+  --text-muted: #81a1c1;
+  --accent: #88c0d0;
+  --accent-subtle: #3b4252;
+  --user-bubble: #a3be8c;
+  --assistant-bubble: #3b4252;
+  --settings-nav-active: #3b4252;
+}

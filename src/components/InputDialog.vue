@@ -106,10 +106,10 @@ function onKeydown(e: KeyboardEvent) {
 .dialog {
   width: 100%;
   max-width: 420px;
-  background: #1a1c22;
-  border: 1px solid #2a2d35;
+  background: var(--bg-popover);
+  border: 1px solid var(--border);
   border-radius: 12px;
-  box-shadow: 0 16px 48px rgba(0, 0, 0, 0.45);
+  box-shadow: 0 16px 48px var(--shadow-color);
 }
 
 .dialog-header {
@@ -117,20 +117,20 @@ function onKeydown(e: KeyboardEvent) {
   align-items: center;
   justify-content: space-between;
   padding: 14px 16px;
-  border-bottom: 1px solid #2a2d35;
+  border-bottom: 1px solid var(--border);
 }
 
 .dialog-header h3 {
   font-size: 15px;
   font-weight: 600;
-  color: #e4e4e7;
+  color: var(--text-primary);
   margin: 0;
 }
 
 .btn-close {
   background: none;
   border: none;
-  color: #71717a;
+  color: var(--text-muted);
   font-size: 22px;
   cursor: pointer;
   line-height: 1;
@@ -138,7 +138,7 @@ function onKeydown(e: KeyboardEvent) {
 }
 
 .btn-close:hover {
-  color: #e4e4e7;
+  color: var(--text-primary);
 }
 
 .dialog-body {
@@ -148,10 +148,10 @@ function onKeydown(e: KeyboardEvent) {
 .text-input {
   width: 100%;
   box-sizing: border-box;
-  background: #0f1117;
-  border: 1px solid #2a2d35;
+  background: var(--bg-input);
+  border: 1px solid var(--border);
   border-radius: 8px;
-  color: #e4e4e7;
+  color: var(--text-primary);
   padding: 10px 12px;
   font-size: 14px;
   font-family: inherit;
@@ -165,7 +165,7 @@ function onKeydown(e: KeyboardEvent) {
 }
 
 .text-input:focus {
-  border-color: #3b82f6;
+  border-color: var(--accent);
 }
 
 .dialog-footer {
@@ -173,7 +173,7 @@ function onKeydown(e: KeyboardEvent) {
   justify-content: flex-end;
   gap: 8px;
   padding: 12px 16px;
-  border-top: 1px solid #2a2d35;
+  border-top: 1px solid var(--border);
 }
 
 .btn-secondary,
@@ -187,21 +187,21 @@ function onKeydown(e: KeyboardEvent) {
 }
 
 .btn-secondary {
-  background: #2a2d35;
-  color: #e4e4e7;
+  background: var(--border);
+  color: var(--text-primary);
 }
 
 .btn-secondary:hover {
-  background: #374151;
+  background: var(--btn-secondary-bg);
 }
 
 .btn-primary {
-  background: #3b82f6;
-  color: white;
+  background: var(--accent);
+  color: var(--text-on-accent);
 }
 
 .btn-primary:hover:not(:disabled) {
-  background: #2563eb;
+  background: var(--user-bubble);
 }
 
 .btn-primary:disabled {

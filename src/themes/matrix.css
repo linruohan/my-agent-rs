@@ -1,0 +1,17 @@
+/* Matrix */
+html[data-theme='matrix'][data-color-mode='dark'] {
+  --bg-app: #0a0a0a;
+  --bg-sidebar: #050505;
+  --bg-panel: #0d1a0d;
+  --bg-elevated: #102010;
+  --bg-input: #050505;
+  --border: #1a3a1a;
+  --text-primary: #00ff41;
+  --text-secondary: #00cc33;
+  --text-muted: #008822;
+  --accent: #00ff41;
+  --accent-subtle: #102010;
+  --user-bubble: #00aa2a;
+  --assistant-bubble: #0d1a0d;
+  --settings-nav-active: #102010;
+}

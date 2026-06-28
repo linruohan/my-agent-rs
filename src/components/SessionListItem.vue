@@ -66,11 +66,11 @@ li {
 }
 
 li:hover {
-  background: #1f2128;
+  background: var(--bg-hover);
 }
 
 li.active {
-  background: #1e3a5f;
+  background: var(--accent-subtle);
 }
 
 .session-info {
@@ -81,7 +81,7 @@ li.active {
 .session-title {
   font-size: 13px;
   font-weight: 500;
-  color: #e4e4e7;
+  color: var(--text-primary);
   display: block;
   overflow: hidden;
   text-overflow: ellipsis;
@@ -90,7 +90,7 @@ li.active {
 
 .session-preview {
   font-size: 11px;
-  color: #71717a;
+  color: var(--text-muted);
   display: block;
   overflow: hidden;
   text-overflow: ellipsis;
@@ -106,7 +106,7 @@ li.active {
 .btn-more {
   background: none;
   border: none;
-  color: #52525b;
+  color: var(--text-muted);
   cursor: pointer;
   font-size: 14px;
   padding: 2px 4px;
@@ -116,8 +116,8 @@ li.active {
 
 .btn-more:hover,
 li:hover .btn-more {
-  color: #a1a1aa;
-  background: #252830;
+  color: var(--text-secondary);
+  background: var(--bg-hover);
 }
 
 .session-menu {
@@ -125,10 +125,10 @@ li:hover .btn-more {
   top: calc(100% + 4px);
   right: 0;
   min-width: 128px;
-  background: #1a1c22;
-  border: 1px solid #2a2d35;
+  background: var(--bg-popover);
+  border: 1px solid var(--border);
   border-radius: 10px;
-  box-shadow: 0 8px 24px rgba(0, 0, 0, 0.4);
+  box-shadow: 0 8px 24px var(--shadow-color);
   z-index: 60;
   padding: 4px;
 }
@@ -138,7 +138,7 @@ li:hover .btn-more {
   width: 100%;
   background: none;
   border: none;
-  color: #e4e4e7;
+  color: var(--text-primary);
   padding: 8px 12px;
   font-size: 13px;
   cursor: pointer;
@@ -148,14 +148,14 @@ li:hover .btn-more {
 }
 
 .session-menu button:hover {
-  background: #252830;
+  background: var(--bg-hover);
 }
 
 .session-menu button.danger {
-  color: #f87171;
+  color: var(--text-danger-soft);
 }
 
 .session-menu button.danger:hover {
-  background: #2a1515;
+  background: var(--bg-danger-subtle);
 }
 </style>

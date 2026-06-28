@@ -1,0 +1,16 @@
+/* Mono — light */
+html[data-theme='mono'][data-color-mode='light'] {
+  --bg-app: #fafafa;
+  --bg-sidebar: #f4f4f5;
+  --bg-panel: #fff;
+  --bg-elevated: #f4f4f5;
+  --bg-input: #fff;
+  --border: #e4e4e7;
+  --text-primary: #18181b;
+  --text-secondary: #71717a;
+  --accent: #52525b;
+  --accent-subtle: #e4e4e7;
+  --user-bubble: #3f3f46;
+  --assistant-bubble: #f4f4f5;
+  --settings-nav-active: #e4e4e7;
+}

@@ -363,14 +363,14 @@ onMounted(() => {
 
 .section-desc {
   font-size: 12px;
-  color: #71717a;
+  color: var(--text-muted);
   margin: 0;
 }
 
 .btn-add {
-  background: #1f2128;
-  border: 1px solid #2a2d35;
-  color: #e4e4e7;
+  background: var(--bg-hover);
+  border: 1px solid var(--border);
+  color: var(--text-primary);
   padding: 6px 12px;
   border-radius: 6px;
   font-size: 12px;
@@ -380,7 +380,7 @@ onMounted(() => {
 }
 
 .btn-add:hover:not(:disabled) {
-  background: #2a2d35;
+  background: var(--border);
 }
 
 .btn-add:disabled {
@@ -399,15 +399,15 @@ onMounted(() => {
   font-size: 11px;
   font-weight: 600;
   letter-spacing: 0.04em;
-  color: #71717a;
+  color: var(--text-muted);
   text-transform: uppercase;
   padding: 8px 10px;
-  border-bottom: 1px solid #2a2d35;
+  border-bottom: 1px solid var(--border);
 }
 
 .provider-table td {
   padding: 10px;
-  border-bottom: 1px solid #1f2128;
+  border-bottom: 1px solid var(--bg-hover);
   vertical-align: middle;
 }
 
@@ -417,14 +417,14 @@ onMounted(() => {
 
 .name {
   display: block;
-  color: #e4e4e7;
+  color: var(--text-primary);
   font-weight: 500;
 }
 
 .sub-id {
   display: block;
   font-size: 11px;
-  color: #71717a;
+  color: var(--text-muted);
   margin-top: 2px;
 }
 
@@ -434,8 +434,8 @@ onMounted(() => {
   font-size: 10px;
   padding: 1px 6px;
   border-radius: 4px;
-  background: #064e3b;
-  color: #6ee7b7;
+  background: var(--bg-success-subtle);
+  color: var(--text-success-soft);
 }
 
 .col-model,
@@ -444,7 +444,7 @@ onMounted(() => {
   overflow: hidden;
   text-overflow: ellipsis;
   white-space: nowrap;
-  color: #a1a1aa;
+  color: var(--text-secondary);
 }
 
 .col-status {
@@ -465,18 +465,18 @@ onMounted(() => {
 }
 
 .badge.active {
-  background: #1e3a5f;
-  color: #60a5fa;
+  background: var(--accent-subtle);
+  color: var(--accent);
 }
 
 .badge.idle {
-  color: #52525b;
+  color: var(--text-muted);
 }
 
 .btn-link {
   background: none;
   border: none;
-  color: #60a5fa;
+  color: var(--accent);
   font-size: 12px;
   cursor: pointer;
   padding: 4px 8px;
@@ -484,15 +484,15 @@ onMounted(() => {
 }
 
 .btn-link:hover:not(:disabled) {
-  color: #93c5fd;
+  color: var(--text-link);
 }
 
 .btn-link.danger {
-  color: #f87171;
+  color: var(--text-danger-soft);
 }
 
 .btn-link.danger:hover:not(:disabled) {
-  color: #fca5a5;
+  color: var(--text-danger-soft);
 }
 
 .btn-link:disabled {
@@ -502,20 +502,20 @@ onMounted(() => {
 
 .field-hint {
   font-size: 12px;
-  color: #71717a;
+  color: var(--text-muted);
 }
 
 .field-hint.ok {
-  color: #10b981;
+  color: var(--success);
 }
 
 .field-hint.warn {
-  color: #f59e0b;
+  color: var(--warning);
 }
 
 .empty-hint {
   font-size: 13px;
-  color: #71717a;
+  color: var(--text-muted);
   padding: 24px 0;
   text-align: center;
 }

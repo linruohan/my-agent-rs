@@ -1,0 +1,17 @@
+/* macOS Classic */
+html[data-theme='macos-classic'][data-color-mode='dark'] {
+  --bg-app: #2a2a2a;
+  --bg-sidebar: #222222;
+  --bg-panel: #333333;
+  --bg-elevated: #404040;
+  --bg-input: #222222;
+  --border: #505050;
+  --text-primary: #e0e0e0;
+  --text-secondary: #c0c0c0;
+  --text-muted: #909090;
+  --accent: #6699cc;
+  --accent-subtle: #404040;
+  --user-bubble: #0066cc;
+  --assistant-bubble: #404040;
+  --settings-nav-active: #404040;
+}

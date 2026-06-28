@@ -1,0 +1,17 @@
+/* Asciinema */
+html[data-theme='asciinema'][data-color-mode='dark'] {
+  --bg-app: #121212;
+  --bg-sidebar: #0a0a0a;
+  --bg-panel: #1a1a1a;
+  --bg-elevated: #222222;
+  --bg-input: #0a0a0a;
+  --border: #333333;
+  --text-primary: #cccccc;
+  --text-secondary: #00a100;
+  --text-muted: #666666;
+  --accent: #00a100;
+  --accent-subtle: #222222;
+  --user-bubble: #008800;
+  --assistant-bubble: #222222;
+  --settings-nav-active: #222222;
+}

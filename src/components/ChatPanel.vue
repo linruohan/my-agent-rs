@@ -184,7 +184,12 @@ const showWelcome = computed(
   font-size: 42px;
   font-weight: 700;
   letter-spacing: -0.02em;
-  background: linear-gradient(135deg, #f97316 0%, #fb923c 50%, #fbbf24 100%);
+  background: linear-gradient(
+    135deg,
+    var(--accent) 0%,
+    color-mix(in srgb, var(--accent) 55%, var(--warning)) 50%,
+    var(--warning) 100%
+  );
   -webkit-background-clip: text;
   -webkit-text-fill-color: transparent;
   background-clip: text;
@@ -193,7 +198,7 @@ const showWelcome = computed(
 
 .welcome-sub {
   font-size: 16px;
-  color: #71717a;
+  color: var(--text-muted);
   max-width: 480px;
   line-height: 1.6;
 }
@@ -222,20 +227,20 @@ const showWelcome = computed(
 }
 
 .message.user .bubble {
-  background: #2563eb;
-  color: #fff;
+  background: var(--user-bubble);
+  color: var(--text-on-accent);
   border-bottom-right-radius: 4px;
 }
 
 .message.user .bubble-user-md {
-  background: #1e3a5f;
+  background: var(--accent-subtle);
   white-space: normal;
 }
 
 .message.assistant .bubble {
-  background: var(--assistant-bubble, #16181d);
-  border: 1px solid var(--border, #2a2d35);
-  color: var(--text-primary, #e4e4e7);
+  background: var(--assistant-bubble, var(--bg-panel));
+  border: 1px solid var(--border, var(--border));
+  color: var(--text-primary, var(--text-primary));
   border-bottom-left-radius: 4px;
 }
 
@@ -244,7 +249,7 @@ const showWelcome = computed(
 }
 
 .typing-indicator {
-  color: var(--text-muted, #71717a);
+  color: var(--text-muted, var(--text-muted));
   font-style: italic;
 }
 
@@ -259,7 +264,7 @@ const showWelcome = computed(
 .message-meta {
   margin-top: 4px;
   font-size: 11px;
-  color: var(--text-muted, #71717a);
+  color: var(--text-muted, var(--text-muted));
 }
 
 .input-area {
@@ -271,7 +276,7 @@ const showWelcome = computed(
   position: fixed;
   inset: 0;
   z-index: 9999;
-  background: rgba(0, 0, 0, 0.85);
+  background: var(--overlay-bg);
   display: flex;
   align-items: center;
   justify-content: center;
@@ -293,7 +298,7 @@ const showWelcome = computed(
   right: 0;
   background: none;
   border: none;
-  color: #fff;
+  color: var(--text-on-accent);
   font-size: 28px;
   cursor: pointer;
   line-height: 1;
@@ -308,7 +313,7 @@ const showWelcome = computed(
 
 .preview-caption {
   margin-top: 12px;
-  color: #a1a1aa;
+  color: var(--text-secondary);
   font-size: 13px;
   text-align: center;
 }

@@ -1,0 +1,17 @@
+/* Adventure */
+html[data-theme='adventure'][data-color-mode='dark'] {
+  --bg-app: #040404;
+  --bg-sidebar: #080808;
+  --bg-panel: #1a1010;
+  --bg-elevated: #281818;
+  --bg-input: #080808;
+  --border: #402020;
+  --text-primary: #d0d0d0;
+  --text-secondary: #d78787;
+  --text-muted: #875757;
+  --accent: #d78787;
+  --accent-subtle: #281818;
+  --user-bubble: #af5f5f;
+  --assistant-bubble: #281818;
+  --settings-nav-active: #281818;
+}

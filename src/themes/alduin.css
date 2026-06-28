@@ -1,0 +1,17 @@
+/* Alduin */
+html[data-theme='alduin'][data-color-mode='dark'] {
+  --bg-app: #1c1c1c;
+  --bg-sidebar: #141414;
+  --bg-panel: #2a2420;
+  --bg-elevated: #363028;
+  --bg-input: #141414;
+  --border: #484038;
+  --text-primary: #e8dcc8;
+  --text-secondary: #d4a574;
+  --text-muted: #9a8060;
+  --accent: #d4a574;
+  --accent-subtle: #363028;
+  --user-bubble: #c08040;
+  --assistant-bubble: #363028;
+  --settings-nav-active: #363028;
+}

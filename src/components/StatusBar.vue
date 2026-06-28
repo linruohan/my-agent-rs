@@ -47,7 +47,7 @@ const modelLabel = computed(() => {
   background: var(--bg-sidebar);
   border-top: 1px solid var(--border);
   font-size: 11px;
-  color: #52525b;
+  color: var(--text-muted);
   flex-shrink: 0;
 }
 
@@ -66,41 +66,41 @@ const modelLabel = computed(() => {
 }
 
 .status-dot.ok {
-  background: #10b981;
+  background: var(--success);
 }
 
 .status-dot.err {
-  background: #ef4444;
+  background: var(--danger);
 }
 
 .status-text {
-  color: #71717a;
+  color: var(--text-muted);
 }
 
 .status-sep {
-  color: #3f3f46;
+  color: var(--text-muted);
 }
 
 .sidecar.running {
-  color: #10b981;
+  color: var(--success);
 }
 
 .sidecar.error {
-  color: #ef4444;
+  color: var(--danger);
 }
 
 .sidecar.starting {
-  color: #f59e0b;
+  color: var(--warning);
 }
 
 .provider-tag {
-  color: #71717a;
-  background: #1f2128;
+  color: var(--text-muted);
+  background: var(--bg-hover);
   padding: 2px 8px;
   border-radius: 4px;
 }
 
 .version {
-  color: #52525b;
+  color: var(--text-muted);
 }
 </style>

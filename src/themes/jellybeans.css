@@ -1,0 +1,17 @@
+/* Jellybeans */
+html[data-theme='jellybeans'][data-color-mode='dark'] {
+  --bg-app: #151515;
+  --bg-sidebar: #101010;
+  --bg-panel: #1c1c1c;
+  --bg-elevated: #262626;
+  --bg-input: #101010;
+  --border: #353535;
+  --text-primary: #e8e8d3;
+  --text-secondary: #c0b18a;
+  --text-muted: #888888;
+  --accent: #ff907a;
+  --accent-subtle: #262626;
+  --user-bubble: #c6b6ee;
+  --assistant-bubble: #262626;
+  --settings-nav-active: #262626;
+}

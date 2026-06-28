@@ -1,7 +1,7 @@
 <script setup lang="ts">
 import { computed, ref } from 'vue';
 import { useSettingsStore } from '@/stores/settings';
-import { THEME_LIST, UI_LANGUAGES } from '@/utils/themes';
+import { THEME_LIST, UI_LANGUAGES } from '@/themes';
 
 const settings = useSettingsStore();
 const themeSearch = ref('');

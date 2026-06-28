@@ -34,12 +34,12 @@ defineProps<{
 
 h2 {
   font-size: 20px;
-  color: #e4e4e7;
+  color: var(--text-primary);
   margin-bottom: 8px;
 }
 
 p {
-  color: #71717a;
+  color: var(--text-muted);
   font-size: 14px;
   max-width: 400px;
   line-height: 1.6;
@@ -48,6 +48,6 @@ p {
 .sub {
   margin-top: 12px;
   font-size: 12px;
-  color: #52525b;
+  color: var(--text-muted);
 }
 </style>

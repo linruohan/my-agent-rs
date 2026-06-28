@@ -133,7 +133,7 @@ async function onClick(e: MouseEvent) {
 
 .markdown-body :deep(a),
 .markdown-body :deep(.md-local-path) {
-  color: #60a5fa;
+  color: var(--accent);
   text-decoration: none;
   cursor: pointer;
 }
@@ -149,7 +149,7 @@ async function onClick(e: MouseEvent) {
   border-radius: 8px;
   margin: 0.5em 0;
   cursor: zoom-in;
-  border: 1px solid #2a2d35;
+  border: 1px solid var(--border);
 }
 
 .markdown-body :deep(:not(pre) > code) {
@@ -161,15 +161,15 @@ async function onClick(e: MouseEvent) {
 }
 
 .markdown-assistant :deep(:not(pre) > code) {
-  background: #0f1117;
+  background: var(--bg-input);
 }
 
 .markdown-body :deep(.md-code-block) {
   margin: 0.5em 0;
-  border: 1px solid #2a2d35;
+  border: 1px solid var(--border);
   border-radius: 8px;
   overflow: hidden;
-  background: #0f1117;
+  background: var(--bg-input);
 }
 
 .markdown-body :deep(.md-code-header) {
@@ -177,22 +177,22 @@ async function onClick(e: MouseEvent) {
   align-items: center;
   justify-content: space-between;
   padding: 6px 10px;
-  background: #16181d;
-  border-bottom: 1px solid #2a2d35;
+  background: var(--bg-panel);
+  border-bottom: 1px solid var(--border);
 }
 
 .markdown-body :deep(.md-code-lang) {
   font-size: 11px;
-  color: #71717a;
+  color: var(--text-muted);
   text-transform: lowercase;
   font-family: ui-monospace, monospace;
 }
 
 .markdown-body :deep(.md-copy-btn) {
   background: none;
-  border: 1px solid #374151;
+  border: 1px solid var(--btn-secondary-bg);
   border-radius: 4px;
-  color: #a1a1aa;
+  color: var(--text-secondary);
   font-size: 11px;
   padding: 2px 8px;
   cursor: pointer;
@@ -201,12 +201,12 @@ async function onClick(e: MouseEvent) {
 }
 
 .markdown-body :deep(.md-copy-btn:hover) {
-  background: #252830;
-  color: #e4e4e7;
+  background: var(--bg-hover);
+  color: var(--text-primary);
 }
 
 .markdown-body :deep(.md-copy-btn.copied) {
-  color: #10b981;
+  color: var(--success);
   border-color: rgba(16, 185, 129, 0.35);
 }
 
@@ -222,20 +222,20 @@ async function onClick(e: MouseEvent) {
   padding: 0;
   font-size: 0.85em;
   font-family: ui-monospace, 'Cascadia Code', monospace;
-  color: #e4e4e7;
+  color: var(--text-primary);
   white-space: pre;
 }
 
 .markdown-body :deep(blockquote) {
   margin: 0.5em 0;
   padding-left: 12px;
-  border-left: 3px solid #3b82f6;
-  color: #a1a1aa;
+  border-left: 3px solid var(--accent);
+  color: var(--text-secondary);
 }
 
 .markdown-body :deep(hr) {
   border: none;
-  border-top: 1px solid #2a2d35;
+  border-top: 1px solid var(--border);
   margin: 0.8em 0;
 }
 
@@ -243,7 +243,7 @@ async function onClick(e: MouseEvent) {
   position: fixed;
   inset: 0;
   z-index: 9999;
-  background: rgba(0, 0, 0, 0.85);
+  background: var(--overlay-bg);
   display: flex;
   align-items: center;
   justify-content: center;
@@ -265,7 +265,7 @@ async function onClick(e: MouseEvent) {
   right: 0;
   background: none;
   border: none;
-  color: #fff;
+  color: var(--text-on-accent);
   font-size: 28px;
   cursor: pointer;
   line-height: 1;
@@ -280,7 +280,7 @@ async function onClick(e: MouseEvent) {
 
 .preview-caption {
   margin-top: 12px;
-  color: #a1a1aa;
+  color: var(--text-secondary);
   font-size: 13px;
   text-align: center;
 }

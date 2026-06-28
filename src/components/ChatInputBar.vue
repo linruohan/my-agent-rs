@@ -703,12 +703,12 @@ defineExpose({ pendingAttachments });
 }
 
 .attachment-chip {
-  background: #1f2128;
-  border: 1px solid #2a2d35;
+  background: var(--bg-hover);
+  border: 1px solid var(--border);
   border-radius: 6px;
   padding: 4px 8px;
   font-size: 12px;
-  color: #a1a1aa;
+  color: var(--text-secondary);
   display: inline-flex;
   align-items: center;
   gap: 4px;
@@ -719,8 +719,8 @@ defineExpose({ pendingAttachments });
 }
 
 .attachment-chip.clickable:hover {
-  border-color: #3b82f6;
-  color: #e4e4e7;
+  border-color: var(--accent);
+  color: var(--text-primary);
 }
 
 .chip-thumb {
@@ -740,7 +740,7 @@ defineExpose({ pendingAttachments });
 .remove-att {
   background: none;
   border: none;
-  color: #71717a;
+  color: var(--text-muted);
   cursor: pointer;
   font-size: 14px;
   padding: 0 2px;
@@ -749,10 +749,10 @@ defineExpose({ pendingAttachments });
 .popup {
   position: absolute;
   bottom: calc(100% + 8px);
-  background: #1a1c22;
-  border: 1px solid #2a2d35;
+  background: var(--bg-popover);
+  border: 1px solid var(--border);
   border-radius: 12px;
-  box-shadow: 0 8px 32px rgba(0, 0, 0, 0.45);
+  box-shadow: 0 8px 32px var(--shadow-color);
   z-index: 100;
   overflow: hidden;
 }
@@ -784,22 +784,22 @@ defineExpose({ pendingAttachments });
   font-size: 11px;
   font-weight: 600;
   letter-spacing: 0.06em;
-  color: #71717a;
+  color: var(--text-muted);
   padding: 10px 14px 6px;
   text-transform: uppercase;
 }
 
 .popup-section + .popup-section {
-  border-top: 1px solid #2a2d35;
+  border-top: 1px solid var(--border);
 }
 
 .popup-search {
   width: 100%;
   box-sizing: border-box;
-  background: #16181d;
+  background: var(--bg-panel);
   border: none;
-  border-bottom: 1px solid #2a2d35;
-  color: #e4e4e7;
+  border-bottom: 1px solid var(--border);
+  color: var(--text-primary);
   padding: 10px 14px;
   font-size: 13px;
   outline: none;
@@ -818,7 +818,7 @@ defineExpose({ pendingAttachments });
   width: 100%;
   background: none;
   border: none;
-  color: #e4e4e7;
+  color: var(--text-primary);
   padding: 8px 14px;
   cursor: pointer;
   text-align: left;
@@ -827,7 +827,7 @@ defineExpose({ pendingAttachments });
 
 .popup-item:hover,
 .popup-item.active {
-  background: #252830;
+  background: var(--bg-hover);
 }
 
 .model-item {
@@ -855,18 +855,18 @@ defineExpose({ pendingAttachments });
 }
 
 .test-ok {
-  color: #10b981;
-  background: rgba(16, 185, 129, 0.12);
+  color: var(--success);
+  background: var(--success-muted);
 }
 
 .test-fail {
-  color: #ef4444;
-  background: rgba(239, 68, 68, 0.12);
+  color: var(--danger);
+  background: var(--danger-muted);
 }
 
 .test-pending {
-  color: #71717a;
-  background: rgba(113, 113, 122, 0.12);
+  color: var(--text-muted);
+  background: color-mix(in srgb, var(--text-muted) 12%, transparent);
 }
 
 .item-label {
@@ -876,7 +876,7 @@ defineExpose({ pendingAttachments });
 
 .item-desc {
   font-size: 12px;
-  color: #71717a;
+  color: var(--text-muted);
   margin-top: 2px;
 }
 
@@ -893,8 +893,8 @@ defineExpose({ pendingAttachments });
 .group-badge {
   font-size: 10px;
   font-weight: 500;
-  color: #3b82f6;
-  background: rgba(59, 130, 246, 0.12);
+  color: var(--accent);
+  background: var(--accent-muted);
   padding: 1px 6px;
   border-radius: 4px;
   text-transform: none;
@@ -904,7 +904,7 @@ defineExpose({ pendingAttachments });
 .group-loading {
   font-size: 10px;
   font-weight: 400;
-  color: #52525b;
+  color: var(--text-muted);
   text-transform: none;
   letter-spacing: 0;
 }
@@ -921,23 +921,23 @@ defineExpose({ pendingAttachments });
 }
 
 .settings-link {
-  color: #3b82f6;
+  color: var(--accent);
 }
 
 .settings-link:hover {
-  background: rgba(59, 130, 246, 0.1);
-  color: #60a5fa;
+  background: var(--accent-muted);
+  color: var(--accent);
 }
 
 .popup-empty {
   padding: 16px;
   text-align: center;
-  color: #71717a;
+  color: var(--text-muted);
   font-size: 13px;
 }
 
 .popup-footer {
-  border-top: 1px solid #2a2d35;
+  border-top: 1px solid var(--border);
   padding: 6px;
 }
 
@@ -945,7 +945,7 @@ defineExpose({ pendingAttachments });
   width: 100%;
   background: none;
   border: none;
-  color: #a1a1aa;
+  color: var(--text-secondary);
   padding: 8px;
   cursor: pointer;
   font-size: 12px;
@@ -954,8 +954,8 @@ defineExpose({ pendingAttachments });
 }
 
 .footer-btn:hover {
-  background: #252830;
-  color: #e4e4e7;
+  background: var(--bg-hover);
+  color: var(--text-primary);
 }
 
 .attach-item {
@@ -965,7 +965,7 @@ defineExpose({ pendingAttachments });
 }
 
 .attach-item.highlight {
-  background: #252830;
+  background: var(--bg-hover);
 }
 
 .attach-icon {
@@ -976,7 +976,7 @@ defineExpose({ pendingAttachments });
 
 .attach-hint {
   font-size: 11px;
-  color: #52525b;
+  color: var(--text-muted);
   padding: 8px 14px 0;
   margin: 0;
 }
@@ -985,15 +985,15 @@ defineExpose({ pendingAttachments });
   display: flex;
   align-items: flex-end;
   gap: 8px;
-  background: #16181d;
-  border: 1px solid #2a2d35;
+  background: var(--bg-panel);
+  border: 1px solid var(--border);
   border-radius: 16px;
   padding: 8px 8px 8px 4px;
   transition: border-color 0.15s;
 }
 
 .input-bar:focus-within {
-  border-color: #3b82f6;
+  border-color: var(--accent);
 }
 
 .input-bar.disabled {
@@ -1007,7 +1007,7 @@ defineExpose({ pendingAttachments });
   border: none;
   border-radius: 10px;
   background: none;
-  color: #a1a1aa;
+  color: var(--text-secondary);
   font-size: 22px;
   cursor: pointer;
   display: flex;
@@ -1017,8 +1017,8 @@ defineExpose({ pendingAttachments });
 }
 
 .btn-icon:hover:not(:disabled) {
-  background: #252830;
-  color: #e4e4e7;
+  background: var(--bg-hover);
+  color: var(--text-primary);
 }
 
 .btn-icon:disabled {
@@ -1032,7 +1032,7 @@ textarea {
   max-height: 160px;
   background: transparent;
   border: none;
-  color: #e4e4e7;
+  color: var(--text-primary);
   padding: 8px 4px;
   font-size: 14px;
   resize: none;
@@ -1045,7 +1045,7 @@ textarea:focus {
 }
 
 textarea::placeholder {
-  color: #52525b;
+  color: var(--text-muted);
 }
 
 .btn-model {
@@ -1055,7 +1055,7 @@ textarea::placeholder {
   gap: 4px;
   background: none;
   border: none;
-  color: #a1a1aa;
+  color: var(--text-secondary);
   font-size: 12px;
   cursor: pointer;
   padding: 6px 8px;
@@ -1065,8 +1065,8 @@ textarea::placeholder {
 }
 
 .btn-model:hover:not(:disabled) {
-  background: #252830;
-  color: #e4e4e7;
+  background: var(--bg-hover);
+  color: var(--text-primary);
 }
 
 .btn-model:disabled {
@@ -1089,7 +1089,7 @@ textarea::placeholder {
   display: flex;
   align-items: center;
   padding-left: 4px;
-  border-left: 1px solid #2a2d35;
+  border-left: 1px solid var(--border);
 }
 
 .btn-send-round,
@@ -1107,12 +1107,12 @@ textarea::placeholder {
 }
 
 .btn-send-round {
-  background: #e4e4e7;
-  color: #0f1117;
+  background: var(--text-primary);
+  color: var(--bg-input);
 }
 
 .btn-send-round:hover:not(:disabled) {
-  background: #fff;
+  background: var(--text-on-accent);
 }
 
 .btn-send-round:disabled {
@@ -1121,12 +1121,12 @@ textarea::placeholder {
 }
 
 .btn-stop-round {
-  background: #ef4444;
-  color: white;
+  background: var(--danger);
+  color: var(--text-on-accent);
   font-size: 12px;
 }
 
 .btn-stop-round:hover {
-  background: #dc2626;
+  background: var(--danger-hover);
 }
 </style>

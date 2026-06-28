@@ -1,0 +1,17 @@
+/* Ayu */
+html[data-theme='ayu'][data-color-mode='dark'] {
+  --bg-app: #0f1419;
+  --bg-sidebar: #0b0e11;
+  --bg-panel: #1f2430;
+  --bg-elevated: #252b38;
+  --bg-input: #0b0e11;
+  --border: #323844;
+  --text-primary: #bfbdb6;
+  --text-secondary: #8a9199;
+  --text-muted: #5c6773;
+  --accent: #ffb454;
+  --accent-subtle: #252b38;
+  --user-bubble: #59c2ff;
+  --assistant-bubble: #252b38;
+  --settings-nav-active: #252b38;
+}

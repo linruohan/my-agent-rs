@@ -531,7 +531,7 @@ onMounted(async () => {
   font-size: 10px;
   font-weight: 600;
   letter-spacing: 0.06em;
-  color: #52525b;
+  color: var(--text-muted);
   padding: 8px 12px 4px;
   text-transform: uppercase;
 }
@@ -545,7 +545,7 @@ onMounted(async () => {
   background: none;
   border: none;
   border-radius: 8px;
-  color: #a1a1aa;
+  color: var(--text-secondary);
   font-size: 13px;
   cursor: pointer;
   text-align: left;
@@ -553,8 +553,8 @@ onMounted(async () => {
 }
 
 .nav-item:hover {
-  background: #1f2128;
-  color: #e4e4e7;
+  background: var(--bg-hover);
+  color: var(--text-primary);
 }
 
 .nav-item.active {
@@ -581,7 +581,7 @@ onMounted(async () => {
   align-items: center;
   justify-content: space-between;
   padding: 16px 24px;
-  border-bottom: 1px solid #2a2d35;
+  border-bottom: 1px solid var(--border);
   flex-shrink: 0;
 }
 
@@ -594,14 +594,14 @@ onMounted(async () => {
 .btn-close-settings {
   background: none;
   border: none;
-  color: #71717a;
+  color: var(--text-muted);
   font-size: 22px;
   cursor: pointer;
   line-height: 1;
 }
 
 .btn-close-settings:hover {
-  color: #e4e4e7;
+  color: var(--text-primary);
 }
 
 .settings-body {
@@ -617,14 +617,14 @@ onMounted(async () => {
   align-items: center;
   gap: 16px;
   padding: 10px 0;
-  border-bottom: 1px solid #1f2128;
+  border-bottom: 1px solid var(--bg-hover);
 }
 
 .field-row label {
   font-size: 11px;
   font-weight: 600;
   letter-spacing: 0.04em;
-  color: #71717a;
+  color: var(--text-muted);
   text-transform: uppercase;
 }
 
@@ -633,10 +633,10 @@ onMounted(async () => {
 .field-row input[type='number'],
 .field-row select {
   width: 100%;
-  background: #0f1117;
-  border: 1px solid #2a2d35;
+  background: var(--bg-input);
+  border: 1px solid var(--border);
   border-radius: 8px;
-  color: #e4e4e7;
+  color: var(--text-primary);
   padding: 8px 12px;
   font-size: 13px;
   font-family: inherit;
@@ -655,24 +655,24 @@ onMounted(async () => {
   align-items: center;
   gap: 8px;
   font-size: 13px !important;
-  color: #e4e4e7 !important;
+  color: var(--text-primary) !important;
   text-transform: none !important;
   font-weight: 400 !important;
 }
 
 .field-hint {
   font-size: 12px;
-  color: #71717a;
+  color: var(--text-muted);
   margin: 8px 0 16px;
 }
 
 .field-hint.ok {
-  color: #10b981;
+  color: var(--success);
 }
 
 .field-hint.warn,
 .warn {
-  color: #f59e0b;
+  color: var(--warning);
 }
 
 .actions {
@@ -683,8 +683,8 @@ onMounted(async () => {
 }
 
 .actions button {
-  background: #3b82f6;
-  color: white;
+  background: var(--accent);
+  color: var(--text-on-accent);
   border: none;
   padding: 8px 16px;
   border-radius: 8px;
@@ -694,12 +694,12 @@ onMounted(async () => {
 }
 
 .btn-secondary {
-  background: #374151 !important;
+  background: var(--btn-secondary-bg) !important;
 }
 
 .info-block {
   font-size: 13px;
-  color: #a1a1aa;
+  color: var(--text-secondary);
   line-height: 1.8;
 }
 
@@ -708,7 +708,7 @@ onMounted(async () => {
 }
 
 .placeholder-text {
-  color: #71717a;
+  color: var(--text-muted);
   font-size: 14px;
   padding: 24px 0;
 }
@@ -716,10 +716,10 @@ onMounted(async () => {
 .save-msg {
   margin-top: 16px;
   font-size: 12px;
-  color: #10b981;
+  color: var(--success);
 }
 
 .save-msg.error {
-  color: #ef4444;
+  color: var(--danger);
 }
 </style>

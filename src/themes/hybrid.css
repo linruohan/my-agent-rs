@@ -1,0 +1,17 @@
+/* Hybrid */
+html[data-theme='hybrid'][data-color-mode='dark'] {
+  --bg-app: #1d1f21;
+  --bg-sidebar: #151719;
+  --bg-panel: #282a2e;
+  --bg-elevated: #323438;
+  --bg-input: #151719;
+  --border: #3a3c40;
+  --text-primary: #c5c8c6;
+  --text-secondary: #969896;
+  --text-muted: #707880;
+  --accent: #f0c674;
+  --accent-subtle: #323438;
+  --user-bubble: #81a2be;
+  --assistant-bubble: #323438;
+  --settings-nav-active: #323438;
+}

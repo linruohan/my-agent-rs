@@ -1,0 +1,17 @@
+/* Catppuccin */
+html[data-theme='catppuccin'][data-color-mode='dark'] {
+  --bg-app: #1e1e2e;
+  --bg-sidebar: #181825;
+  --bg-panel: #11111b;
+  --bg-elevated: #313244;
+  --bg-input: #181825;
+  --border: #45475a;
+  --text-primary: #cdd6f4;
+  --text-secondary: #a6adc8;
+  --text-muted: #6c7086;
+  --accent: #89b4fa;
+  --accent-subtle: #1e3049;
+  --user-bubble: #7287fd;
+  --assistant-bubble: #313244;
+  --settings-nav-active: #313244;
+}

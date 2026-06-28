@@ -203,10 +203,10 @@ function onKeydown(e: KeyboardEvent) {
 .dialog {
   width: 100%;
   max-width: 480px;
-  background: #1a1c22;
-  border: 1px solid #2a2d35;
+  background: var(--bg-popover);
+  border: 1px solid var(--border);
   border-radius: 12px;
-  box-shadow: 0 16px 48px rgba(0, 0, 0, 0.45);
+  box-shadow: 0 16px 48px var(--shadow-color);
 }
 
 .dialog-header {
@@ -214,20 +214,20 @@ function onKeydown(e: KeyboardEvent) {
   align-items: center;
   justify-content: space-between;
   padding: 14px 16px;
-  border-bottom: 1px solid #2a2d35;
+  border-bottom: 1px solid var(--border);
 }
 
 .dialog-header h3 {
   font-size: 15px;
   font-weight: 600;
-  color: #e4e4e7;
+  color: var(--text-primary);
   margin: 0;
 }
 
 .btn-close {
   background: none;
   border: none;
-  color: #71717a;
+  color: var(--text-muted);
   font-size: 22px;
   cursor: pointer;
   line-height: 1;
@@ -246,7 +246,7 @@ function onKeydown(e: KeyboardEvent) {
   font-size: 11px;
   font-weight: 600;
   letter-spacing: 0.04em;
-  color: #71717a;
+  color: var(--text-muted);
   text-transform: uppercase;
   margin-bottom: 6px;
 }
@@ -255,10 +255,10 @@ function onKeydown(e: KeyboardEvent) {
 .field select {
   width: 100%;
   box-sizing: border-box;
-  background: #0f1117;
-  border: 1px solid #2a2d35;
+  background: var(--bg-input);
+  border: 1px solid var(--border);
   border-radius: 8px;
-  color: #e4e4e7;
+  color: var(--text-primary);
   padding: 8px 12px;
   font-size: 13px;
   font-family: inherit;
@@ -274,8 +274,8 @@ function onKeydown(e: KeyboardEvent) {
 }
 
 .btn-secondary {
-  background: #374151;
-  color: #e4e4e7;
+  background: var(--btn-secondary-bg);
+  color: var(--text-primary);
   border: none;
   padding: 8px 12px;
   border-radius: 8px;
@@ -292,13 +292,13 @@ function onKeydown(e: KeyboardEvent) {
 
 .hint {
   font-size: 12px;
-  color: #71717a;
+  color: var(--text-muted);
   margin: 6px 0 0;
 }
 
 .error {
   font-size: 12px;
-  color: #ef4444;
+  color: var(--danger);
   margin: 8px 0 0;
 }
 
@@ -307,12 +307,12 @@ function onKeydown(e: KeyboardEvent) {
   justify-content: flex-end;
   gap: 8px;
   padding: 12px 16px;
-  border-top: 1px solid #2a2d35;
+  border-top: 1px solid var(--border);
 }
 
 .btn-primary {
-  background: #3b82f6;
-  color: white;
+  background: var(--accent);
+  color: var(--text-on-accent);
   border: none;
   border-radius: 8px;
   padding: 8px 16px;

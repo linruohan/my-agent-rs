@@ -77,8 +77,8 @@ function submitEdit() {
 }
 
 .modal {
-  background: #1f2128;
-  border: 1px solid #2a2d35;
+  background: var(--bg-hover);
+  border: 1px solid var(--border);
   border-radius: 12px;
   padding: 24px;
   max-width: 480px;
@@ -91,23 +91,23 @@ function submitEdit() {
 }
 
 .preview {
-  color: #a1a1aa;
+  color: var(--text-secondary);
   margin-bottom: 8px;
   font-size: 14px;
 }
 
 .action {
   font-size: 13px;
-  color: #71717a;
+  color: var(--text-muted);
   margin-bottom: 12px;
 }
 
 .args {
-  background: #0f1117;
+  background: var(--bg-input);
   border-radius: 6px;
   padding: 10px;
   font-size: 11px;
-  color: #a1a1aa;
+  color: var(--text-secondary);
   margin-bottom: 16px;
   overflow-x: auto;
 }
@@ -115,16 +115,16 @@ function submitEdit() {
 .edit-label {
   display: block;
   font-size: 12px;
-  color: #71717a;
+  color: var(--text-muted);
   margin-bottom: 6px;
 }
 
 .edit-area {
   width: 100%;
-  background: #0f1117;
-  border: 1px solid #2a2d35;
+  background: var(--bg-input);
+  border: 1px solid var(--border);
   border-radius: 6px;
-  color: #e4e4e7;
+  color: var(--text-primary);
   padding: 10px;
   font-size: 12px;
   font-family: monospace;
@@ -139,8 +139,8 @@ function submitEdit() {
 }
 
 .btn-reject {
-  background: #374151;
-  color: #e4e4e7;
+  background: var(--btn-secondary-bg);
+  color: var(--text-primary);
   border: none;
   padding: 8px 16px;
   border-radius: 6px;
@@ -148,8 +148,8 @@ function submitEdit() {
 }
 
 .btn-edit {
-  background: #4b5563;
-  color: #e4e4e7;
+  background: var(--btn-secondary-bg);
+  color: var(--text-primary);
   border: none;
   padding: 8px 16px;
   border-radius: 6px;
@@ -157,8 +157,8 @@ function submitEdit() {
 }
 
 .btn-approve {
-  background: #10b981;
-  color: white;
+  background: var(--success);
+  color: var(--text-on-accent);
   border: none;
   padding: 8px 16px;
   border-radius: 6px;

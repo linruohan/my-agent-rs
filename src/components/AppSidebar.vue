@@ -12,6 +12,7 @@ import {
   toolToSkill,
   type ChatCommand,
 } from '@/utils/chatCommands';
+import { openWorkspaceFolder as openWorkspaceFolderNative } from '@/utils/nativeOpen';
 
 const DEFAULT_WORKSPACE = '~/AssistantWorkspace';
 
@@ -189,13 +190,13 @@ async function editWorkspacePath() {
 
 async function openWorkspaceFolder() {
   workspaceMenuOpen.value = false;
+  const path = settings.workspacePath || DEFAULT_WORKSPACE;
   try {
-    const { invoke } = await import('@tauri-apps/api/core');
-    await invoke('open_workspace_folder', { path: settings.workspacePath });
+    await openWorkspaceFolderNative(path);
   } catch {
     await dialog.alert({
       title: '工作区路径',
-      message: settings.workspacePath || DEFAULT_WORKSPACE,
+      message: path,
     });
   }
 }
@@ -389,7 +390,7 @@ onUnmounted(() => {
 
 .nav-section {
   padding: 12px 10px;
-  border-bottom: 1px solid #2a2d35;
+  border-bottom: 1px solid var(--border);
   display: flex;
   flex-direction: column;
   gap: 2px;
@@ -404,7 +405,7 @@ onUnmounted(() => {
   background: none;
   border: none;
   border-radius: 8px;
-  color: #a1a1aa;
+  color: var(--text-secondary);
   font-size: 13px;
   cursor: pointer;
   font-family: inherit;
@@ -412,17 +413,17 @@ onUnmounted(() => {
 }
 
 .nav-item:hover {
-  background: #1f2128;
-  color: #e4e4e7;
+  background: var(--bg-hover);
+  color: var(--text-primary);
 }
 
 .nav-item.active {
-  background: #1f2128;
-  color: #e4e4e7;
+  background: var(--bg-hover);
+  color: var(--text-primary);
 }
 
 .nav-item.primary {
-  color: #e4e4e7;
+  color: var(--text-primary);
   font-weight: 500;
 }
 
@@ -442,8 +443,8 @@ onUnmounted(() => {
 
 .nav-kbd {
   font-size: 10px;
-  color: #52525b;
-  background: #1f2128;
+  color: var(--text-muted);
+  background: var(--bg-hover);
   padding: 2px 6px;
   border-radius: 4px;
   font-family: inherit;
@@ -465,10 +466,10 @@ onUnmounted(() => {
 .search-input {
   width: 100%;
   box-sizing: border-box;
-  background: #16181d;
-  border: 1px solid #2a2d35;
+  background: var(--bg-panel);
+  border: 1px solid var(--border);
   border-radius: 8px;
-  color: #e4e4e7;
+  color: var(--text-primary);
   padding: 8px 12px;
   font-size: 13px;
   outline: none;
@@ -476,11 +477,11 @@ onUnmounted(() => {
 }
 
 .search-input:focus {
-  border-color: #3b82f6;
+  border-color: var(--accent);
 }
 
 .search-input::placeholder {
-  color: #52525b;
+  color: var(--text-muted);
 }
 
 .search-popup {
@@ -488,24 +489,24 @@ onUnmounted(() => {
   top: calc(100% + 4px);
   left: 0;
   right: 0;
-  background: #1a1c22;
-  border: 1px solid #2a2d35;
+  background: var(--bg-popover);
+  border: 1px solid var(--border);
   border-radius: 10px;
-  box-shadow: 0 8px 24px rgba(0, 0, 0, 0.4);
+  box-shadow: 0 8px 24px var(--shadow-color);
   z-index: 50;
   max-height: 240px;
   overflow-y: auto;
 }
 
 .popup-group + .popup-group {
-  border-top: 1px solid #2a2d35;
+  border-top: 1px solid var(--border);
 }
 
 .popup-label {
   font-size: 10px;
   font-weight: 600;
   letter-spacing: 0.06em;
-  color: #71717a;
+  color: var(--text-muted);
   padding: 8px 12px 4px;
   text-transform: uppercase;
 }
@@ -516,7 +517,7 @@ onUnmounted(() => {
   width: 100%;
   background: none;
   border: none;
-  color: #e4e4e7;
+  color: var(--text-primary);
   padding: 8px 12px;
   cursor: pointer;
   text-align: left;
@@ -525,12 +526,12 @@ onUnmounted(() => {
 }
 
 .popup-item:hover {
-  background: #252830;
+  background: var(--bg-hover);
 }
 
 .popup-desc {
   font-size: 11px;
-  color: #71717a;
+  color: var(--text-muted);
   margin-top: 2px;
 }
 
@@ -541,13 +542,13 @@ onUnmounted(() => {
 .group-label {
   font-size: 11px;
   font-weight: 600;
-  color: #71717a;
+  color: var(--text-muted);
   padding: 4px 4px 2px;
 }
 
 .group-hint {
   font-size: 10px;
-  color: #52525b;
+  color: var(--text-muted);
   padding: 0 4px 6px;
   margin: 0;
 }
@@ -563,7 +564,7 @@ onUnmounted(() => {
 }
 
 .empty {
-  color: #71717a;
+  color: var(--text-muted);
   font-size: 12px;
   cursor: default;
   padding: 12px;
@@ -575,15 +576,15 @@ onUnmounted(() => {
   align-items: center;
   gap: 4px;
   padding: 10px 12px;
-  border-top: 1px solid #2a2d35;
-  background: #12141a;
+  border-top: 1px solid var(--border);
+  background: var(--bg-sidebar);
 }
 
 .ws-btn {
-  background: #16181d;
-  border: 1px solid #2a2d35;
+  background: var(--bg-panel);
+  border: 1px solid var(--border);
   border-radius: 8px;
-  color: #a1a1aa;
+  color: var(--text-secondary);
   cursor: pointer;
   font-family: inherit;
   flex-shrink: 0;
@@ -603,8 +604,8 @@ onUnmounted(() => {
 
 .ws-btn:hover,
 .ws-btn.active {
-  background: #1f2128;
-  color: #e4e4e7;
+  background: var(--bg-hover);
+  color: var(--text-primary);
 }
 
 .workspace-info {
@@ -613,8 +614,8 @@ onUnmounted(() => {
   display: flex;
   flex-direction: column;
   align-items: flex-start;
-  background: #16181d;
-  border: 1px solid #2a2d35;
+  background: var(--bg-panel);
+  border: 1px solid var(--border);
   border-radius: 8px;
   padding: 6px 10px;
   cursor: pointer;
@@ -623,19 +624,19 @@ onUnmounted(() => {
 }
 
 .workspace-info:hover {
-  background: #1f2128;
+  background: var(--bg-hover);
 }
 
 .ws-label {
   font-size: 10px;
-  color: #71717a;
+  color: var(--text-muted);
   font-weight: 600;
   letter-spacing: 0.04em;
 }
 
 .ws-path {
   font-size: 11px;
-  color: #a1a1aa;
+  color: var(--text-secondary);
   overflow: hidden;
   text-overflow: ellipsis;
   white-space: nowrap;
@@ -652,10 +653,10 @@ onUnmounted(() => {
   bottom: calc(100% + 6px);
   right: 0;
   min-width: 160px;
-  background: #1a1c22;
-  border: 1px solid #2a2d35;
+  background: var(--bg-popover);
+  border: 1px solid var(--border);
   border-radius: 10px;
-  box-shadow: 0 8px 24px rgba(0, 0, 0, 0.4);
+  box-shadow: 0 8px 24px var(--shadow-color);
   z-index: 50;
   padding: 4px;
 }
@@ -665,7 +666,7 @@ onUnmounted(() => {
   width: 100%;
   background: none;
   border: none;
-  color: #e4e4e7;
+  color: var(--text-primary);
   padding: 8px 12px;
   font-size: 13px;
   cursor: pointer;
@@ -675,6 +676,6 @@ onUnmounted(() => {
 }
 
 .ws-menu button:hover {
-  background: #252830;
+  background: var(--bg-hover);
 }
 </style>

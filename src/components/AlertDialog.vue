@@ -46,21 +46,21 @@ const emit = defineEmits<{
 .dialog {
   width: 100%;
   max-width: 400px;
-  background: #1a1c22;
-  border: 1px solid #2a2d35;
+  background: var(--bg-popover);
+  border: 1px solid var(--border);
   border-radius: 12px;
-  box-shadow: 0 16px 48px rgba(0, 0, 0, 0.45);
+  box-shadow: 0 16px 48px var(--shadow-color);
 }
 
 .dialog-header {
   padding: 14px 16px;
-  border-bottom: 1px solid #2a2d35;
+  border-bottom: 1px solid var(--border);
 }
 
 .dialog-header h3 {
   font-size: 15px;
   font-weight: 600;
-  color: #e4e4e7;
+  color: var(--text-primary);
   margin: 0;
 }
 
@@ -71,7 +71,7 @@ const emit = defineEmits<{
 .message {
   margin: 0;
   font-size: 14px;
-  color: #a1a1aa;
+  color: var(--text-secondary);
   line-height: 1.5;
   word-break: break-all;
 }
@@ -80,7 +80,7 @@ const emit = defineEmits<{
   display: flex;
   justify-content: flex-end;
   padding: 12px 16px;
-  border-top: 1px solid #2a2d35;
+  border-top: 1px solid var(--border);
 }
 
 .btn-primary {
@@ -90,11 +90,11 @@ const emit = defineEmits<{
   font-size: 13px;
   cursor: pointer;
   font-family: inherit;
-  background: #3b82f6;
-  color: white;
+  background: var(--accent);
+  color: var(--text-on-accent);
 }
 
 .btn-primary:hover {
-  background: #2563eb;
+  background: var(--user-bubble);
 }
 </style>

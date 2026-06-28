@@ -1,0 +1,17 @@
+/* Twilight */
+html[data-theme='twilight'][data-color-mode='dark'] {
+  --bg-app: #141414;
+  --bg-sidebar: #0f0f0f;
+  --bg-panel: #1a1a1a;
+  --bg-elevated: #2a2a2a;
+  --bg-input: #0f0f0f;
+  --border: #333333;
+  --text-primary: #f7f7f7;
+  --text-secondary: #c0c0c0;
+  --text-muted: #808080;
+  --accent: #cf6a4c;
+  --accent-subtle: #2a2a2a;
+  --user-bubble: #7587a6;
+  --assistant-bubble: #2a2a2a;
+  --settings-nav-active: #2a2a2a;
+}

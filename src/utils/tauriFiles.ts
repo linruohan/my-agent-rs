@@ -1,6 +1,6 @@
 import { isTauriEnv } from '@/utils/tauri';
 import type { ChatAttachment } from '@/utils/attachments';
-import { folderNameFromPaths } from '@/utils/attachments';
+import { folderNameFromPaths, fileToBase64, isBinaryExtension } from '@/utils/attachments';
 
 const FILE_FILTERS = [
   {
@@ -119,24 +119,23 @@ export async function pickFolderViaDialog(): Promise<ChatAttachment | null> {
 }
 
 /** 根据环境选择文件（Tauri dialog 或 HTML input fallback） */
-export async function pickFilesNative(): Promise<ChatAttachment[] | 'use-html' | 'cancelled'> {
+export async function pickFilesNative(): Promise<ChatAttachment[] | 'use-html'> {
   if (!isTauriEnv()) return 'use-html';
   return pickFilesViaDialog(true);
 }
 
-export async function pickImagesNative(): Promise<ChatAttachment[] | 'use-html' | 'cancelled'> {
+export async function pickImagesNative(): Promise<ChatAttachment[] | 'use-html'> {
   if (!isTauriEnv()) return 'use-html';
   return pickImagesViaDialog();
 }
 
-export async function pickFolderNative(): Promise<ChatAttachment | 'use-html' | 'cancelled' | null> {
+export async function pickFolderNative(): Promise<ChatAttachment | 'use-html' | null> {
   if (!isTauriEnv()) return 'use-html';
   return pickFolderViaDialog();
 }
 
 /** 从 HTML FileList 构建附件（Web fallback） */
 export async function attachmentsFromFileList(files: FileList): Promise<ChatAttachment[]> {
-  const { fileToBase64, isBinaryExtension } = await import('@/utils/attachments');
   const attachments: ChatAttachment[] = [];
 
   for (const file of Array.from(files)) {

@@ -117,7 +117,7 @@ const viewTitle = computed(() => {
 
 .view-title {
   font-size: 13px;
-  color: #71717a;
+  color: var(--text-muted);
 }
 
 .top-actions {
@@ -131,7 +131,7 @@ const viewTitle = computed(() => {
   background: none;
   border: none;
   border-radius: 8px;
-  color: #71717a;
+  color: var(--text-muted);
   cursor: pointer;
   font-size: 16px;
   display: flex;
@@ -141,8 +141,8 @@ const viewTitle = computed(() => {
 
 .top-btn:hover,
 .top-btn.active {
-  background: #1f2128;
-  color: #e4e4e7;
+  background: var(--bg-hover);
+  color: var(--text-primary);
 }
 
 .content-area {
