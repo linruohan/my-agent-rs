@@ -7,6 +7,9 @@ import { SETTINGS_NAV_GROUPS, TOOL_KEY_FIELDS } from '@/utils/settingsSections';
 import AppearanceSettings from '@/components/AppearanceSettings.vue';
 import ProviderSettings from '@/components/ProviderSettings.vue';
 import { buildLlmConfigPayload, isUserCustomProviderId } from '@/utils/llmConfig';
+import { isTauriEnv } from '@/utils/tauri';
+import { pickWorkspaceFolderPath } from '@/utils/nativeOpen';
+import { loadWorkspaceFromSidecar } from '@/utils/workspaceConfig';
 
 const settings = useSettingsStore();
 const navigation = useNavigationStore();
@@ -103,6 +106,26 @@ async function loadLlmConfig() {
   } catch {
     /* defaults */
   }
+}
+
+async function loadWorkspaceConfig() {
+  const path = await loadWorkspaceFromSidecar(settings.sidecarPort);
+  if (path) settings.workspacePath = path;
+}
+
+async function browseWorkspaceFolder() {
+  const picked = await pickWorkspaceFolderPath(settings.workspacePath);
+  if (picked) {
+    settings.setWorkspacePath(picked);
+    return;
+  }
+  if (!isTauriEnv()) {
+    saveMessage.value = '浏览器模式下请直接输入路径';
+  }
+}
+
+function onWorkspacePathBlur() {
+  settings.setWorkspacePath(settings.workspacePath);
 }
 
 async function loadSidecarInfo() {
@@ -286,6 +309,7 @@ onMounted(async () => {
   await loadStoredProviders();
   await loadProviderList();
   await loadSidecarInfo();
+  await loadWorkspaceConfig();
   applyNavigationSection(navigation.settingsSection);
 });
 </script>
@@ -399,7 +423,17 @@ onMounted(async () => {
         <template v-else-if="activeSection === 'workspace'">
           <div class="field-row">
             <label>WORKSPACE PATH</label>
-            <input v-model="settings.workspacePath" type="text" placeholder="~/AssistantWorkspace" />
+            <div class="path-input-row">
+              <input
+                v-model="settings.workspacePath"
+                type="text"
+                placeholder="~/AssistantWorkspace"
+                @blur="onWorkspacePathBlur"
+              />
+              <button type="button" class="btn-secondary btn-browse" @click="browseWorkspaceFolder">
+                浏览…
+              </button>
+            </div>
           </div>
           <p class="field-hint">Agent 文件工具与项目文档的默认工作目录</p>
         </template>
@@ -645,6 +679,23 @@ onMounted(async () => {
   padding: 8px 12px;
   font-size: 13px;
   font-family: inherit;
+}
+
+.path-input-row {
+  display: flex;
+  gap: 8px;
+  align-items: center;
+  min-width: 0;
+}
+
+.path-input-row input {
+  flex: 1;
+  min-width: 0;
+}
+
+.btn-browse {
+  flex-shrink: 0;
+  white-space: nowrap;
 }
 
 .field-row .range {

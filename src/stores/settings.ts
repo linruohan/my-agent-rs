@@ -8,6 +8,7 @@ import {
 } from '@/utils/themes';
 import { isTauriEnv } from '@/utils/tauri';
 import { mapCustomProvidersFromApi, isUserCustomProviderId } from '@/utils/llmConfig';
+import { syncWorkspaceToSidecar } from '@/utils/workspaceConfig';
 
 const STORAGE_KEY = 'pa-agent-settings';
 const WORKSPACE_KEY = 'pa-workspace-path';
@@ -171,6 +172,11 @@ export const useSettingsStore = defineStore('settings', () => {
     }
   }
 
+  function setWorkspacePath(path: string) {
+    workspacePath.value = path;
+    void syncWorkspaceToSidecar(path, sidecarPort.value);
+  }
+
   function applyLlmConfig(cfg: {
     default_provider?: string;
     custom?: { base_url?: string; model?: string; name?: string };
@@ -229,6 +235,7 @@ export const useSettingsStore = defineStore('settings', () => {
     setLastTurnDuration,
     getSelectedModel,
     setSelectedModel,
+    setWorkspacePath,
     applyLlmConfig,
   };
 });

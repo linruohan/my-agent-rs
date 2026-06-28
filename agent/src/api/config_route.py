@@ -44,6 +44,10 @@ class McpConfigBody(BaseModel):
     servers: dict[str, McpServerOverride] = Field(default_factory=dict)
 
 
+class WorkspaceConfigBody(BaseModel):
+    workspace: str = Field(min_length=1)
+
+
 @router.get("/config/llm")
 async def get_llm_user_config():
     return load_user_llm_config()
@@ -96,3 +100,21 @@ async def put_mcp_config(body: McpConfigBody):
         "ok": True,
         "servers": effective.get("mcp_servers", {}),
     }
+
+
+@router.get("/config/workspace")
+async def get_workspace_config():
+    from infra.config import get_workspace_dir
+
+    return {"workspace": str(get_workspace_dir())}
+
+
+@router.put("/config/workspace")
+async def put_workspace_config(body: WorkspaceConfigBody):
+    from infra.config import get_workspace_dir
+    from infra.user_settings import load_user_settings, save_user_settings
+
+    settings = load_user_settings()
+    settings["workspace"] = body.workspace.strip()
+    save_user_settings(settings)
+    return {"ok": True, "workspace": str(get_workspace_dir())}

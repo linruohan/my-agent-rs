@@ -207,12 +207,6 @@ function isOnFirstLine() {
   return !input.value.slice(0, el.selectionStart).includes('\n');
 }
 
-function isOnLastLine() {
-  const el = textareaRef.value;
-  if (!el) return true;
-  return !input.value.slice(el.selectionEnd).includes('\n');
-}
-
 function navigateInputHistory(direction: 'up' | 'down'): boolean {
   const history = getInputHistory();
   if (!history.length) return false;

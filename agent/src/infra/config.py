@@ -173,12 +173,16 @@ def load_llm_providers_config() -> dict[str, Any]:
 
 def get_workspace_dir() -> Path:
     """Return sandbox workspace for file tools (resolved absolute path)."""
-    tools_cfg = load_yaml("tools.yaml")
-    raw = (
-        tools_cfg.get("capability", {})
-        .get("text_editor", {})
-        .get("workspace", "")
-    )
+    from infra.user_settings import load_user_settings
+
+    raw = str(load_user_settings().get("workspace") or "").strip()
+    if not raw:
+        tools_cfg = load_yaml("tools.yaml")
+        raw = str(
+            tools_cfg.get("capability", {})
+            .get("text_editor", {})
+            .get("workspace", "")
+        ).strip()
     if raw:
         path = Path(raw).expanduser()
     else:

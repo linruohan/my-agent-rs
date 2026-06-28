@@ -12,7 +12,8 @@ import {
   toolToSkill,
   type ChatCommand,
 } from '@/utils/chatCommands';
-import { openWorkspaceFolder as openWorkspaceFolderNative } from '@/utils/nativeOpen';
+import { openWorkspaceFolder as openWorkspaceFolderNative, pickWorkspaceFolderPath } from '@/utils/nativeOpen';
+import { loadWorkspaceFromSidecar } from '@/utils/workspaceConfig';
 
 const DEFAULT_WORKSPACE = '~/AssistantWorkspace';
 
@@ -176,15 +177,10 @@ function togglePinFromMenu(threadId: string) {
   openSessionMenuId.value = null;
 }
 
-async function editWorkspacePath() {
-  const path = await dialog.prompt({
-    title: '工作区路径',
-    defaultValue: settings.workspacePath || DEFAULT_WORKSPACE,
-    placeholder: DEFAULT_WORKSPACE,
-  });
-  if (!path) return;
-  settings.workspacePath = path;
+async function chooseWorkspaceFolder() {
   workspaceMenuOpen.value = false;
+  const picked = await pickWorkspaceFolderPath(settings.workspacePath || DEFAULT_WORKSPACE);
+  if (picked) settings.setWorkspacePath(picked);
 }
 
 async function openWorkspaceFolder() {
@@ -217,10 +213,16 @@ async function loadSkills() {
   }
 }
 
+async function loadWorkspacePath() {
+  const path = await loadWorkspaceFromSidecar(settings.sidecarPort);
+  if (path) settings.workspacePath = path;
+}
+
 onMounted(() => {
   document.addEventListener('keydown', onKeydown);
   document.addEventListener('click', closeMenus);
   void loadSkills();
+  void loadWorkspacePath();
 });
 
 onUnmounted(() => {
@@ -345,8 +347,8 @@ onUnmounted(() => {
       <button
         type="button"
         class="workspace-info"
-        title="点击修改工作区路径"
-        @click="editWorkspacePath"
+        title="点击选择工作区文件夹"
+        @click="chooseWorkspaceFolder"
       >
         <span class="ws-label">工作区</span>
         <span class="ws-path">{{ workspaceDisplay }}</span>
@@ -361,7 +363,7 @@ onUnmounted(() => {
           ⋯
         </button>
         <div v-if="workspaceMenuOpen" class="ws-menu">
-          <button type="button" @click="editWorkspacePath">修改路径</button>
+          <button type="button" @click="chooseWorkspaceFolder">选择文件夹</button>
           <button type="button" @click="openWorkspaceFolder">在文件夹中打开</button>
         </div>
       </div>

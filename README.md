@@ -39,7 +39,7 @@ npm run setup
 
 **Linux / macOS:**
 ```bash
-chmod +x scripts/*.sh
+chmod +x build.sh scripts/*.sh
 ./scripts/setup.sh
 # 或
 npm run setup:sh
@@ -74,9 +74,13 @@ $env:DEEPSEEK_API_KEY = "your-key"
 
 ## 构建
 
+**Windows (PowerShell):**
+
 ```powershell
 # 完整构建：测试 → 前端 → Sidecar(PyInstaller) → Tauri 安装包
 npm run build:all
+# 或
+.\scripts\build.ps1
 
 # 仅前端 dist/
 npm run build:web
@@ -92,6 +96,32 @@ npm run build:sidecar
 .\scripts\build.ps1 -SkipSidecar    # 跳过 PyInstaller
 .\scripts\build.ps1 -SkipTauri      # 跳过 Tauri bundle
 .\scripts\build.ps1 -DevOnly        # 仅前端 dist
+```
+
+**Linux / macOS:**
+
+```bash
+# 完整构建
+./build.sh
+# 或
+npm run build:all:sh
+# 或
+make build-all
+
+# 仅前端 dist/
+./build.sh --dev-only
+
+# 单独打包 Sidecar
+make sidecar
+```
+
+构建参数（Bash）：
+
+```bash
+./build.sh --skip-tests      # 跳过 pytest
+./build.sh --skip-sidecar    # 跳过 PyInstaller
+./build.sh --skip-tauri      # 跳过 Tauri bundle
+./build.sh --dev-only        # 仅前端 dist
 ```
 
 产物路径：
@@ -147,6 +177,7 @@ python -m pytest tests/agent -v
 
 ```
 my-agent-rs/
+├── build.sh            # 根目录构建入口（委托 scripts/build.sh）
 ├── agent/              # Python Sidecar
 │   ├── main.py         # 入口
 │   ├── config/         # tools / llm / rag 配置

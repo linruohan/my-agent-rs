@@ -42,6 +42,22 @@ export async function revealInExplorer(path: string): Promise<void> {
   console.warn('revealInExplorer 仅在桌面端可用:', trimmed);
 }
 
+/** 打开系统文件夹选择器，返回所选路径（仅桌面端） */
+export async function pickWorkspaceFolderPath(hintPath?: string): Promise<string | null> {
+  if (!isTauriEnv()) return null;
+
+  const { open } = await import('@tauri-apps/plugin-dialog');
+  const hint = hintPath?.trim();
+  const selected = await open({
+    title: '选择工作区文件夹',
+    directory: true,
+    multiple: false,
+    ...(hint && !hint.startsWith('~') ? { defaultPath: hint } : {}),
+  });
+  if (!selected || Array.isArray(selected)) return null;
+  return selected;
+}
+
 /** 打开工作区文件夹 */
 export async function openWorkspaceFolder(path: string): Promise<void> {
   const trimmed = path.trim();
