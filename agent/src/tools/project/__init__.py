@@ -9,10 +9,12 @@ from tools.project.store import (
     section_to_dict,
     summary_to_dict,
 )
-from tools.project.commands import handle_project_command
+from tools.project.commands import format_project_detail, handle_project_command, format_projects_list
 from tools.project.tools import PROJECT_TOOLS
 
 __all__ = [
+    "format_project_detail",
+    "format_projects_list",
     "handle_project_command",
     "INBOX_PROJECT_NAME",
     "PROJECT_TOOLS",

@@ -44,17 +44,8 @@ class AgentRunner:
                 try_direct_ocr_reply, content, attachments, timeout=ocr_timeout
             )
             if direct_ocr is not None:
-                config = self._make_config(thread_id, emit)
                 user_text = (content or "").strip() or "[图片 OCR]"
-                await self.graph.aupdate_state(
-                    config,
-                    {
-                        "messages": [
-                            HumanMessage(content=user_text),
-                            AIMessage(content=direct_ocr),
-                        ]
-                    },
-                )
+                await self._append_local_turn(config, user_text, direct_ocr)
                 await emit(
                     {"type": "token", "thread_id": thread_id, "content": direct_ocr}
                 )
@@ -68,16 +59,7 @@ class AgentRunner:
             slash_result = dispatch_slash_command((content or "").strip())
             if slash_result is not None:
                 user_text = (content or "").strip()
-                config = self._make_config(thread_id, emit)
-                await self.graph.aupdate_state(
-                    config,
-                    {
-                        "messages": [
-                            HumanMessage(content=user_text),
-                            AIMessage(content=slash_result),
-                        ]
-                    },
-                )
+                await self._append_local_turn(config, user_text, slash_result)
                 await emit(
                     {"type": "token", "thread_id": thread_id, "content": slash_result}
                 )
@@ -265,6 +247,21 @@ class AgentRunner:
             "configurable": {"thread_id": thread_id, "_emit": _emit},
             "recursion_limit": 40,
         }
+
+    async def _append_local_turn(
+        self, config: dict[str, Any], user_text: str, assistant_text: str
+    ) -> None:
+        """Persist a local-only turn (slash / OCR) without running the LLM graph."""
+        await self.graph.aupdate_state(
+            config,
+            {
+                "messages": [
+                    HumanMessage(content=user_text),
+                    AIMessage(content=assistant_text),
+                ]
+            },
+            as_node="agent",
+        )
 
     async def _emit_pending_interrupts(
         self, thread_id: str, config: dict[str, Any], emit: EventCallback

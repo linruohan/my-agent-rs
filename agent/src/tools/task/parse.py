@@ -20,6 +20,8 @@ _RE_REP = re.compile(
     re.IGNORECASE,
 )
 _RE_REP_END = re.compile(r"^@rep-end-(.+)$", re.IGNORECASE)
+_RE_PRO = re.compile(r"^@pro-(\d+)$", re.IGNORECASE)
+_RE_SEC = re.compile(r"^@sec(?:tion)?-(\d+)$", re.IGNORECASE)
 _RE_TIME = re.compile(r"^(\d{1,2}):(\d{2})$")
 
 
@@ -42,6 +44,10 @@ class ParsedTaskFields:
     repeat_end_set: bool = False
     remind_spec: str | None = None
     remind_absolute: bool = False
+    project_id: int | None = None
+    section_id: int | None = None
+    project_set: bool = False
+    section_set: bool = False
 
 
 def tokenize_task_text(text: str) -> list[str]:
@@ -172,6 +178,12 @@ def _classify_token(tok: str) -> tuple[str, Any] | None:
     m = _RE_REP_END.match(tok)
     if m:
         return ("rep_end", m.group(1).strip())
+    m = _RE_PRO.match(tok)
+    if m:
+        return ("pro", int(m.group(1)))
+    m = _RE_SEC.match(tok)
+    if m:
+        return ("sec", int(m.group(1)))
     return None
 
 
@@ -194,6 +206,8 @@ def parse_task_text(
     rem_spec: str | None = None
     rep_spec: tuple[int, str, int] | None = None
     rep_end_raw: str | None = None
+    project_id: int | None = None
+    section_id: int | None = None
 
     for tok in tokens:
         kind = _classify_token(tok)
@@ -213,6 +227,10 @@ def parse_task_text(
             rep_spec = val
         elif key == "rep_end":
             rep_end_raw = val
+        elif key == "pro":
+            project_id = val
+        elif key == "sec":
+            section_id = val
 
     result = ParsedTaskFields()
     if plain:
@@ -262,6 +280,13 @@ def parse_task_text(
         result.repeat_end = parse_repeat_end(rep_end_raw, ref)
         result.repeat_end_set = True
 
+    if project_id is not None:
+        result.project_id = project_id
+        result.project_set = True
+    if section_id is not None:
+        result.section_id = section_id
+        result.section_set = True
+
     return result
 
 
@@ -300,6 +325,10 @@ def parse_task_add(text: str, *, ref: datetime | None = None) -> dict[str, Any]:
         fields["repeat_rule"] = parsed.repeat_rule
     if parsed.repeat_end_set:
         fields["repeat_end"] = parsed.repeat_end
+    if parsed.project_set:
+        fields["project_id"] = parsed.project_id
+    if parsed.section_set:
+        fields["section_id"] = parsed.section_id
     return fields
 
 

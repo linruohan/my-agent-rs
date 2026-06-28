@@ -51,6 +51,25 @@ marked.use({
       const safeSrc = escapeAttr(src);
       return `<img src="${safeSrc}" alt="${alt}" class="md-image" data-md-image loading="lazy"${titleAttr} />`;
     },
+
+    table({ header, rows }) {
+      const renderCell = (cell: { text: string; tokens?: unknown[] }) => {
+        if (cell.tokens?.length) {
+          return this.parser.parseInline(cell.tokens as Parameters<typeof this.parser.parseInline>[0]);
+        }
+        return escapeHtml(cell.text);
+      };
+      const head = header
+        .map((cell) => `<th>${renderCell(cell)}</th>`)
+        .join('');
+      const body = rows
+        .map(
+          (row) =>
+            `<tr>${row.map((cell) => `<td>${renderCell(cell)}</td>`).join('')}</tr>`
+        )
+        .join('');
+      return `<div class="md-table-wrap"><table><thead><tr>${head}</tr></thead><tbody>${body}</tbody></table></div>`;
+    },
   },
 });
 

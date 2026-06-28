@@ -549,6 +549,23 @@ def _fmt_tags(tags: list[str]) -> str:
     return text if len(text) <= 16 else text[:15] + "…"
 
 
+def _fmt_attachments_cell(row: TaskRow) -> str:
+    """表格单元格内使用纯文本，避免 HTML 破坏 Markdown 表格解析。"""
+    if not row.attachments:
+        return "—"
+    labels: list[str] = []
+    for att in row.attachments:
+        val = (att.get("value") or "").strip()
+        if not val:
+            continue
+        if att.get("type") == "file":
+            val = Path(val).name
+        if len(val) > 24:
+            val = val[:23] + "…"
+        labels.append(val)
+    return _escape_cell(", ".join(labels) if labels else "—")
+
+
 def _fmt_attachments(row: TaskRow) -> str:
     if not row.attachments:
         return "—"
@@ -578,22 +595,77 @@ def _finalize_task_text(title: str, content: str) -> tuple[str, str, list[dict[s
     return (t or "").strip(), (c or "").strip(), attachments
 
 
-def _task_table_row(r: TaskRow) -> str:
+TASK_TABLE_HEADER = "| ID | 标题 | 负责人 | 截止 | 提醒 | 重复 | 标签 | 附件 | 状态 |"
+TASK_TABLE_SEP = "| --- | --- | --- | --- | --- | --- | --- | --- | --- |"
+
+FLAT_PROJECT_TASK_HEADER = (
+    "| 项目编号 | 项目名 | section编号 | section名 | ID | 标题 | 负责人 | 截止 | 提醒 | 重复 | 标签 | 附件 | 状态 |"
+)
+FLAT_PROJECT_TASK_SEP = (
+    "| --- | --- | --- | --- | --- | --- | --- | --- | --- | --- | --- | --- | --- |"
+)
+
+SECTION_TASK_OVERVIEW_HEADER = (
+    "| section编号 | section名 | ID | 标题 | 负责人 | 截止 | 提醒 | 重复 | 标签 | 附件 | 状态 |"
+)
+SECTION_TASK_OVERVIEW_SEP = (
+    "| --- | --- | --- | --- | --- | --- | --- | --- | --- | --- | --- |"
+)
+
+
+def task_table_row(r: TaskRow) -> str:
     title = r.title if len(r.title) <= 20 else r.title[:19] + "…"
     return (
         f"| {r.id} | {_escape_cell(title)} | {_escape_cell(r.owner or '—')} "
         f"| {_fmt_dt_short(r.due_at)} | {_fmt_remind(r)} | {_fmt_repeat(r.repeat_rule)} "
-        f"| {_fmt_tags(r.tags)} | {_fmt_attachments(r)} | {r.status} |"
+        f"| {_fmt_tags(r.tags)} | {_fmt_attachments_cell(r)} | {r.status} |"
+    )
+
+
+_task_table_row = task_table_row
+
+
+def format_task_table(rows: list[TaskRow]) -> str:
+    if not rows:
+        return ""
+    return "\n".join([TASK_TABLE_HEADER, TASK_TABLE_SEP, *(task_table_row(r) for r in rows)])
+
+
+def flat_project_task_row(
+    project_id: int,
+    project_name: str,
+    section_id: int | None,
+    section_name: str | None,
+    row: TaskRow,
+) -> str:
+    sid = section_id if section_id is not None else "—"
+    sname = _escape_cell(section_name) if section_name else "—"
+    title = row.title if len(row.title) <= 20 else row.title[:19] + "…"
+    return (
+        f"| {project_id} | {_escape_cell(project_name)} | {sid} | {sname} "
+        f"| {row.id} | {_escape_cell(title)} | {_escape_cell(row.owner or '—')} "
+        f"| {_fmt_dt_short(row.due_at)} | {_fmt_remind(row)} | {_fmt_repeat(row.repeat_rule)} "
+        f"| {_fmt_tags(row.tags)} | {_fmt_attachments_cell(row)} | {row.status} |"
+    )
+
+
+def section_task_overview_row(section_id: int, section_name: str, row: TaskRow) -> str:
+    title = row.title if len(row.title) <= 20 else row.title[:19] + "…"
+    return (
+        f"| {section_id} | {_escape_cell(section_name)} "
+        f"| {row.id} | {_escape_cell(title)} | {_escape_cell(row.owner or '—')} "
+        f"| {_fmt_dt_short(row.due_at)} | {_fmt_remind(row)} | {_fmt_repeat(row.repeat_rule)} "
+        f"| {_fmt_tags(row.tags)} | {_fmt_attachments_cell(row)} | {row.status} |"
     )
 
 
 def format_task_list(rows: list[TaskRow], *, heading: str = "未完成任务：") -> str:
     if not rows:
         return "暂无未完成任务。" if heading.startswith("未完成") else "当前没有任务。"
-    header = "| ID | 标题 | 负责人 | 截止 | 提醒 | 重复 | 标签 | 附件 | 状态 |"
-    sep = "| --- | --- | --- | --- | --- | --- | --- | --- | --- |"
-    lines = [header, sep, *(_task_table_row(r) for r in rows)]
-    return f"{heading}\n\n" + "\n".join(lines)
+    table = format_task_table(rows)
+    if not heading:
+        return table
+    return f"{heading}\n\n{table}"
 
 
 def format_task_search(rows: list[TaskRow], keyword: str) -> str:
@@ -667,6 +739,11 @@ def _apply_task_edit(store: TaskStore, task_id: int, parsed) -> TaskRow:
         if parsed.remind_spec and not parsed.remind_absolute:
             kwargs["remind_spec"] = parsed.remind_spec
 
+    if parsed.project_set:
+        kwargs["project_id"] = parsed.project_id
+    if parsed.section_set:
+        kwargs["section_id"] = parsed.section_id
+
     if parsed.title is not None or parsed.content is not None:
         final_title = kwargs.get("title", row.title)
         final_content = kwargs.get("content", row.content)
@@ -692,7 +769,8 @@ def handle_task_command(args: str, store: TaskStore | None = None) -> str:
     if not body:
         return (
             "用法：/tsk add <任务名> [内容] [标记…] | mod <任务ID> <修改内容> | list | notify [id] | tick | rm <id> | <id> | <关键字>\n"
-            "标记：@{owner} #{tag} @due-日期 @rem-1m|1h|1d|具体时间 @rep-1day-2|@rep-day @rep-end-none|日期|次数\n"
+            "标记：@{owner} #{tag} @due-日期 @pro-<项目ID> @sec-<SectionID> "
+            "@rem-1m|1h|1d|具体时间 @rep-1day-2|@rep-day @rep-end-none|日期|次数\n"
             "mod 时 @rem-6.22.10:00 等具体时间会在现有提醒计划中追加一条\n"
             "add 未指定时默认：负责人=设置中的名字，截止=当天17:30，"
             "提醒=截止前一天9:00/14:30/16:30，无@rep-则不重复"

@@ -14,6 +14,7 @@ let ws: WebSocket | null = null;
 let reconnectAttempt = 0;
 let reconnectTimer: ReturnType<typeof setTimeout> | null = null;
 let pendingCreateTitle: string | undefined;
+let initialSessionBootstrapped = false;
 let tokenBuffer = '';
 let tokenFlushTimer: ReturnType<typeof setTimeout> | null = null;
 let bc: BroadcastChannel | null = null;
@@ -213,6 +214,7 @@ export function useAgentWs() {
 
       case 'session.list':
         sessionStore.sessions = (msg.sessions as typeof sessionStore.sessions) || [];
+        bootstrapInitialSession();
         break;
 
       case 'session.created': {
@@ -374,6 +376,19 @@ export function useAgentWs() {
 
   function listSessions() {
     sendRaw({ type: 'session.list' });
+  }
+
+  function bootstrapInitialSession() {
+    if (sessionStore.currentThreadId || initialSessionBootstrapped) return;
+    initialSessionBootstrapped = true;
+
+    if (sessionStore.sessions.length > 0) {
+      const latest = sessionStore.sessions[0];
+      sessionStore.setCurrentThread(latest.thread_id);
+      loadSessionHistory(latest.thread_id);
+    } else {
+      createSession('新会话');
+    }
   }
 
   function createSession(title?: string): boolean {

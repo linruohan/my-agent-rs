@@ -33,7 +33,6 @@ const navItems: Array<{ id: AppView; label: string; icon: string }> = [
   { id: 'skills', label: '技能与工具', icon: '⚡' },
   { id: 'messaging', label: '消息平台', icon: '💬' },
   { id: 'artifacts', label: '产物', icon: '📦' },
-  { id: 'projects', label: '项目管理', icon: '📋' },
   { id: 'tasks', label: '任务管理', icon: '✓' },
   { id: 'knowledge', label: '知识库', icon: '📚' },
 ];

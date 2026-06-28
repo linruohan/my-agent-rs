@@ -3,6 +3,7 @@ import { createPinia } from 'pinia';
 import App from './App.vue';
 import './styles/main.css';
 import './themes/index.css';
+import '@vuepic/vue-datepicker/dist/main.css';
 import { applyAppearanceToDocument } from '@/composables/useAppearance';
 import { logStartupMilestone } from '@/utils/startupTiming';
 

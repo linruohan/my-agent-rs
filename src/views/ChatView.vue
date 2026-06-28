@@ -6,7 +6,6 @@ import ConfirmModal from '@/components/ConfirmModal.vue';
 import StatusBar from '@/components/StatusBar.vue';
 import SettingsView from '@/views/SettingsView.vue';
 import KnowledgeBaseView from '@/views/KnowledgeBaseView.vue';
-import ProjectsView from '@/views/ProjectsView.vue';
 import TasksView from '@/views/TasksView.vue';
 import SkillsToolsView from '@/views/SkillsToolsView.vue';
 import PlaceholderView from '@/views/PlaceholderView.vue';
@@ -19,7 +18,7 @@ const navigation = useNavigationStore();
 const viewTitle = computed(() => {
   const map: Record<string, string> = {
     chat: '聊天',
-    projects: '项目管理',
+    projects: '任务管理',
     tasks: '任务管理',
     skills: '技能与工具',
     messaging: '消息平台',
@@ -61,8 +60,7 @@ const viewTitle = computed(() => {
 
       <main class="content-area">
         <ChatPanel v-if="navigation.activeView === 'chat'" />
-        <ProjectsView v-else-if="navigation.activeView === 'projects'" />
-        <TasksView v-else-if="navigation.activeView === 'tasks'" />
+        <TasksView v-else-if="navigation.activeView === 'tasks' || navigation.activeView === 'projects'" />
         <SkillsToolsView v-else-if="navigation.activeView === 'skills'" />
         <KnowledgeBaseView v-else-if="navigation.activeView === 'knowledge'" />
         <SettingsView v-else-if="navigation.activeView === 'settings'" />

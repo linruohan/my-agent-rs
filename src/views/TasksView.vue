@@ -1,52 +1,90 @@
 <script setup lang="ts">
 import { computed, onMounted, ref, watch } from 'vue';
-import { useTasksStore } from '@/stores/tasks';
+import { useTasksStore, type ProjectItem, type TodoItem } from '@/stores/tasks';
 import { useSettingsStore } from '@/stores/settings';
+import {
+  TASK_FILTERS,
+  collectAllLabels,
+  countForFilter,
+  filterByTaskFilter,
+  formatDueShort,
+  type TaskFilterId,
+} from '@/utils/taskFilters';
+import TaskEditDialog, { type TaskFormPayload } from '@/components/TaskEditDialog.vue';
+import ProjectEditDialog, { type ProjectFormPayload } from '@/components/ProjectEditDialog.vue';
+import AppDatePicker from '@/components/AppDatePicker.vue';
 
 const tasksStore = useTasksStore();
 const settings = useSettingsStore();
 
 const newTodoTitle = ref('');
-const newProjectName = ref('');
+const newTodoDue = ref('');
 const newSectionName = ref('');
 const newSectionGoals = ref('');
-const newTodoDue = ref('');
-const showCompleted = ref(true);
-const docTitle = ref('');
-const docPath = ref('');
-const docNote = ref('');
 const summaryDate = ref('');
 const summaryProgress = ref('');
 const summaryRisks = ref('');
 const summaryChallenges = ref('');
 
-const PROJECT_STATUSES = ['planning', 'active', 'on_hold', 'completed', 'archived'] as const;
+const taskDialogOpen = ref(false);
+const taskDialogMode = ref<'create' | 'edit'>('create');
+const editingTodo = ref<TodoItem | null>(null);
 
-const visibleProjects = computed(() =>
-  tasksStore.projects.filter((p) => !p.is_inbox)
+const projectDialogOpen = ref(false);
+const projectDialogMode = ref<'create' | 'edit'>('create');
+const editingProject = ref<ProjectItem | null>(null);
+
+const inboxProjectId = computed(() => tasksStore.inbox?.id ?? null);
+
+const filterCounts = computed(() => {
+  const todos = tasksStore.allTodos;
+  const inboxId = inboxProjectId.value;
+  const counts = {} as Record<TaskFilterId, number>;
+  for (const f of TASK_FILTERS) {
+    counts[f.id] = countForFilter(todos, f.id, inboxId);
+  }
+  return counts;
+});
+
+const labelMap = computed(() => collectAllLabels(tasksStore.allTodos));
+
+const availableLabels = computed(() => [...labelMap.value.keys()]);
+
+const activeFilterMeta = computed(
+  () => TASK_FILTERS.find((f) => f.id === tasksStore.activeFilter) ?? TASK_FILTERS[0]
 );
 
-const selectedProject = computed(() => {
-  if (tasksStore.selectedProjectId == null) return tasksStore.inbox;
-  return (
-    tasksStore.projects.find((p) => p.id === tasksStore.selectedProjectId) ??
-    tasksStore.inbox
+const filteredTasks = computed(() => {
+  if (tasksStore.viewMode === 'project') return [];
+  return filterByTaskFilter(
+    tasksStore.allTodos,
+    tasksStore.activeFilter,
+    inboxProjectId.value,
+    tasksStore.activeLabel
   );
 });
+
+const selectedProject = computed(() =>
+  tasksStore.projects.find((p) => p.id === tasksStore.selectedProjectId) ?? null
+);
 
 const selectedSection = computed(() =>
   tasksStore.sections.find((s) => s.id === tasksStore.selectedSectionId) ?? null
 );
 
-const isInboxView = computed(
-  () => tasksStore.selectedProjectId != null && selectedProject.value?.is_inbox
-);
-
-const filteredTodos = computed(() => {
-  let list = tasksStore.todos;
-  if (!showCompleted.value) list = list.filter((t) => !t.completed);
-  return list;
+const projectTasksUnsectioned = computed(() => {
+  const pid = tasksStore.selectedProjectId;
+  if (pid == null) return [];
+  return tasksStore.allTodos.filter(
+    (t) => t.project_id === pid && (t.section_id == null || t.section_id === undefined)
+  );
 });
+
+function tasksForSection(sectionId: number): TodoItem[] {
+  const pid = tasksStore.selectedProjectId;
+  if (pid == null) return [];
+  return tasksStore.allTodos.filter((t) => t.project_id === pid && t.section_id === sectionId);
+}
 
 function progressPercent(stats?: { total: number; completed: number }) {
   if (!stats?.total) return 0;
@@ -69,26 +107,19 @@ async function load() {
   await tasksStore.refresh(settings.sidecarPort);
 }
 
-async function selectInbox() {
-  const inbox = tasksStore.inbox;
-  if (!inbox) return;
-  tasksStore.selectProject(inbox.id);
-  tasksStore.sectionSummaries = [];
-  await tasksStore.refresh(settings.sidecarPort);
+function pickFilter(id: TaskFilterId) {
+  tasksStore.selectFilter(id);
 }
 
-async function selectProject(id: number) {
-  tasksStore.selectProject(id);
-  tasksStore.lastDocMessage = '';
-  try {
-    await tasksStore.fetchProjectDetail(settings.sidecarPort, id);
-    await tasksStore.refresh(settings.sidecarPort);
-  } catch (e) {
-    tasksStore.error = e instanceof Error ? e.message : String(e);
-  }
+function pickLabel(label: string) {
+  tasksStore.selectLabel(label);
 }
 
-async function selectSection(id: number | null) {
+async function pickProject(id: number) {
+  await tasksStore.selectProjectView(settings.sidecarPort, id);
+}
+
+async function pickSection(id: number | null) {
   tasksStore.selectSection(id);
   if (id != null) {
     try {
@@ -99,48 +130,24 @@ async function selectSection(id: number | null) {
   } else {
     tasksStore.sectionSummaries = [];
   }
-  await tasksStore.refresh(settings.sidecarPort);
-}
-
-async function changeProjectStatus(status: string) {
-  const id = tasksStore.selectedProjectId;
-  if (id == null || selectedProject.value?.is_inbox) return;
-  try {
-    await tasksStore.updateProjectStatus(settings.sidecarPort, id, status);
-  } catch (e) {
-    tasksStore.error = e instanceof Error ? e.message : String(e);
-  }
-}
-
-async function removeTodo(todoId: number) {
-  if (!confirm(`删除任务 #${todoId}？`)) return;
-  try {
-    await tasksStore.deleteTodo(settings.sidecarPort, todoId);
-  } catch (e) {
-    tasksStore.error = e instanceof Error ? e.message : String(e);
-  }
-}
-
-async function toggleTodo(todoId: number) {
-  const todo = tasksStore.todos.find((t) => t.id === todoId);
-  if (!todo) return;
-  try {
-    await tasksStore.toggleTodoComplete(settings.sidecarPort, todo);
-  } catch (e) {
-    tasksStore.error = e instanceof Error ? e.message : String(e);
-  }
 }
 
 async function addTodo() {
   const title = newTodoTitle.value.trim();
-  if (!title) return;
+  if (!title) {
+    openCreateTask();
+    return;
+  }
   try {
-    await tasksStore.createTodo(settings.sidecarPort, {
+    const payload: Parameters<typeof tasksStore.createTodo>[1] = {
       title,
-      project_id: tasksStore.selectedProjectId ?? undefined,
-      section_id: tasksStore.selectedSectionId ?? undefined,
       due_date: newTodoDue.value,
-    });
+    };
+    if (tasksStore.viewMode === 'project' && tasksStore.selectedProjectId != null) {
+      payload.project_id = tasksStore.selectedProjectId;
+      if (tasksStore.selectedSectionId != null) payload.section_id = tasksStore.selectedSectionId;
+    }
+    await tasksStore.createTodo(settings.sidecarPort, payload);
     newTodoTitle.value = '';
     newTodoDue.value = '';
   } catch (e) {
@@ -148,23 +155,108 @@ async function addTodo() {
   }
 }
 
-async function addProject() {
-  const name = newProjectName.value.trim();
-  if (!name) return;
+function openCreateTask() {
+  taskDialogMode.value = 'create';
+  editingTodo.value = null;
+  taskDialogOpen.value = true;
+}
+
+function openEditTask(todo: TodoItem) {
+  taskDialogMode.value = 'edit';
+  editingTodo.value = todo;
+  taskDialogOpen.value = true;
+}
+
+async function onTaskDialogProjectChange(projectId: number | null) {
+  if (projectId == null || projectId === inboxProjectId.value) return;
   try {
-    await tasksStore.createProject(settings.sidecarPort, name);
-    newProjectName.value = '';
+    await tasksStore.loadSections(settings.sidecarPort, projectId);
+  } catch (e) {
+    tasksStore.error = e instanceof Error ? e.message : String(e);
+  }
+}
+
+async function saveTask(payload: TaskFormPayload) {
+  try {
+    if (taskDialogMode.value === 'edit' && editingTodo.value) {
+      await tasksStore.updateTodo(settings.sidecarPort, editingTodo.value.id, {
+        title: payload.title,
+        description: payload.description,
+        due_date: payload.due_date,
+        remind_at: payload.remind_at,
+        priority: payload.priority,
+        project_id: payload.project_id,
+        section_id: payload.section_id,
+        tags: payload.tags,
+        clear_reminder: !payload.remind_at,
+      });
+    } else {
+      await tasksStore.createTodo(settings.sidecarPort, {
+        title: payload.title,
+        description: payload.description,
+        due_date: payload.due_date,
+        remind_at: payload.remind_at,
+        priority: payload.priority,
+        tags: payload.tags,
+        project_id: payload.project_id ?? undefined,
+        section_id: payload.section_id ?? undefined,
+      });
+    }
+    taskDialogOpen.value = false;
+  } catch (e) {
+    tasksStore.error = e instanceof Error ? e.message : String(e);
+  }
+}
+
+function openCreateProject() {
+  projectDialogMode.value = 'create';
+  editingProject.value = null;
+  projectDialogOpen.value = true;
+}
+
+function openEditProject(project: ProjectItem, e?: Event) {
+  e?.stopPropagation();
+  projectDialogMode.value = 'edit';
+  editingProject.value = project;
+  projectDialogOpen.value = true;
+}
+
+async function saveProject(payload: ProjectFormPayload) {
+  try {
+    if (projectDialogMode.value === 'edit' && editingProject.value) {
+      await tasksStore.updateProject(settings.sidecarPort, editingProject.value.id, payload);
+    } else {
+      await tasksStore.createProject(settings.sidecarPort, payload);
+    }
+    projectDialogOpen.value = false;
+  } catch (e) {
+    tasksStore.error = e instanceof Error ? e.message : String(e);
+  }
+}
+
+async function toggleTodo(todo: TodoItem) {
+  try {
+    await tasksStore.toggleTodoComplete(settings.sidecarPort, todo);
+  } catch (e) {
+    tasksStore.error = e instanceof Error ? e.message : String(e);
+  }
+}
+
+async function removeTodo(id: number) {
+  if (!confirm(`删除任务 #${id}？`)) return;
+  try {
+    await tasksStore.deleteTodo(settings.sidecarPort, id);
   } catch (e) {
     tasksStore.error = e instanceof Error ? e.message : String(e);
   }
 }
 
 async function addSection() {
-  const id = tasksStore.selectedProjectId;
+  const pid = tasksStore.selectedProjectId;
   const name = newSectionName.value.trim();
-  if (id == null || selectedProject.value?.is_inbox || !name) return;
+  if (pid == null || !name) return;
   try {
-    await tasksStore.createSection(settings.sidecarPort, id, {
+    await tasksStore.createSection(settings.sidecarPort, pid, {
       name,
       goals: newSectionGoals.value.trim(),
     });
@@ -194,26 +286,7 @@ async function saveSummary() {
   }
 }
 
-async function addProjectDoc() {
-  const id = tasksStore.selectedProjectId;
-  const title = docTitle.value.trim();
-  if (id == null || selectedProject.value?.is_inbox || !title) return;
-  try {
-    await tasksStore.addProjectDoc(settings.sidecarPort, id, {
-      title,
-      file_path: docPath.value.trim(),
-      note: docNote.value.trim(),
-    });
-    docTitle.value = '';
-    docPath.value = '';
-    docNote.value = '';
-  } catch (e) {
-    tasksStore.error = e instanceof Error ? e.message : String(e);
-  }
-}
-
 onMounted(load);
-
 watch(
   () => [settings.sidecarPort, settings.sidecarStatus],
   () => {
@@ -223,324 +296,561 @@ watch(
 </script>
 
 <template>
-  <div class="tasks-view">
-    <header>
-      <h2>项目 · Section · 任务</h2>
-      <p class="hint">Project → Section（里程碑）→ Task；无 Section 的临时任务在 Inbox</p>
-      <button class="btn-refresh" :disabled="tasksStore.loading" @click="load">
-        {{ tasksStore.loading ? '加载中…' : '刷新' }}
-      </button>
-    </header>
+  <div class="task-hub">
+    <aside class="sidebar">
+      <div class="filter-grid">
+        <button
+          v-for="f in TASK_FILTERS"
+          :key="f.id"
+          class="filter-card"
+          :class="[`filter-${f.id}`, { active: tasksStore.viewMode === 'filter' && tasksStore.activeFilter === f.id }]"
+          @click="pickFilter(f.id)"
+        >
+          <span class="filter-icon">{{ f.icon }}</span>
+          <span class="filter-label">{{ f.label }}</span>
+          <span v-if="filterCounts[f.id]" class="filter-count">{{ filterCounts[f.id] }}</span>
+        </button>
+      </div>
 
-    <p v-if="tasksStore.error" class="error">{{ tasksStore.error }}</p>
-    <p v-if="settings.sidecarStatus !== 'running'" class="warn">
-      Sidecar 未运行，无法加载任务数据
-    </p>
-
-    <div class="layout">
-      <!-- 项目 -->
-      <aside class="panel projects-panel">
-        <div class="panel-head">
-          <h3>项目</h3>
-          <div class="inline-add">
-            <input v-model="newProjectName" placeholder="新项目名称" @keydown.enter="addProject" />
-            <button @click="addProject">+</button>
-          </div>
+      <div class="projects-block">
+        <div class="projects-head">
+          <span>On This Computer</span>
+          <button class="icon-btn" title="新建项目" @click="openCreateProject">+</button>
         </div>
-        <ul class="list">
+        <ul class="project-list">
           <li
-            :class="{ active: isInboxView }"
-            @click="selectInbox"
-          >
-            <span class="name">📥 Inbox</span>
-            <span class="meta">临时任务</span>
-          </li>
-          <li
-            v-for="p in visibleProjects"
+            v-for="p in tasksStore.projects"
             :key="p.id"
-            :class="{ active: p.id === tasksStore.selectedProjectId }"
-            @click="selectProject(p.id)"
+            :class="{ active: tasksStore.viewMode === 'project' && p.id === tasksStore.selectedProjectId }"
+            @click="pickProject(p.id)"
           >
-            <div class="row">
-              <span class="name">#{{ p.id }} {{ p.name }}</span>
-              <span class="badge">{{ statusLabel(p.status) }}</span>
-            </div>
-            <div class="progress-wrap">
-              <div class="progress-bar" :style="{ width: `${progressPercent(p.stats)}%` }" />
-            </div>
-            <div class="meta">{{ p.stats?.completed ?? 0 }}/{{ p.stats?.total ?? 0 }} 任务</div>
+            <span class="proj-name">{{ p.name }}</span>
+            <span class="proj-actions">
+              <span class="proj-meta">{{ p.stats?.completed ?? 0 }}/{{ p.stats?.total ?? 0 }}</span>
+              <button class="btn-edit" title="编辑项目" @click="openEditProject(p, $event)">✎</button>
+            </span>
           </li>
+          <li v-if="!tasksStore.projects.length" class="empty">暂无项目</li>
         </ul>
-      </aside>
+      </div>
+    </aside>
 
-      <!-- Section -->
-      <aside class="panel sections-panel">
-        <div class="panel-head">
-          <h3>Sections</h3>
-          <template v-if="selectedProject && !selectedProject.is_inbox">
-            <div class="inline-add">
-              <input v-model="newSectionName" placeholder="如 R13B100" @keydown.enter="addSection" />
-              <button @click="addSection">+</button>
-            </div>
-            <input v-model="newSectionGoals" class="goals-input" placeholder="主要目标…" />
-          </template>
+    <main class="main-panel">
+      <header class="main-head">
+        <div>
+          <h2>
+            <template v-if="tasksStore.viewMode === 'project' && selectedProject">
+              {{ selectedProject.name }}
+            </template>
+            <template v-else-if="tasksStore.activeFilter === 'labels' && tasksStore.activeLabel">
+              🏷️ {{ tasksStore.activeLabel }}
+            </template>
+            <template v-else>{{ activeFilterMeta.label }}</template>
+          </h2>
+          <p class="hint">
+            <template v-if="tasksStore.viewMode === 'project' && selectedProject">
+              {{ selectedProject.description || '项目任务与 Section 管理' }}
+            </template>
+            <template v-else>{{ activeFilterMeta.hint }}</template>
+          </p>
         </div>
-        <ul v-if="selectedProject && !selectedProject.is_inbox" class="list">
-          <li
-            :class="{ active: tasksStore.selectedSectionId === null }"
-            @click="selectSection(null)"
+        <div class="head-actions">
+          <button class="btn-refresh" :disabled="tasksStore.loading" @click="load">
+            {{ tasksStore.loading ? '…' : '刷新' }}
+          </button>
+          <button
+            v-if="tasksStore.viewMode === 'project' && selectedProject"
+            class="btn-edit-head"
+            @click="openEditProject(selectedProject)"
           >
-            <span class="name">全部 Section</span>
-          </li>
-          <li
-            v-for="s in tasksStore.sections"
-            :key="s.id"
-            :class="{ active: s.id === tasksStore.selectedSectionId }"
-            @click="selectSection(s.id)"
-          >
-            <div class="row">
-              <span class="name">{{ s.name }}</span>
-              <span class="badge">{{ statusLabel(s.status) }}</span>
-            </div>
-            <div class="meta">
-              {{ s.stats?.completed ?? 0 }}/{{ s.stats?.total ?? 0 }}
-              <span v-if="s.owner"> · @{{ s.owner }}</span>
-            </div>
-            <div v-if="s.goals" class="goals-preview">{{ s.goals }}</div>
-          </li>
-          <li v-if="!tasksStore.sections.length" class="empty">暂无 Section</li>
-        </ul>
-        <p v-else class="empty">选择项目以管理 Section</p>
-      </aside>
-
-      <!-- 任务 -->
-      <section class="panel todos-panel">
-        <div class="panel-head">
-          <h3>
-            <template v-if="selectedSection">{{ selectedSection.name }}</template>
-            <template v-else-if="isInboxView">Inbox 临时任务</template>
-            <template v-else-if="selectedProject">{{ selectedProject.name }}</template>
-            <template v-else>任务</template>
-          </h3>
-          <label class="toggle">
-            <input v-model="showCompleted" type="checkbox" />
-            显示已完成
-          </label>
+            编辑项目
+          </button>
         </div>
+      </header>
 
-        <div class="inline-add">
-          <input v-model="newTodoTitle" placeholder="添加任务…" @keydown.enter="addTodo" />
-          <input v-model="newTodoDue" type="datetime-local" title="截止" />
-          <button @click="addTodo">添加</button>
-        </div>
+      <p v-if="tasksStore.error" class="error">{{ tasksStore.error }}</p>
+      <p v-if="settings.sidecarStatus !== 'running'" class="warn">Sidecar 未运行</p>
 
-        <ul class="todo-list">
-          <li v-for="t in filteredTodos" :key="t.id" :class="{ done: t.completed }">
-            <input type="checkbox" :checked="t.completed" @change="toggleTodo(t.id)" />
-            <div class="todo-body">
-              <span class="title">#{{ t.id }} {{ t.title }}</span>
-              <span class="tags">
-                <span class="tag priority">{{ t.priority }}</span>
-                <span v-if="t.section_id" class="tag">S#{{ t.section_id }}</span>
-                <span v-if="t.due_date" class="tag due">{{ t.due_date }}</span>
-              </span>
-            </div>
-            <button class="btn-del" @click="removeTodo(t.id)">×</button>
-          </li>
-          <li v-if="!filteredTodos.length" class="empty">暂无任务</li>
-        </ul>
-
-        <!-- Section 每日总结 -->
-        <section v-if="selectedSection" class="sub-section">
-          <h4>每日总结</h4>
-          <div class="summary-form">
-            <input v-model="summaryDate" type="date" />
-            <input v-model="summaryProgress" placeholder="进度" />
-            <input v-model="summaryRisks" placeholder="风险" />
-            <input v-model="summaryChallenges" placeholder="挑战" />
-            <button @click="saveSummary">保存</button>
-          </div>
-          <ul v-if="tasksStore.sectionSummaries.length" class="summary-list">
-            <li v-for="s in tasksStore.sectionSummaries" :key="s.id">
-              <strong>{{ s.summary_date }}</strong>
-              <span v-if="s.progress"> 进度: {{ s.progress }}</span>
-              <span v-if="s.risks"> 风险: {{ s.risks }}</span>
-              <span v-if="s.challenges"> 挑战: {{ s.challenges }}</span>
+      <!-- 筛选视图 -->
+      <template v-if="tasksStore.viewMode === 'filter'">
+        <div v-if="tasksStore.activeFilter === 'labels' && !tasksStore.activeLabel" class="labels-panel">
+          <h3>全部标签</h3>
+          <ul class="label-list">
+            <li v-for="[tag, count] in labelMap" :key="tag" @click="pickLabel(tag)">
+              <span class="tag-chip">{{ tag }}</span>
+              <span class="tag-count">{{ count }}</span>
             </li>
+            <li v-if="!labelMap.size" class="empty">暂无标签</li>
           </ul>
-        </section>
+        </div>
 
-        <!-- 项目文档 -->
-        <section v-if="selectedProject && !selectedProject.is_inbox" class="sub-section">
-          <h4>项目文档</h4>
-          <div class="doc-form">
-            <input v-model="docTitle" placeholder="文档标题" />
-            <input v-model="docPath" placeholder="工作区路径" />
-            <textarea v-model="docNote" placeholder="备注" rows="2" />
-            <button @click="addProjectDoc">添加</button>
+        <template v-else>
+          <div class="inline-add">
+            <input
+              v-model="newTodoTitle"
+              placeholder="添加任务…"
+              @keydown.enter="addTodo"
+            />
+            <AppDatePicker v-model="newTodoDue" mode="datetime" placeholder="截止" />
+            <button @click="addTodo">+ Add Task</button>
+            <button class="btn-detail" title="详细表单" @click="openCreateTask">⋯</button>
           </div>
-        </section>
-      </section>
-    </div>
+
+          <ul class="task-list">
+            <li
+              v-for="t in filteredTasks"
+              :key="t.id"
+              :class="{ done: t.completed }"
+              @click="openEditTask(t)"
+            >
+              <input type="checkbox" :checked="t.completed" @click.stop @change="toggleTodo(t)" />
+              <div class="task-body">
+                <div class="task-title">{{ t.title }}</div>
+                <div class="task-meta">
+                  <span class="due">{{ formatDueShort(t.due_date) }}</span>
+                  <span v-if="t.priority !== 'normal'" class="tag pri">{{ t.priority }}</span>
+                  <span v-for="tag in t.tags ?? []" :key="tag" class="tag">{{ tag }}</span>
+                  <span v-if="t.project_id && t.project_id !== inboxProjectId" class="tag proj">
+                    P#{{ t.project_id }}
+                  </span>
+                </div>
+              </div>
+              <button class="btn-del" @click.stop="removeTodo(t.id)">×</button>
+            </li>
+            <li v-if="!filteredTasks.length" class="empty">暂无任务</li>
+          </ul>
+        </template>
+      </template>
+
+      <!-- 项目视图 -->
+      <template v-else-if="selectedProject">
+        <div class="project-toolbar">
+          <select
+            :value="selectedProject.status"
+            @change="tasksStore.updateProjectStatus(settings.sidecarPort, selectedProject.id, ($event.target as HTMLSelectElement).value)"
+          >
+            <option value="planning">规划中</option>
+            <option value="active">进行中</option>
+            <option value="on_hold">暂停</option>
+            <option value="completed">已完成</option>
+            <option value="archived">已归档</option>
+          </select>
+          <div class="progress-wrap">
+            <div
+              class="progress-bar"
+              :style="{ width: `${progressPercent(selectedProject.stats)}%` }"
+            />
+          </div>
+          <span class="progress-text">
+            {{ selectedProject.stats?.completed ?? 0 }}/{{ selectedProject.stats?.total ?? 0 }}
+          </span>
+        </div>
+
+        <div class="project-layout">
+          <aside class="section-nav">
+            <button
+              :class="{ active: tasksStore.selectedSectionId === null }"
+              @click="pickSection(null)"
+            >
+              全部
+            </button>
+            <button
+              v-for="s in tasksStore.sections"
+              :key="s.id"
+              :class="{ active: s.id === tasksStore.selectedSectionId }"
+              @click="pickSection(s.id)"
+            >
+              {{ s.name }}
+              <small>{{ s.stats?.completed ?? 0 }}/{{ s.stats?.total ?? 0 }}</small>
+            </button>
+            <div class="section-add">
+              <input v-model="newSectionName" placeholder="Section 名" @keydown.enter="addSection" />
+              <input v-model="newSectionGoals" placeholder="目标" />
+              <button @click="addSection">+ Section</button>
+            </div>
+          </aside>
+
+          <section class="project-tasks">
+            <div class="inline-add">
+              <input v-model="newTodoTitle" placeholder="添加项目任务…" @keydown.enter="addTodo" />
+              <AppDatePicker v-model="newTodoDue" mode="datetime" placeholder="截止" />
+              <button @click="addTodo">+ Add Task</button>
+              <button class="btn-detail" @click="openCreateTask">⋯</button>
+            </div>
+
+            <template v-if="tasksStore.selectedSectionId === null">
+              <h3 class="section-title">No Section</h3>
+              <ul class="task-list">
+                <li
+                  v-for="t in projectTasksUnsectioned"
+                  :key="t.id"
+                  :class="{ done: t.completed }"
+                  @click="openEditTask(t)"
+                >
+                  <input type="checkbox" :checked="t.completed" @click.stop @change="toggleTodo(t)" />
+                  <div class="task-body">
+                    <div class="task-title">{{ t.title }}</div>
+                    <div class="task-meta">
+                      <span class="due">{{ formatDueShort(t.due_date) }}</span>
+                      <span v-for="tag in t.tags ?? []" :key="tag" class="tag">{{ tag }}</span>
+                    </div>
+                  </div>
+                  <button class="btn-del" @click.stop="removeTodo(t.id)">×</button>
+                </li>
+                <li v-if="!projectTasksUnsectioned.length" class="empty">暂无任务</li>
+              </ul>
+              <div v-for="s in tasksStore.sections" :key="s.id" class="section-block">
+                <h3 class="section-title">
+                  {{ s.name }}
+                  <span class="badge">{{ statusLabel(s.status) }}</span>
+                  <span class="section-stat">
+                    {{ s.stats?.completed ?? 0 }}/{{ s.stats?.total ?? 0 }}
+                  </span>
+                </h3>
+                <p v-if="s.goals" class="section-goals">{{ s.goals }}</p>
+                <ul class="task-list">
+                  <li
+                    v-for="t in tasksForSection(s.id)"
+                    :key="t.id"
+                    :class="{ done: t.completed }"
+                    @click="openEditTask(t)"
+                  >
+                    <input type="checkbox" :checked="t.completed" @click.stop @change="toggleTodo(t)" />
+                    <div class="task-body">
+                      <div class="task-title">{{ t.title }}</div>
+                      <div class="task-meta">
+                        <span class="due">{{ formatDueShort(t.due_date) }}</span>
+                        <span v-for="tag in t.tags ?? []" :key="tag" class="tag">{{ tag }}</span>
+                      </div>
+                    </div>
+                    <button class="btn-del" @click.stop="removeTodo(t.id)">×</button>
+                  </li>
+                  <li v-if="!tasksForSection(s.id).length" class="empty">暂无任务</li>
+                </ul>
+              </div>
+            </template>
+
+            <template v-else-if="selectedSection">
+              <h3 class="section-title">{{ selectedSection.name }}</h3>
+              <ul class="task-list">
+                <li
+                  v-for="t in tasksForSection(selectedSection.id)"
+                  :key="t.id"
+                  :class="{ done: t.completed }"
+                  @click="openEditTask(t)"
+                >
+                  <input type="checkbox" :checked="t.completed" @click.stop @change="toggleTodo(t)" />
+                  <div class="task-body">
+                    <div class="task-title">{{ t.title }}</div>
+                    <div class="task-meta">
+                      <span class="due">{{ formatDueShort(t.due_date) }}</span>
+                      <span v-for="tag in t.tags ?? []" :key="tag" class="tag">{{ tag }}</span>
+                    </div>
+                  </div>
+                  <button class="btn-del" @click.stop="removeTodo(t.id)">×</button>
+                </li>
+                <li v-if="!tasksForSection(selectedSection.id).length" class="empty">暂无任务</li>
+              </ul>
+              <div class="summary-block">
+                <h4>每日总结</h4>
+                <div class="summary-form">
+                  <AppDatePicker v-model="summaryDate" mode="date" placeholder="日期" />
+                  <input v-model="summaryProgress" placeholder="进度" />
+                  <input v-model="summaryRisks" placeholder="风险" />
+                  <input v-model="summaryChallenges" placeholder="挑战" />
+                  <button @click="saveSummary">保存</button>
+                </div>
+                <ul v-if="tasksStore.sectionSummaries.length" class="summary-list">
+                  <li v-for="s in tasksStore.sectionSummaries" :key="s.id">
+                    <strong>{{ s.summary_date }}</strong>
+                    <span v-if="s.progress"> · {{ s.progress }}</span>
+                  </li>
+                </ul>
+              </div>
+            </template>
+          </section>
+        </div>
+      </template>
+    </main>
+
+    <TaskEditDialog
+      :open="taskDialogOpen"
+      :mode="taskDialogMode"
+      :todo="editingTodo"
+      :projects="tasksStore.projects"
+      :sections="tasksStore.sections"
+      :inbox-project-id="inboxProjectId"
+      :available-labels="availableLabels"
+      :default-project-id="tasksStore.viewMode === 'project' ? tasksStore.selectedProjectId : inboxProjectId"
+      :default-section-id="tasksStore.selectedSectionId"
+      @project-change="onTaskDialogProjectChange"
+      @save="saveTask"
+      @cancel="taskDialogOpen = false"
+    />
+
+    <ProjectEditDialog
+      :open="projectDialogOpen"
+      :mode="projectDialogMode"
+      :project="editingProject"
+      @save="saveProject"
+      @cancel="projectDialogOpen = false"
+    />
   </div>
 </template>
 
 <style scoped>
-.tasks-view {
-  flex: 1;
-  overflow-y: auto;
-  padding: 24px;
-}
-
-header {
+.task-hub {
   display: flex;
-  flex-wrap: wrap;
-  align-items: baseline;
-  gap: 12px;
-  margin-bottom: 16px;
-}
-
-header h2 {
-  font-size: 18px;
-  margin: 0;
-}
-
-.hint {
   flex: 1;
-  color: var(--text-muted);
-  font-size: 13px;
-  margin: 0;
+  min-height: 0;
+  overflow: hidden;
 }
 
-.btn-refresh {
-  background: var(--btn-secondary-bg);
-  color: var(--text-primary);
-  border: none;
-  padding: 6px 12px;
-  border-radius: 6px;
-  cursor: pointer;
-  font-size: 12px;
-}
-
-.error { color: var(--danger); font-size: 13px; }
-.warn { color: var(--text-highlight); font-size: 13px; }
-
-.layout {
-  display: grid;
-  grid-template-columns: 220px 240px 1fr;
-  gap: 12px;
-  min-height: 400px;
-}
-
-.panel {
+.sidebar {
+  width: 240px;
+  flex-shrink: 0;
+  border-right: 1px solid var(--border);
   background: var(--bg-panel);
-  border: 1px solid var(--border);
-  border-radius: 10px;
   padding: 12px;
+  overflow-y: auto;
   display: flex;
   flex-direction: column;
-  min-height: 0;
+  gap: 16px;
 }
 
-.panel-head h3 {
-  font-size: 14px;
-  color: var(--text-secondary);
-  margin: 0 0 8px;
+.filter-grid {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 8px;
 }
 
-.inline-add {
+.filter-card {
+  position: relative;
   display: flex;
-  gap: 6px;
+  flex-direction: column;
+  align-items: flex-start;
+  gap: 4px;
+  padding: 10px;
+  border: none;
+  border-radius: 10px;
+  cursor: pointer;
+  color: #fff;
+  text-align: left;
+  min-height: 72px;
+}
+
+.filter-card.active {
+  outline: 2px solid var(--accent);
+  outline-offset: 2px;
+}
+
+.filter-inbox { background: linear-gradient(135deg, #3b82f6, #2563eb); }
+.filter-today { background: linear-gradient(135deg, #22c55e, #16a34a); }
+.filter-scheduled { background: linear-gradient(135deg, #a855f7, #7c3aed); }
+.filter-pinned { background: linear-gradient(135deg, #ef4444, #dc2626); }
+.filter-labels { background: linear-gradient(135deg, #d97706, #b45309); }
+.filter-completed { background: linear-gradient(135deg, #f97316, #ea580c); }
+
+.filter-icon { font-size: 18px; }
+.filter-label { font-size: 13px; font-weight: 600; }
+.filter-count {
+  position: absolute;
+  top: 8px;
+  right: 8px;
+  background: rgba(0, 0, 0, 0.25);
+  border-radius: 10px;
+  padding: 1px 7px;
+  font-size: 11px;
+}
+
+.projects-block {
+  flex: 1;
+  min-height: 0;
+  display: flex;
+  flex-direction: column;
+}
+
+.projects-head {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  font-size: 12px;
+  color: var(--text-muted);
   margin-bottom: 8px;
 }
 
-.inline-add input,
-.goals-input,
-.summary-form input,
-.doc-form input,
-.doc-form textarea {
-  flex: 1;
+.icon-btn {
+  background: none;
+  border: none;
+  color: var(--text-secondary);
+  cursor: pointer;
+  font-size: 16px;
+}
+
+.project-add-input {
+  width: 100%;
   background: var(--bg-code);
   border: 1px solid var(--border);
   border-radius: 6px;
-  color: var(--text-primary);
-  padding: 6px 10px;
+  padding: 6px 8px;
   font-size: 12px;
+  color: var(--text-primary);
+  margin-bottom: 8px;
 }
 
-.goals-input { width: 100%; margin-bottom: 8px; }
-
-.inline-add button {
-  background: var(--accent);
-  color: var(--text-on-accent);
-  border: none;
-  border-radius: 6px;
-  padding: 0 10px;
-  cursor: pointer;
-}
-
-.list, .todo-list {
+.project-list {
   list-style: none;
   overflow-y: auto;
   flex: 1;
 }
 
-.list li {
-  padding: 8px;
-  border-radius: 8px;
-  cursor: pointer;
-  margin-bottom: 4px;
-  border: 1px solid transparent;
-}
-
-.list li:hover { background: var(--bg-hover); }
-.list li.active {
-  background: var(--accent-subtle);
-  border-color: var(--user-bubble);
-}
-
-.row {
+.project-list li {
   display: flex;
   justify-content: space-between;
-  gap: 8px;
+  padding: 8px 10px;
+  border-radius: 8px;
+  cursor: pointer;
   font-size: 13px;
 }
 
-.badge { font-size: 10px; color: var(--text-link); }
-.meta { font-size: 11px; color: var(--text-muted); margin-top: 4px; }
-.goals-preview { font-size: 11px; color: var(--text-secondary); margin-top: 2px; }
+.project-list li:hover { background: var(--bg-hover); }
+.project-list li.active { background: var(--accent-subtle); }
+.proj-actions {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+}
+.proj-meta { color: var(--text-muted); font-size: 11px; }
 
-.progress-wrap {
-  height: 4px;
-  background: var(--border);
-  border-radius: 2px;
-  margin: 4px 0;
-  overflow: hidden;
+.btn-edit {
+  background: none;
+  border: none;
+  color: var(--text-muted);
+  cursor: pointer;
+  font-size: 12px;
+  padding: 0 4px;
+  opacity: 0;
 }
 
-.progress-bar {
-  height: 100%;
+.project-list li:hover .btn-edit {
+  opacity: 1;
+}
+
+.main-panel {
+  flex: 1;
+  overflow-y: auto;
+  padding: 20px 24px;
+  min-width: 0;
+}
+
+.main-head {
+  display: flex;
+  justify-content: space-between;
+  align-items: flex-start;
+  margin-bottom: 16px;
+  gap: 8px;
+  flex-wrap: wrap;
+}
+
+.head-actions {
+  display: flex;
+  gap: 8px;
+  align-items: center;
+}
+.btn-edit-head {
+  background: var(--btn-secondary-bg);
+  border: 1px solid var(--border);
+  border-radius: 6px;
+  padding: 6px 12px;
+  cursor: pointer;
+  font-size: 12px;
+  color: var(--text-primary);
+}
+
+.main-head h2 { margin: 0; font-size: 20px; }
+.hint { margin: 4px 0 0; color: var(--text-muted); font-size: 13px; }
+
+.btn-refresh {
+  background: var(--btn-secondary-bg);
+  border: none;
+  border-radius: 6px;
+  padding: 6px 12px;
+  cursor: pointer;
+  font-size: 12px;
+  color: var(--text-primary);
+}
+
+.error { color: var(--danger); font-size: 13px; }
+.warn { color: var(--text-highlight); font-size: 13px; }
+
+.inline-add {
+  display: flex;
+  gap: 8px;
+  margin-bottom: 16px;
+  align-items: center;
+}
+
+.inline-add :deep(.app-date-picker) {
+  width: 180px;
+  flex-shrink: 0;
+}
+
+.inline-add input {
+  flex: 1;
+  background: var(--bg-code);
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  padding: 8px 12px;
+  font-size: 13px;
+  color: var(--text-primary);
+}
+
+.inline-add button {
   background: var(--accent);
+  color: var(--text-on-accent);
+  border: none;
+  border-radius: 8px;
+  padding: 0 16px;
+  cursor: pointer;
+  white-space: nowrap;
 }
 
-.todo-list li {
+.btn-detail {
+  background: var(--btn-secondary-bg) !important;
+  color: var(--text-primary) !important;
+  padding: 0 12px !important;
+}
+
+.task-list { list-style: none; }
+
+.task-list li {
   display: flex;
   align-items: flex-start;
-  gap: 10px;
-  padding: 8px 4px;
-  border-bottom: 1px solid var(--bg-hover);
-  font-size: 13px;
+  gap: 12px;
+  padding: 12px;
+  margin-bottom: 8px;
+  background: var(--bg-panel);
+  border: 1px solid var(--border);
+  border-left: 3px solid var(--danger);
+  border-radius: 10px;
+  cursor: pointer;
 }
 
-.todo-list li.done .title {
+.task-list li.done {
+  opacity: 0.65;
+  border-left-color: var(--text-muted);
+}
+
+.task-list li.done .task-title {
   text-decoration: line-through;
   color: var(--text-muted);
 }
 
-.todo-body { flex: 1; min-width: 0; }
+.task-body { flex: 1; min-width: 0; }
+.task-title { font-size: 14px; font-weight: 500; }
+.task-meta { display: flex; flex-wrap: wrap; gap: 6px; margin-top: 6px; }
 
-.tags { display: flex; flex-wrap: wrap; gap: 4px; margin-top: 4px; }
-
+.due { font-size: 11px; color: var(--text-muted); }
 .tag {
   font-size: 10px;
   background: var(--border);
@@ -548,8 +858,7 @@ header h2 {
   padding: 2px 6px;
   border-radius: 4px;
 }
-
-.empty { color: var(--text-muted); font-size: 12px; padding: 8px; cursor: default; }
+.tag.pri { color: var(--text-highlight); }
 
 .btn-del {
   background: none;
@@ -559,16 +868,113 @@ header h2 {
   font-size: 18px;
 }
 
-.sub-section {
-  margin-top: 16px;
-  padding-top: 12px;
-  border-top: 1px solid var(--border);
+.empty { color: var(--text-muted); font-size: 13px; padding: 12px 4px; }
+
+.labels-panel h3 { font-size: 14px; margin-bottom: 12px; }
+.label-list { list-style: none; }
+.label-list li {
+  display: flex;
+  justify-content: space-between;
+  padding: 10px 12px;
+  border-bottom: 1px solid var(--border);
+  cursor: pointer;
+}
+.label-list li:hover { background: var(--bg-hover); }
+.tag-chip {
+  background: var(--accent-subtle);
+  padding: 4px 10px;
+  border-radius: 6px;
+  font-size: 13px;
 }
 
-.sub-section h4 {
-  font-size: 13px;
-  color: var(--text-secondary);
-  margin-bottom: 8px;
+.project-toolbar {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  margin-bottom: 16px;
+}
+
+.project-toolbar select {
+  background: var(--bg-code);
+  border: 1px solid var(--border);
+  border-radius: 6px;
+  padding: 6px 10px;
+  color: var(--text-primary);
+}
+
+.progress-wrap {
+  flex: 1;
+  height: 6px;
+  background: var(--border);
+  border-radius: 3px;
+  overflow: hidden;
+}
+
+.progress-bar { height: 100%; background: var(--accent); }
+.progress-text { font-size: 12px; color: var(--text-muted); }
+
+.project-layout {
+  display: grid;
+  grid-template-columns: 180px 1fr;
+  gap: 16px;
+  min-height: 300px;
+}
+
+.section-nav {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+}
+
+.section-nav button {
+  text-align: left;
+  background: var(--bg-panel);
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  padding: 8px 10px;
+  cursor: pointer;
+  color: var(--text-primary);
+  font-size: 12px;
+}
+
+.section-nav button.active {
+  background: var(--accent-subtle);
+  border-color: var(--user-bubble);
+}
+
+.section-add {
+  margin-top: 12px;
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+
+.section-add input {
+  background: var(--bg-code);
+  border: 1px solid var(--border);
+  border-radius: 6px;
+  padding: 6px 8px;
+  font-size: 11px;
+  color: var(--text-primary);
+}
+
+.section-title {
+  font-size: 14px;
+  margin: 16px 0 8px;
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.section-goals { font-size: 12px; color: var(--text-secondary); margin-bottom: 8px; }
+.badge { font-size: 10px; color: var(--text-link); }
+.section-stat { font-size: 11px; color: var(--text-muted); }
+.section-block { margin-bottom: 20px; }
+
+.summary-block {
+  margin-top: 20px;
+  padding-top: 16px;
+  border-top: 1px solid var(--border);
 }
 
 .summary-form {
@@ -578,14 +984,16 @@ header h2 {
   margin-bottom: 8px;
 }
 
-.summary-list { font-size: 12px; list-style: none; }
-.summary-list li { padding: 4px 0; border-bottom: 1px solid var(--bg-hover); }
-
-.toggle {
+.summary-form input {
+  flex: 1;
+  min-width: 100px;
+  background: var(--bg-code);
+  border: 1px solid var(--border);
+  border-radius: 6px;
+  padding: 6px 8px;
   font-size: 12px;
-  color: var(--text-muted);
-  display: flex;
-  align-items: center;
-  gap: 6px;
+  color: var(--text-primary);
 }
+
+.summary-list { list-style: none; font-size: 12px; }
 </style>

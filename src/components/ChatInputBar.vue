@@ -114,6 +114,24 @@ function onDocClick(e: MouseEvent) {
   if (!target.closest('.input-bar-root')) closeAllMenus();
 }
 
+let startupFocusPending = true;
+
+watch(
+  [
+    () => sessionStore.currentThreadId,
+    () => settings.wsConnected,
+    () => navigation.activeView,
+  ],
+  ([threadId, connected, view]) => {
+    if (!startupFocusPending) return;
+    if (threadId && connected && view === 'chat') {
+      startupFocusPending = false;
+      nextTick(() => textareaRef.value?.focus());
+    }
+  },
+  { immediate: true }
+);
+
 onMounted(async () => {
   document.addEventListener('click', onDocClick);
   await loadSkills();

@@ -1,5 +1,6 @@
 import { ref } from 'vue';
 import { defineStore } from 'pinia';
+import { localDatetimeToIso } from '@/utils/dateTime';
 
 export type ProjectStats = {
   total: number;
@@ -66,7 +67,12 @@ export type TodoItem = {
   remind_at?: string;
   owner?: string;
   status?: string;
+  tags?: string[];
 };
+
+export type TaskViewMode = 'filter' | 'project';
+
+export type TaskFilterId = import('@/utils/taskFilters').TaskFilterId;
 
 export type ReminderItem = {
   job_id: string;
@@ -94,39 +100,76 @@ export const useTasksStore = defineStore('tasks', () => {
   const sectionSummaries = ref<SectionSummary[]>([]);
   const lastDocMessage = ref('');
   const reminders = ref<ReminderItem[]>([]);
-
-  function toIsoDatetime(local: string): string {
-    if (!local.trim()) return '';
-    const d = new Date(local);
-    return Number.isNaN(d.getTime()) ? local : d.toISOString();
-  }
+  const allTodos = ref<TodoItem[]>([]);
+  const viewMode = ref<TaskViewMode>('filter');
+  const activeFilter = ref<TaskFilterId>('inbox');
+  const activeLabel = ref<string | null>(null);
 
   async function refresh(port: number) {
     loading.value = true;
     error.value = '';
     try {
-      const params = new URLSearchParams({ include_completed: 'true' });
-      if (selectedProjectId.value != null) {
-        params.set('project_id', String(selectedProjectId.value));
-      }
-      if (selectedSectionId.value != null) {
-        params.set('section_id', String(selectedSectionId.value));
-      }
-      const res = await fetch(`${sidecarBase(port)}/tasks/snapshot?${params}`);
+      const res = await fetch(`${sidecarBase(port)}/tasks/snapshot?include_completed=true`);
       if (!res.ok) throw new Error(await res.text());
       const data = await res.json();
       inbox.value = data.inbox ?? null;
-      projects.value = data.projects ?? [];
-      sections.value = data.sections ?? [];
-      todos.value = data.todos ?? [];
+      projects.value = (data.projects ?? []).filter((p: ProjectItem) => !p.is_inbox);
+      allTodos.value = data.todos ?? [];
+      todos.value = allTodos.value;
       reminders.value = data.reminders ?? [];
+
+      if (viewMode.value === 'project' && selectedProjectId.value != null) {
+        const detail = await fetch(`${sidecarBase(port)}/tasks/projects/${selectedProjectId.value}`);
+        if (detail.ok) {
+          const pj = await detail.json();
+          sections.value = pj.sections ?? [];
+          projectDocs.value = pj.docs ?? [];
+        }
+      } else if (viewMode.value === 'project' && selectedProjectId.value == null) {
+        sections.value = [];
+      } else {
+        sections.value = [];
+      }
     } catch (e) {
       error.value = e instanceof Error ? e.message : String(e);
       projects.value = [];
       sections.value = [];
       todos.value = [];
+      allTodos.value = [];
     } finally {
       loading.value = false;
+    }
+  }
+
+  function selectFilter(filter: TaskFilterId) {
+    viewMode.value = 'filter';
+    activeFilter.value = filter;
+    activeLabel.value = null;
+    selectedProjectId.value = null;
+    selectedSectionId.value = null;
+    sectionSummaries.value = [];
+    projectDocs.value = [];
+    sections.value = [];
+  }
+
+  function selectLabel(label: string) {
+    viewMode.value = 'filter';
+    activeFilter.value = 'labels';
+    activeLabel.value = label;
+    selectedProjectId.value = null;
+    selectedSectionId.value = null;
+  }
+
+  async function selectProjectView(port: number, id: number) {
+    viewMode.value = 'project';
+    selectedProjectId.value = id;
+    selectedSectionId.value = null;
+    sectionSummaries.value = [];
+    lastDocMessage.value = '';
+    try {
+      await fetchProjectDetail(port, id);
+    } catch (e) {
+      error.value = e instanceof Error ? e.message : String(e);
     }
   }
 
@@ -134,6 +177,16 @@ export const useTasksStore = defineStore('tasks', () => {
     selectedProjectId.value = id;
     selectedSectionId.value = null;
     sectionSummaries.value = [];
+  }
+
+  function toIsoDatetime(local: string): string {
+    return localDatetimeToIso(local);
+  }
+
+  function toIsoDate(isoOrLocal: string): string {
+    if (!isoOrLocal.trim()) return '';
+    const d = new Date(isoOrLocal);
+    return Number.isNaN(d.getTime()) ? isoOrLocal : d.toISOString();
   }
 
   function selectSection(id: number | null) {
@@ -183,6 +236,8 @@ export const useTasksStore = defineStore('tasks', () => {
       priority?: string;
       due_date?: string;
       remind_at?: string;
+      description?: string;
+      tags?: string[];
     }
   ) {
     const body = {
@@ -199,7 +254,70 @@ export const useTasksStore = defineStore('tasks', () => {
     await refresh(port);
   }
 
+  async function updateTodo(
+    port: number,
+    todoId: number,
+    payload: {
+      title?: string;
+      description?: string;
+      due_date?: string;
+      remind_at?: string;
+      priority?: string;
+      completed?: boolean;
+      project_id?: number | null;
+      section_id?: number | null;
+      tags?: string[];
+      clear_reminder?: boolean;
+    }
+  ) {
+    const body: Record<string, unknown> = { ...payload };
+    if (payload.due_date !== undefined) {
+      body.due_date = payload.due_date ? toIsoDatetime(payload.due_date) : '';
+    }
+    if (payload.remind_at !== undefined) {
+      body.remind_at = payload.remind_at ? toIsoDatetime(payload.remind_at) : '';
+    }
+    const res = await fetch(`${sidecarBase(port)}/tasks/todos/${todoId}`, {
+      method: 'PATCH',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify(body),
+    });
+    if (!res.ok) throw new Error(await res.text());
+    await refresh(port);
+  }
+
   async function createProject(
+    port: number,
+    payload: {
+      name: string;
+      description?: string;
+      status?: string;
+      start_at?: string;
+      end_at?: string;
+      owner?: string;
+      remind_at?: string;
+    }
+  ) {
+    const res = await fetch(`${sidecarBase(port)}/tasks/projects`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        name: payload.name,
+        description: payload.description ?? '',
+        status: payload.status ?? 'active',
+        start_at: payload.start_at ? toIsoDate(payload.start_at) : '',
+        end_at: payload.end_at ? toIsoDate(payload.end_at) : '',
+        due_date: payload.end_at ? toIsoDate(payload.end_at) : '',
+        owner: payload.owner ?? '',
+        remind_at: payload.remind_at ? toIsoDatetime(payload.remind_at) : '',
+      }),
+    });
+    if (!res.ok) throw new Error(await res.text());
+    await refresh(port);
+  }
+
+  /** @deprecated 使用 createProject(port, { name, ... }) */
+  async function createProjectLegacy(
     port: number,
     name: string,
     description = '',
@@ -207,19 +325,76 @@ export const useTasksStore = defineStore('tasks', () => {
     endAt = '',
     owner = ''
   ) {
-    const res = await fetch(`${sidecarBase(port)}/tasks/projects`, {
-      method: 'POST',
+    await createProject(port, { name, description, start_at: startAt, end_at: endAt, owner });
+  }
+
+  async function updateProject(
+    port: number,
+    projectId: number,
+    payload: {
+      name?: string;
+      description?: string;
+      status?: string;
+      start_at?: string;
+      end_at?: string;
+      owner?: string;
+      remind_at?: string;
+    }
+  ) {
+    const body: Record<string, unknown> = {};
+    if (payload.name !== undefined) body.name = payload.name;
+    if (payload.description !== undefined) body.description = payload.description;
+    if (payload.status !== undefined) body.status = payload.status;
+    if (payload.start_at !== undefined) {
+      body.start_at = payload.start_at ? toIsoDate(payload.start_at) : '';
+    }
+    if (payload.end_at !== undefined) {
+      body.end_at = payload.end_at ? toIsoDate(payload.end_at) : '';
+      body.due_date = payload.end_at ? toIsoDate(payload.end_at) : '';
+    }
+    if (payload.owner !== undefined) body.owner = payload.owner;
+    if (payload.remind_at !== undefined) {
+      body.remind_at = payload.remind_at ? toIsoDatetime(payload.remind_at) : '';
+    }
+    const res = await fetch(`${sidecarBase(port)}/tasks/projects/${projectId}`, {
+      method: 'PATCH',
       headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({
-        name,
-        description,
-        status: 'active',
-        start_at: toIsoDatetime(startAt),
-        end_at: toIsoDatetime(endAt),
-        owner,
-      }),
+      body: JSON.stringify(body),
     });
     if (!res.ok) throw new Error(await res.text());
+    await refresh(port);
+    if (selectedProjectId.value === projectId) {
+      await fetchProjectDetail(port, projectId);
+    }
+  }
+
+  async function updateSection(
+    port: number,
+    sectionId: number,
+    payload: {
+      name?: string;
+      goals?: string;
+      status?: string;
+      start_at?: string;
+      end_at?: string;
+      owner?: string;
+    }
+  ) {
+    const body: Record<string, unknown> = { ...payload };
+    if (payload.start_at !== undefined) {
+      body.start_at = payload.start_at ? toIsoDate(payload.start_at) : '';
+    }
+    if (payload.end_at !== undefined) {
+      body.end_at = payload.end_at ? toIsoDate(payload.end_at) : '';
+    }
+    const res = await fetch(`${sidecarBase(port)}/tasks/sections/${sectionId}`, {
+      method: 'PATCH',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify(body),
+    });
+    if (!res.ok) throw new Error(await res.text());
+    const pid = selectedProjectId.value;
+    if (pid != null) await loadSections(port, pid);
     await refresh(port);
   }
 
@@ -315,6 +490,7 @@ export const useTasksStore = defineStore('tasks', () => {
     projects,
     sections,
     todos,
+    allTodos,
     inbox,
     projectDocs,
     sectionSummaries,
@@ -322,9 +498,15 @@ export const useTasksStore = defineStore('tasks', () => {
     reminders,
     selectedProjectId,
     selectedSectionId,
+    viewMode,
+    activeFilter,
+    activeLabel,
     loading,
     error,
     refresh,
+    selectFilter,
+    selectLabel,
+    selectProjectView,
     selectProject,
     selectSection,
     loadSections,
@@ -333,7 +515,11 @@ export const useTasksStore = defineStore('tasks', () => {
     fetchTodos,
     toggleTodoComplete,
     createTodo,
+    updateTodo,
     createProject,
+    createProjectLegacy,
+    updateProject,
+    updateSection,
     createSection,
     saveSectionSummary,
     updateProjectStatus,

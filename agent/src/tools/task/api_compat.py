@@ -71,6 +71,7 @@ def create_todo_record(
     section_id: int | None = None,
     description: str = "",
     remind_at: str = "",
+    tags: list[str] | None = None,
     *,
     store: TaskStore | None = None,
 ) -> dict[str, Any]:
@@ -89,7 +90,7 @@ def create_todo_record(
         description,
         due_at=due_date or None,
         remind_at=remind_at or None,
-        tags=_build_tags(priority),
+        tags=_build_tags(priority, tags),
         status="pending",
         project_id=pid,
         section_id=section_id,
@@ -148,6 +149,7 @@ def update_todo_record(
     clear_section: bool = False,
     remind_at: str | None = None,
     clear_reminder: bool = False,
+    tags: list[str] | None = None,
     *,
     store: TaskStore | None = None,
 ) -> dict[str, Any] | None:
@@ -183,7 +185,8 @@ def update_todo_record(
         kwargs["section_id"] = section_id
 
     new_priority = priority if priority is not None else _parse_priority(row.tags)
-    kwargs["tags"] = _build_tags(new_priority, _user_tags(row.tags))
+    user_tags = tags if tags is not None else _user_tags(row.tags)
+    kwargs["tags"] = _build_tags(new_priority, user_tags)
 
     store.update(todo_id, **kwargs)
     updated = store.get(todo_id)

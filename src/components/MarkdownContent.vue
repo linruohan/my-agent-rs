@@ -349,14 +349,28 @@ async function onClick(e: MouseEvent) {
   font-weight: 550;
 }
 
+.markdown-body :deep(.md-table-wrap) {
+  overflow-x: auto;
+  max-width: 100%;
+  margin: 0.6em 0;
+  -webkit-overflow-scrolling: touch;
+}
+
+.markdown-body :deep(.md-table-wrap table) {
+  width: 100%;
+  min-width: 520px;
+  border-collapse: collapse;
+  font-size: 0.92em;
+  table-layout: auto;
+}
+
 .markdown-body :deep(table) {
-  display: block;
-  width: max-content;
+  width: 100%;
   max-width: 100%;
   border-collapse: collapse;
   margin: 0.6em 0;
   font-size: 0.92em;
-  overflow-x: auto;
+  table-layout: auto;
 }
 
 .markdown-body :deep(th),
@@ -364,6 +378,14 @@ async function onClick(e: MouseEvent) {
   border: 1px solid var(--border);
   padding: 6px 10px;
   text-align: left;
+  vertical-align: top;
+  white-space: nowrap;
+}
+
+.markdown-body :deep(td:nth-child(2)) {
+  white-space: normal;
+  min-width: 6em;
+  max-width: 14em;
 }
 
 .markdown-body :deep(th) {

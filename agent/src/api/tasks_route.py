@@ -16,6 +16,7 @@ class TodoCreateBody(BaseModel):
     section_id: int | None = None
     description: str = ""
     remind_at: str = ""
+    tags: list[str] = []
 
 
 class ReminderBody(BaseModel):
@@ -27,6 +28,12 @@ class TodoPatchBody(BaseModel):
     title: str | None = None
     priority: str | None = None
     section_id: int | None = None
+    due_date: str | None = None
+    description: str | None = None
+    project_id: int | None = None
+    remind_at: str | None = None
+    tags: list[str] | None = None
+    clear_reminder: bool | None = None
 
 
 class ProjectCreateBody(BaseModel):
@@ -355,6 +362,7 @@ def create_todo_api(body: TodoCreateBody) -> dict[str, Any]:
             body.section_id,
             body.description,
             body.remind_at,
+            tags=body.tags,
         )
     except ValueError as e:
         raise HTTPException(status_code=400, detail=str(e)) from e
@@ -371,6 +379,12 @@ def patch_todo_api(todo_id: int, body: TodoPatchBody) -> dict[str, Any]:
         priority=body.priority,
         completed=body.completed,
         section_id=body.section_id,
+        due_date=body.due_date,
+        description=body.description,
+        project_id=body.project_id,
+        remind_at=body.remind_at,
+        tags=body.tags,
+        clear_reminder=bool(body.clear_reminder),
     )
     if not updated:
         raise HTTPException(status_code=404, detail="Todo not found")

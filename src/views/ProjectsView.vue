@@ -92,7 +92,7 @@ async function addProject() {
   const name = newProjectName.value.trim();
   if (!name) return;
   try {
-    await tasksStore.createProject(
+    await tasksStore.createProjectLegacy(
       settings.sidecarPort,
       name,
       '',
