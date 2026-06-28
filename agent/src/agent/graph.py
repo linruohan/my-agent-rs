@@ -98,9 +98,22 @@ def _build_system_prompt(state: AgentState) -> str:
             "IMPORTANT: Stop calling tools. Answer the user now using tool results "
             "already in this conversation."
         )
+    elif meta.get("retry_tools"):
+        parts.append(
+            "IMPORTANT: The previous tool call(s) failed or returned no useful data. "
+            "Try a different tool or different arguments once, then answer the user."
+        )
 
     if prefs:
-        parts.append(f"User preferences:\n{json.dumps(prefs, ensure_ascii=False)}")
+        lines = ["User preferences (long-term memory):"]
+        for key, val in prefs.items():
+            if isinstance(val, list):
+                lines.append(f"- {key}: " + "; ".join(str(v) for v in val))
+            elif isinstance(val, dict):
+                lines.append(f"- {key}: {json.dumps(val, ensure_ascii=False)}")
+            else:
+                lines.append(f"- {key}: {val}")
+        parts.append("\n".join(lines))
 
     task_plan = state.get("task_plan")
     if task_plan:
@@ -407,14 +420,34 @@ def _extract_tool_citations(tool_name: str, output: str) -> list[dict[str, str]]
 
 
 def create_reflect_node():
-    """Update metadata after tools; avoid injecting messages that cause retry loops."""
+    """Inspect tool results; allow one retry round before forcing answer."""
 
     def reflect(state: AgentState) -> dict[str, Any]:
+        from langchain_core.messages import ToolMessage
+
         meta = _state_metadata(state)
         rounds = meta.get("tool_rounds", 0)
+        messages = state.get("messages", [])
+
+        last_tool_msgs: list[ToolMessage] = []
+        for msg in reversed(messages):
+            if isinstance(msg, ToolMessage):
+                last_tool_msgs.insert(0, msg)
+            elif last_tool_msgs:
+                break
+
+        batch_failed = bool(last_tool_msgs) and all(
+            not _is_usable_tool_output(str(tm.content or "")) for tm in last_tool_msgs
+        )
 
         if meta.get("has_tool_content"):
             meta["force_answer"] = True
+            meta.pop("retry_tools", None)
+        elif batch_failed and not meta.get("retry_tools") and rounds < MAX_TOOL_ROUNDS:
+            meta["retry_tools"] = True
+        elif batch_failed and meta.get("retry_tools"):
+            meta["force_answer"] = True
+            meta.pop("retry_tools", None)
         elif rounds >= MAX_TOOL_ROUNDS:
             meta["force_answer"] = True
 

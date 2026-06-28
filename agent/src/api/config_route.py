@@ -13,6 +13,11 @@ from infra.config import (
     load_user_llm_config,
     save_user_llm_config,
 )
+from infra.user_settings import (
+    get_effective_user_settings,
+    load_user_settings,
+    save_user_settings,
+)
 
 router = APIRouter()
 
@@ -46,6 +51,47 @@ class McpConfigBody(BaseModel):
 
 class WorkspaceConfigBody(BaseModel):
     workspace: str = Field(min_length=1)
+
+
+class HitlSettingsBody(BaseModel):
+    timeout_sec: int = Field(ge=30, le=3600)
+    on_timeout: str = Field(default="reject")
+    notify_before_sec: int = Field(default=30, ge=0, le=600)
+
+
+class LlmRuntimeBody(BaseModel):
+    temperature: float = Field(default=0.7, ge=0, le=2)
+    max_tokens: int = Field(default=4096, ge=256, le=128000)
+
+
+class WebSearchSettingsBody(BaseModel):
+    backend: str = ""
+
+
+class ConversationSettingsBody(BaseModel):
+    max_history_messages: int = Field(default=50, ge=10, le=500)
+    auto_title: bool = True
+
+
+class MemorySettingsBody(BaseModel):
+    auto_learn: bool = False
+    history_recall: bool = True
+    history_similarity_min: float = Field(default=0.72, ge=0.5, le=1.0)
+    history_max_age_days: int = Field(default=90, ge=1, le=365)
+
+
+class NotificationSettingsBody(BaseModel):
+    desktop_enabled: bool = True
+    sound_enabled: bool = False
+
+
+class UserSettingsBody(BaseModel):
+    hitl: HitlSettingsBody | None = None
+    llm: LlmRuntimeBody | None = None
+    web_search: WebSearchSettingsBody | None = None
+    conversation: ConversationSettingsBody | None = None
+    memory: MemorySettingsBody | None = None
+    notifications: NotificationSettingsBody | None = None
 
 
 @router.get("/config/llm")
@@ -112,9 +158,36 @@ async def get_workspace_config():
 @router.put("/config/workspace")
 async def put_workspace_config(body: WorkspaceConfigBody):
     from infra.config import get_workspace_dir
-    from infra.user_settings import load_user_settings, save_user_settings
 
     settings = load_user_settings()
     settings["workspace"] = body.workspace.strip()
     save_user_settings(settings)
     return {"ok": True, "workspace": str(get_workspace_dir())}
+
+
+@router.get("/config/user")
+async def get_user_app_config():
+    return get_effective_user_settings()
+
+
+@router.put("/config/user")
+async def put_user_app_config(body: UserSettingsBody):
+    settings = load_user_settings()
+    payload = body.model_dump(exclude_none=True)
+    for key, value in payload.items():
+        if isinstance(value, dict) and isinstance(settings.get(key), dict):
+            settings[key] = {**settings[key], **value}
+        else:
+            settings[key] = value
+    save_user_settings(settings)
+    from infra.hitl import hitl_timeout_manager
+
+    hitl_timeout_manager._reload_config()
+    return {"ok": True, **get_effective_user_settings()}
+
+
+@router.get("/memory/summary")
+async def get_memory_summary():
+    from memory.learner import list_learned_summary
+
+    return list_learned_summary()

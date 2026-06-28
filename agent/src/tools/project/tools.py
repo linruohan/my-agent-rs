@@ -226,6 +226,25 @@ def add_project_document(
     return msg
 
 
+@tool
+def set_project_reminder(project_id: int, remind_at: str = "") -> str:
+    """为项目设置或清除提醒时间（ISO 8601，如 2026-06-28T09:00:00）。留空则取消提醒。"""
+    from tools.business.project import get_project_record, update_project_record
+
+    if not get_project_record(project_id):
+        return f"项目 #{project_id} 不存在。"
+    if remind_at.strip():
+        updated = update_project_record(project_id, remind_at=remind_at.strip())
+    else:
+        updated = update_project_record(project_id, clear_reminder=True)
+    if not updated:
+        return f"项目 #{project_id} 更新失败。"
+    scheduled = (updated.get("remind_at") or "").strip()
+    if scheduled:
+        return f"已为项目 #{project_id} 设置提醒: {scheduled}"
+    return f"已取消项目 #{project_id} 的提醒。"
+
+
 PROJECT_TOOLS = [
     create_project,
     list_projects,
@@ -236,4 +255,5 @@ PROJECT_TOOLS = [
     list_section_daily_summaries,
     get_project_status,
     add_project_document,
+    set_project_reminder,
 ]

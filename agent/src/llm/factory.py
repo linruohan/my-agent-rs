@@ -6,6 +6,7 @@ from typing import Any
 from langchain_core.language_models.chat_models import BaseChatModel
 
 from infra.config import load_llm_providers_config
+from infra.user_settings import get_llm_runtime_settings
 
 
 def get_default_provider() -> str:
@@ -26,13 +27,21 @@ def create_llm(provider_cfg: dict[str, Any] | None = None, **kwargs: Any) -> Bas
     cfg = provider_cfg or load_provider()
     provider_type = cfg.get("type", "openai_compatible")
     model = cfg.get("model", "gpt-4o")
-    temperature = kwargs.pop("temperature", 0.7)
+    runtime = get_llm_runtime_settings()
+    temperature = kwargs.pop("temperature", runtime.get("temperature", 0.7))
+    max_tokens = kwargs.pop("max_tokens", runtime.get("max_tokens"))
 
     if provider_type == "anthropic":
         from langchain_anthropic import ChatAnthropic
 
         api_key = os.environ.get(cfg.get("api_key_env", "ANTHROPIC_API_KEY"), "")
-        return ChatAnthropic(model=model, api_key=api_key, temperature=temperature, **kwargs)
+        return ChatAnthropic(
+            model=model,
+            api_key=api_key,
+            temperature=temperature,
+            max_tokens=max_tokens,
+            **kwargs,
+        )
 
     if provider_type == "ollama":
         try:
@@ -56,6 +65,8 @@ def create_llm(provider_cfg: dict[str, Any] | None = None, **kwargs: Any) -> Bas
         "max_retries": cfg.get("max_retries", 2),
         **kwargs,
     }
+    if max_tokens:
+        llm_kwargs["max_tokens"] = int(max_tokens)
     if base_url:
         llm_kwargs["base_url"] = base_url
     return ChatOpenAI(**llm_kwargs)

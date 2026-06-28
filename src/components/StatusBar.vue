@@ -28,6 +28,10 @@ const modelLabel = computed(() => {
       <span v-if="settings.lastTurnDurationMs != null">
         {{ settings.lastTurnDurationMs }}ms
       </span>
+      <span v-if="settings.lastTokenUsage?.total_tokens" class="status-sep">·</span>
+      <span v-if="settings.lastTokenUsage?.total_tokens" title="上轮 Token 用量">
+        {{ settings.lastTokenUsage.total_tokens }} tok
+      </span>
     </div>
     <div class="status-right">
       <span class="provider-tag">

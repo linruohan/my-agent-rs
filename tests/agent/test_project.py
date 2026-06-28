@@ -24,6 +24,26 @@ def _cleanup_data_dirs() -> None:
     shutdown_scheduler()
 
 
+def test_set_project_reminder_tool(monkeypatch):
+    with tempfile.TemporaryDirectory() as tmp:
+        data_dir = Path(tmp)
+        _patch_data_dirs(monkeypatch, data_dir)
+        try:
+            from tools.project.tools import set_project_reminder
+            from tools.business.project import create_project_record
+
+            project = create_project_record("Reminder Test")
+            pid = project["id"]
+            result = set_project_reminder.invoke(
+                {"project_id": pid, "remind_at": "2099-01-01T09:00:00"}
+            )
+            assert "设置提醒" in result
+            cleared = set_project_reminder.invoke({"project_id": pid, "remind_at": ""})
+            assert "取消" in cleared
+        finally:
+            _cleanup_data_dirs()
+
+
 def test_project_lifecycle(monkeypatch):
     with tempfile.TemporaryDirectory() as tmp:
         data_dir = Path(tmp)

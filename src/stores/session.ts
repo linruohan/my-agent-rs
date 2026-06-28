@@ -38,7 +38,8 @@ export const useSessionStore = defineStore('session', () => {
   const interruptQueue = ref<InterruptEvent[]>([]);
   const messages = ref<Message[]>([]);
   const isStreaming = ref(false);
-  const sessions = ref<Array<{ thread_id: string; title: string; created_at: string }>>([]);
+  const sessions = ref<Array<{ thread_id: string; title: string; created_at: string; archived?: boolean }>>([]);
+  const archivedSessions = ref<Array<{ thread_id: string; title: string; created_at: string; archived?: boolean }>>([]);
   const pinnedIds = ref<string[]>(loadPinned());
   const sessionPreviews = ref<Record<string, string>>(loadPreviews());
   const inputFocusGeneration = ref(0);
@@ -187,6 +188,7 @@ export const useSessionStore = defineStore('session', () => {
     messages,
     isStreaming,
     sessions,
+    archivedSessions,
     pinnedIds,
     sessionPreviews,
     inputFocusGeneration,

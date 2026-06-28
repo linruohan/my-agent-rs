@@ -8,10 +8,12 @@ from infra.hitl import HitlTimeoutManager
 
 
 @pytest.mark.asyncio
-async def test_hitl_timeout_auto_reject():
+async def test_hitl_timeout_auto_reject(monkeypatch):
+    monkeypatch.setattr(
+        "infra.hitl.load_effective_app_config",
+        lambda: {"hitl": {"timeout_sec": 1, "on_timeout": "reject", "notify_before_sec": 0}},
+    )
     manager = HitlTimeoutManager()
-    manager.timeout_sec = 1
-    manager.on_timeout = "reject"
     called = []
 
     async def cb(thread_id, decision, edited_args):

@@ -179,10 +179,22 @@ export function useAgentWs() {
         const metadata = msg.metadata as {
           duration_ms?: number;
           task_data_changed?: boolean;
+          token_usage?: {
+            prompt_tokens?: number;
+            completion_tokens?: number;
+            total_tokens?: number;
+          };
         } | undefined;
         if (metadata?.duration_ms != null) {
           settingsStore.setLastTurnDuration(metadata.duration_ms);
           sessionStore.setLastAssistantDuration(metadata.duration_ms);
+        }
+        if (metadata?.token_usage?.total_tokens) {
+          settingsStore.setLastTokenUsage({
+            prompt_tokens: metadata.token_usage.prompt_tokens ?? 0,
+            completion_tokens: metadata.token_usage.completion_tokens ?? 0,
+            total_tokens: metadata.token_usage.total_tokens ?? 0,
+          });
         }
         if (metadata?.task_data_changed) {
           void tasksStore.refreshIfRunning();
@@ -198,6 +210,7 @@ export function useAgentWs() {
           role: 'assistant',
           content: `🔔 ${title}: ${body}`,
         });
+        if (!settingsStore.notificationPrefs.desktopEnabled) break;
         import('@tauri-apps/plugin-notification')
           .then(({ sendNotification, isPermissionGranted, requestPermission }) => {
             isPermissionGranted().then((granted) => {
@@ -210,6 +223,25 @@ export function useAgentWs() {
           });
         break;
       }
+
+      case 'session.archived':
+        sessionStore.archivedSessions =
+          (msg.sessions as typeof sessionStore.archivedSessions) || [];
+        break;
+
+      case 'session.archived_one':
+        if (msg.ok) {
+          listSessions();
+          listArchivedSessions();
+        }
+        break;
+
+      case 'session.unarchived':
+        if (msg.ok) {
+          listSessions();
+          listArchivedSessions();
+        }
+        break;
 
       case 'error':
         sessionStore.isStreaming = false;
@@ -387,6 +419,18 @@ export function useAgentWs() {
     sendRaw({ type: 'session.list' });
   }
 
+  function listArchivedSessions() {
+    sendRaw({ type: 'session.archived' });
+  }
+
+  function archiveSession(threadId: string) {
+    sendRaw({ type: 'session.archive', thread_id: threadId });
+  }
+
+  function unarchiveSession(threadId: string) {
+    sendRaw({ type: 'session.unarchive', thread_id: threadId });
+  }
+
   function bootstrapInitialSession() {
     if (sessionStore.currentThreadId || initialSessionBootstrapped) return;
     initialSessionBootstrapped = true;
@@ -450,6 +494,9 @@ export function useAgentWs() {
     stop,
     resume,
     listSessions,
+    listArchivedSessions,
+    archiveSession,
+    unarchiveSession,
     createSession,
     deleteSession,
     loadSessionHistory,

@@ -10,6 +10,8 @@ from langgraph.types import Command
 
 from agent.slash import dispatch_slash_command
 from infra.config import load_tools_config
+from memory.chat_recall import find_cached_answer, record_turn
+from memory.learner import learn_from_user_message
 from ocr.compose import compose_user_message, try_direct_ocr_reply
 from tools.registry import ToolRegistry
 
@@ -23,6 +25,7 @@ class AgentRunner:
         self.graph = graph
         self.registry = registry
         self._active: dict[str, asyncio.Task] = {}
+        self._turn_usage: dict[str, dict[str, int]] = {}
 
     async def run(
         self,
@@ -40,6 +43,7 @@ class AgentRunner:
 
         try:
             ocr_timeout = _ocr_timeout_sec()
+            self._turn_usage[thread_id] = {"prompt_tokens": 0, "completion_tokens": 0, "total_tokens": 0}
             direct_ocr = await asyncio.to_thread(
                 try_direct_ocr_reply, content, attachments, timeout=ocr_timeout
             )
@@ -91,6 +95,25 @@ class AgentRunner:
                 )
                 return
 
+            learn_from_user_message(user_text)
+
+            cached = await asyncio.to_thread(
+                find_cached_answer,
+                user_text,
+                thread_id,
+                has_attachments=bool(attachments),
+            )
+            if cached:
+                await self._emit_history_recall(
+                    thread_id,
+                    config,
+                    user_text,
+                    cached,
+                    emit,
+                    start,
+                )
+                return
+
             input_state = {"messages": [HumanMessage(content=message_content)]}
             metadata: dict[str, Any] = {"duration_ms": 0}
 
@@ -103,6 +126,10 @@ class AgentRunner:
                 return
 
             metadata["duration_ms"] = int((time.monotonic() - start) * 1000)
+            usage = self._turn_usage.pop(thread_id, {})
+            if usage:
+                metadata["token_usage"] = usage
+            await self._post_turn_index(thread_id, config, user_text)
             await emit({"type": "done", "thread_id": thread_id, "metadata": metadata})
 
         except asyncio.CancelledError:
@@ -126,6 +153,7 @@ class AgentRunner:
             )
         finally:
             self._active.pop(thread_id, None)
+            self._turn_usage.pop(thread_id, None)
 
     async def _handle_event(
         self, event: dict[str, Any], thread_id: str, emit: EventCallback
@@ -145,6 +173,33 @@ class AgentRunner:
                     await emit(
                         {"type": "token", "thread_id": thread_id, "content": text}
                     )
+
+        elif kind == "on_chat_model_end":
+            output = event.get("data", {}).get("output")
+            usage_meta = getattr(output, "usage_metadata", None) if output else None
+            if isinstance(usage_meta, dict):
+                bucket = self._turn_usage.setdefault(
+                    thread_id, {"prompt_tokens": 0, "completion_tokens": 0, "total_tokens": 0}
+                )
+                for key in ("prompt_tokens", "completion_tokens", "total_tokens"):
+                    val = usage_meta.get(key)
+                    if isinstance(val, int):
+                        bucket[key] = bucket.get(key, 0) + val
+            elif output and hasattr(output, "response_metadata"):
+                meta = output.response_metadata or {}
+                token_usage = meta.get("token_usage") or meta.get("usage") or {}
+                if isinstance(token_usage, dict):
+                    bucket = self._turn_usage.setdefault(
+                        thread_id, {"prompt_tokens": 0, "completion_tokens": 0, "total_tokens": 0}
+                    )
+                    prompt = token_usage.get("prompt_tokens") or token_usage.get("input_tokens") or 0
+                    completion = (
+                        token_usage.get("completion_tokens") or token_usage.get("output_tokens") or 0
+                    )
+                    total = token_usage.get("total_tokens") or (prompt + completion)
+                    bucket["prompt_tokens"] = bucket.get("prompt_tokens", 0) + int(prompt)
+                    bucket["completion_tokens"] = bucket.get("completion_tokens", 0) + int(completion)
+                    bucket["total_tokens"] = bucket.get("total_tokens", 0) + int(total)
 
         elif kind == "on_tool_start":
             tool_name = event.get("name", "")
@@ -231,6 +286,12 @@ class AgentRunner:
                 return
 
             metadata = {"duration_ms": int((time.monotonic() - start) * 1000)}
+            usage = self._turn_usage.pop(thread_id, {})
+            if usage:
+                metadata["token_usage"] = usage
+            user_text = await self._last_user_text(config)
+            if user_text:
+                await self._post_turn_index(thread_id, config, user_text)
             await emit({"type": "done", "thread_id": thread_id, "metadata": metadata})
         except Exception as e:
             await emit(
@@ -251,6 +312,88 @@ class AgentRunner:
             "configurable": {"thread_id": thread_id, "_emit": _emit},
             "recursion_limit": 40,
         }
+
+    async def _emit_history_recall(
+        self,
+        thread_id: str,
+        config: dict[str, Any],
+        user_text: str,
+        cached: dict[str, Any],
+        emit: EventCallback,
+        start: float,
+    ) -> None:
+        from memory.chat_recall import get_chat_history_store
+
+        answer = str(cached.get("answer", ""))
+        created = str(cached.get("created_at", ""))[:10]
+        sim = cached.get("similarity", "")
+        header = f"📎 引用历史回答（{created}，相似度 {sim}）\n\n"
+        full = header + answer
+
+        await self._append_local_turn(config, user_text, full)
+        await emit({"type": "token", "thread_id": thread_id, "content": full})
+
+        entry_id = cached.get("id")
+        if isinstance(entry_id, int):
+            await asyncio.to_thread(get_chat_history_store().bump_hit, entry_id)
+
+        metadata = {
+            "duration_ms": int((time.monotonic() - start) * 1000),
+            "from_history": True,
+            "history_similarity": cached.get("similarity"),
+            "history_created_at": cached.get("created_at"),
+        }
+        await emit({"type": "done", "thread_id": thread_id, "metadata": metadata})
+
+    async def _post_turn_index(
+        self, thread_id: str, config: dict[str, Any], user_text: str
+    ) -> None:
+        """Persist Q&A pair for future recall after a normal agent turn."""
+        answer = await self._last_assistant_text(config)
+        if not answer:
+            return
+        clean_answer = answer.strip()
+        if clean_answer.startswith("📎 引用历史回答"):
+            return
+        await asyncio.to_thread(record_turn, thread_id, user_text, clean_answer)
+
+    async def _last_user_text(self, config: dict[str, Any]) -> str:
+        from langchain_core.messages import HumanMessage
+
+        state = await self.graph.aget_state(config)
+        if not state or not state.values:
+            return ""
+        for msg in reversed(state.values.get("messages", [])):
+            if isinstance(msg, HumanMessage):
+                content = msg.content
+                if isinstance(content, list):
+                    content = "".join(
+                        block.get("text", "") if isinstance(block, dict) else str(block)
+                        for block in content
+                    )
+                return str(content or "").strip()
+        return ""
+
+    async def _last_assistant_text(self, config: dict[str, Any]) -> str:
+        from langchain_core.messages import AIMessage
+
+        state = await self.graph.aget_state(config)
+        if not state or not state.values:
+            return ""
+        for msg in reversed(state.values.get("messages", [])):
+            if isinstance(msg, AIMessage):
+                if getattr(msg, "tool_calls", None):
+                    continue
+                content = msg.content
+                if isinstance(content, list):
+                    content = "".join(
+                        block.get("text", "") if isinstance(block, dict) else str(block)
+                        for block in content
+                    )
+                text = str(content or "").strip()
+                if text:
+                    return text
+        return ""
 
     async def _append_local_turn(
         self, config: dict[str, Any], user_text: str, assistant_text: str

@@ -135,7 +135,7 @@ business:
     enabled: true
     risk: low
   set_project_reminder:
-    enabled: false
+    enabled: true
     risk: low
   read_calendar:
     enabled: true

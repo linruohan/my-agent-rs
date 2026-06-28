@@ -62,7 +62,9 @@ def save_mcp_user_config(data: dict[str, Any]) -> None:
 
 def load_effective_tools_config() -> dict[str, Any]:
     """Merge tools.yaml with user MCP overrides from data/mcp_user.yaml."""
-    cfg = load_tools_config()
+    import copy
+
+    cfg = copy.deepcopy(load_tools_config())
     user = load_mcp_user_config()
     user_mcp = user.get("mcp_servers")
     if isinstance(user_mcp, dict) and user_mcp:
@@ -74,6 +76,28 @@ def load_effective_tools_config() -> dict[str, Any]:
                 base_mcp[name] = {**base_mcp[name], **overrides}
             else:
                 base_mcp[name] = dict(overrides)
+
+    from infra.user_settings import get_web_search_user_override
+
+    ws_override = get_web_search_user_override().get("backend", "")
+    if isinstance(ws_override, str) and ws_override.strip():
+        cap = cfg.setdefault("capability", {})
+        ws_cfg = cap.setdefault("web_search", {})
+        if isinstance(ws_cfg, dict):
+            ws_cfg["backend"] = ws_override.strip()
+    return cfg
+
+
+def load_effective_app_config() -> dict[str, Any]:
+    """Merge app.yaml with user_settings.yaml (hitl, etc.)."""
+    import copy
+
+    from infra.user_settings import get_effective_user_settings
+
+    cfg = copy.deepcopy(load_app_config())
+    user = get_effective_user_settings()
+    if user.get("hitl"):
+        cfg["hitl"] = {**cfg.get("hitl", {}), **user["hitl"]}
     return cfg
 
 

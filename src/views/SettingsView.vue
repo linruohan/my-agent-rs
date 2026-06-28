@@ -10,9 +10,18 @@ import { buildLlmConfigPayload, isUserCustomProviderId } from '@/utils/llmConfig
 import { isTauriEnv } from '@/utils/tauri';
 import { pickWorkspaceFolderPath } from '@/utils/nativeOpen';
 import { loadWorkspaceFromSidecar } from '@/utils/workspaceConfig';
+import {
+  applyUserConfigToStore,
+  loadUserConfigFromSidecar,
+  syncUserConfigToSidecar,
+} from '@/utils/userConfig';
+import { useSessionStore } from '@/stores/session';
+import { useAgentWs } from '@/composables/useAgentWs';
 
 const settings = useSettingsStore();
 const navigation = useNavigationStore();
+const sessionStore = useSessionStore();
+const { listArchivedSessions, unarchiveSession, archiveSession } = useAgentWs();
 
 const activeSection = ref<SettingsSectionId>('model');
 const apiKey = ref('');
@@ -25,6 +34,10 @@ const updateInstalling = ref(false);
 const sidecarVersion = ref('');
 const sidecarVersionOk = ref<boolean | null>(null);
 const sidecarKeyReady = ref<boolean | null>(null);
+const memorySummary = ref<{
+  preferences: Record<string, unknown>;
+  history_stats: { total_entries: number; total_hits: number };
+} | null>(null);
 const toolStats = ref({ count: 0, enabled_count: 0 });
 const mcpToggles = ref<Record<string, boolean>>({});
 const mcpSaving = ref(false);
@@ -43,6 +56,12 @@ const providers = computed(() =>
 const currentProviderInfo = computed(() => providers.value.find((p) => p.id === settings.provider));
 const isOllama = computed(() => settings.provider === 'ollama');
 const isUserCustom = computed(() => isUserCustomProviderId(settings.provider));
+
+const memoryPrefsPreview = computed(() => {
+  const prefs = memorySummary.value?.preferences;
+  if (!prefs || !Object.keys(prefs).length) return '';
+  return JSON.stringify(prefs, null, 2);
+});
 
 const sectionTitle = computed(() => {
   for (const g of SETTINGS_NAV_GROUPS) {
@@ -178,10 +197,20 @@ async function saveLlmConfig() {
   if (!resp.ok) throw new Error('保存 LLM 配置失败');
 }
 
+async function loadUserAppConfig() {
+  const cfg = await loadUserConfigFromSidecar(settings.sidecarPort);
+  if (cfg) applyUserConfigToStore(settings, cfg);
+}
+
+async function saveUserAppConfig() {
+  await syncUserConfigToSidecar(settings);
+}
+
 async function saveApiKey() {
   saveMessage.value = '';
   try {
     await saveLlmConfig();
+    await saveUserAppConfig();
     const keyWasUpdated = apiKey.value.trim().length > 0;
     if (keyWasUpdated) {
       const { invoke } = await import('@tauri-apps/api/core');
@@ -203,6 +232,85 @@ async function saveApiKey() {
     settings.setSidecarStatus('error');
     saveMessage.value = `保存失败: ${e instanceof Error ? e.message : String(e)}`;
   }
+}
+
+async function saveSecuritySettings() {
+  saveMessage.value = '';
+  try {
+    await saveUserAppConfig();
+    saveMessage.value = '安全设置已保存';
+  } catch (e) {
+    saveMessage.value = `保存失败: ${e instanceof Error ? e.message : String(e)}`;
+  }
+}
+
+async function saveConversationSettings() {
+  saveMessage.value = '';
+  try {
+    await saveUserAppConfig();
+    saveMessage.value = '对话设置已保存';
+  } catch (e) {
+    saveMessage.value = `保存失败: ${e instanceof Error ? e.message : String(e)}`;
+  }
+}
+
+async function loadMemorySummary() {
+  try {
+    const base = `http://127.0.0.1:${settings.sidecarPort}`;
+    const data = await fetch(`${base}/memory/summary`).then((r) => r.json());
+    memorySummary.value = {
+      preferences: (data.preferences as Record<string, unknown>) ?? {},
+      history_stats: data.history_stats ?? { total_entries: 0, total_hits: 0 },
+    };
+  } catch {
+    memorySummary.value = null;
+  }
+}
+
+async function saveMemorySettings() {
+  saveMessage.value = '';
+  try {
+    await saveUserAppConfig();
+    await loadMemorySummary();
+    saveMessage.value = '记忆设置已保存';
+  } catch (e) {
+    saveMessage.value = `保存失败: ${e instanceof Error ? e.message : String(e)}`;
+  }
+}
+
+async function saveNotificationSettings() {
+  saveMessage.value = '';
+  try {
+    await saveUserAppConfig();
+    saveMessage.value = '通知设置已保存';
+  } catch (e) {
+    saveMessage.value = `保存失败: ${e instanceof Error ? e.message : String(e)}`;
+  }
+}
+
+async function saveSearchSettings() {
+  saveMessage.value = '';
+  try {
+    await saveUserAppConfig();
+    saveMessage.value = '搜索后端设置已保存';
+  } catch (e) {
+    saveMessage.value = `保存失败: ${e instanceof Error ? e.message : String(e)}`;
+  }
+}
+
+async function refreshArchivedSessions() {
+  listArchivedSessions();
+}
+
+async function handleUnarchive(threadId: string) {
+  unarchiveSession(threadId);
+}
+
+async function handleArchiveCurrent() {
+  const id = sessionStore.currentThreadId;
+  if (!id) return;
+  archiveSession(id);
+  saveMessage.value = '当前会话已归档';
 }
 
 async function restartSidecar(): Promise<number> {
@@ -306,10 +414,13 @@ watch(
 
 onMounted(async () => {
   await loadLlmConfig();
+  await loadUserAppConfig();
   await loadStoredProviders();
   await loadProviderList();
   await loadSidecarInfo();
   await loadWorkspaceConfig();
+  await loadMemorySummary();
+  listArchivedSessions();
   applyNavigationSection(navigation.settingsSection);
 });
 </script>
@@ -369,9 +480,139 @@ onMounted(async () => {
             <label>TEMPERATURE ({{ settings.temperature }})</label>
             <input v-model.number="settings.temperature" type="range" min="0" max="1" step="0.1" class="range" />
           </div>
+          <div class="field-row">
+            <label>MAX TOKENS</label>
+            <input v-model.number="settings.maxTokens" type="number" min="256" max="128000" step="256" />
+          </div>
           <div class="actions">
             <button type="button" @click="saveApiKey">保存模型配置</button>
           </div>
+        </template>
+
+        <!-- 对话 -->
+        <template v-else-if="activeSection === 'conversation'">
+          <div class="field-row">
+            <label>MAX HISTORY MESSAGES</label>
+            <input
+              v-model.number="settings.conversationPrefs.maxHistoryMessages"
+              type="number"
+              min="10"
+              max="500"
+            />
+          </div>
+          <div class="field-row mcp-row">
+            <label>AUTO TITLE</label>
+            <label class="checkbox-label">
+              <input v-model="settings.conversationPrefs.autoTitle" type="checkbox" />
+              新会话自动生成标题
+            </label>
+          </div>
+          <div class="actions">
+            <button type="button" @click="saveConversationSettings">保存对话设置</button>
+          </div>
+        </template>
+
+        <!-- 记忆 -->
+        <template v-else-if="activeSection === 'memory'">
+          <div class="field-row mcp-row">
+            <label>HISTORY RECALL</label>
+            <label class="checkbox-label">
+              <input v-model="settings.memoryPrefs.historyRecall" type="checkbox" />
+              相似问题命中历史回答时直接复用（跳过 LLM）
+            </label>
+          </div>
+          <div class="field-row">
+            <label>SIMILARITY ({{ settings.memoryPrefs.historySimilarityMin }})</label>
+            <input
+              v-model.number="settings.memoryPrefs.historySimilarityMin"
+              type="range"
+              min="0.5"
+              max="1"
+              step="0.02"
+              class="range"
+            />
+          </div>
+          <div class="field-row">
+            <label>HISTORY MAX AGE (DAYS)</label>
+            <input
+              v-model.number="settings.memoryPrefs.historyMaxAgeDays"
+              type="number"
+              min="1"
+              max="365"
+            />
+          </div>
+          <div class="field-row mcp-row">
+            <label>AUTO LEARN</label>
+            <label class="checkbox-label">
+              <input v-model="settings.memoryPrefs.autoLearn" type="checkbox" />
+              自动从对话提取偏好（「请记住…」「我喜欢…」等）
+            </label>
+          </div>
+          <p v-if="memorySummary" class="field-hint">
+            历史问答索引：{{ memorySummary.history_stats.total_entries }} 条，
+            命中 {{ memorySummary.history_stats.total_hits }} 次
+          </p>
+          <pre v-if="memoryPrefsPreview" class="prefs-preview">{{ memoryPrefsPreview }}</pre>
+          <p v-else class="field-hint">暂无已学习的用户偏好</p>
+          <div class="actions">
+            <button type="button" @click="saveMemorySettings">保存记忆设置</button>
+            <button type="button" class="btn-secondary" @click="loadMemorySummary">刷新</button>
+          </div>
+        </template>
+
+        <!-- 语言 -->
+        <template v-else-if="activeSection === 'language'">
+          <div class="field-row">
+            <label>UI LANGUAGE</label>
+            <select v-model="settings.appearance.uiLanguage">
+              <option value="zh-CN">简体中文</option>
+              <option value="en-US">English</option>
+            </select>
+          </div>
+          <p class="field-hint">界面语言偏好（部分文案仍为中英混合）</p>
+        </template>
+
+        <!-- 通知 -->
+        <template v-else-if="activeSection === 'notification'">
+          <div class="field-row mcp-row">
+            <label>DESKTOP NOTIFICATIONS</label>
+            <label class="checkbox-label">
+              <input v-model="settings.notificationPrefs.desktopEnabled" type="checkbox" />
+              启用桌面通知（待办/项目提醒）
+            </label>
+          </div>
+          <div class="field-row mcp-row">
+            <label>SOUND</label>
+            <label class="checkbox-label">
+              <input v-model="settings.notificationPrefs.soundEnabled" type="checkbox" />
+              通知时播放提示音（预留）
+            </label>
+          </div>
+          <div class="actions">
+            <button type="button" @click="saveNotificationSettings">保存通知设置</button>
+          </div>
+        </template>
+
+        <!-- 已归档对话 -->
+        <template v-else-if="activeSection === 'archived'">
+          <div class="actions">
+            <button type="button" class="btn-secondary" @click="refreshArchivedSessions">刷新列表</button>
+            <button
+              type="button"
+              class="btn-secondary"
+              :disabled="!sessionStore.currentThreadId"
+              @click="handleArchiveCurrent"
+            >
+              归档当前会话
+            </button>
+          </div>
+          <ul class="archived-list">
+            <li v-for="s in sessionStore.archivedSessions" :key="s.thread_id">
+              <span>{{ s.title }}</span>
+              <button type="button" class="btn-secondary" @click="handleUnarchive(s.thread_id)">恢复</button>
+            </li>
+            <li v-if="!sessionStore.archivedSessions.length" class="empty">暂无归档会话</li>
+          </ul>
         </template>
 
         <!-- 提供方 -->
@@ -445,6 +686,9 @@ onMounted(async () => {
             <input v-model.number="settings.hitlTimeoutSec" type="number" min="30" max="3600" />
           </div>
           <p class="field-hint">人工确认操作超时时间（秒），超时后自动拒绝</p>
+          <div class="actions">
+            <button type="button" @click="saveSecuritySettings">保存安全设置</button>
+          </div>
         </template>
 
         <!-- 项目设置 -->
@@ -521,15 +765,24 @@ onMounted(async () => {
 
         <!-- 高级 -->
         <template v-else-if="activeSection === 'advanced'">
+          <div class="field-row">
+            <label>SEARCH BACKEND</label>
+            <select v-model="settings.searchBackend">
+              <option value="">默认（tools.yaml）</option>
+              <option value="race">Race（多引擎并行）</option>
+              <option value="duckduckgo">DuckDuckGo</option>
+              <option value="tavily">Tavily</option>
+              <option value="searxng">SearXNG</option>
+              <option value="bing">Bing</option>
+              <option value="brave">Brave</option>
+            </select>
+          </div>
+          <p class="field-hint">覆盖 web_search 默认后端；Tavily 需配置 TAVILY_API_KEY</p>
           <div class="actions">
+            <button type="button" class="btn-secondary" @click="saveSearchSettings">保存搜索设置</button>
             <button type="button" class="btn-secondary" @click="restartSidecarFromUi">重启 Sidecar</button>
           </div>
           <p class="field-hint">重启后重新加载配置与工具注册</p>
-        </template>
-
-        <!-- 占位分类 -->
-        <template v-else>
-          <p class="placeholder-text">此分类的设置即将推出</p>
         </template>
 
         <p v-if="saveMessage" class="save-msg" :class="{ error: saveMessage.startsWith('保存失败') }">
@@ -777,5 +1030,38 @@ onMounted(async () => {
 
 .save-msg.error {
   color: var(--danger);
+}
+
+.archived-list {
+  list-style: none;
+  padding: 0;
+  margin: 16px 0 0;
+}
+
+.archived-list li {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  padding: 10px 0;
+  border-bottom: 1px solid var(--bg-hover);
+  font-size: 13px;
+}
+
+.archived-list li.empty {
+  color: var(--text-muted);
+  justify-content: flex-start;
+}
+
+.prefs-preview {
+  margin-top: 12px;
+  padding: 12px;
+  background: var(--bg-input);
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  font-size: 12px;
+  line-height: 1.5;
+  overflow-x: auto;
+  max-height: 240px;
 }
 </style>

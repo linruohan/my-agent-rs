@@ -38,6 +38,13 @@ html[data-color-mode='light'] .dp--theme-light {
   color-scheme: light;
 }
 
+.app-date-picker {
+  --dp-font-size: 13px;
+  --dp-input-padding: 8px 30px 8px 12px;
+  --dp-input-icon-padding: 35px;
+  --dp-input-not-clearable-padding: 12px;
+}
+
 .app-date-picker .dp--input {
   background: var(--bg-input);
   border: 1px solid var(--border);
@@ -46,7 +53,6 @@ html[data-color-mode='light'] .dp--theme-light {
   font-size: 13px;
   font-family: inherit;
   min-height: 36px;
-  padding: 8px 12px;
 }
 
 .app-date-picker .dp--input::placeholder {

@@ -39,6 +39,27 @@ type StoredSettings = {
     defaultRemindHours: number;
   };
   hitlTimeoutSec: number;
+  maxTokens: number;
+  searchBackend: string;
+  conversationPrefs: {
+    maxHistoryMessages: number;
+    autoTitle: boolean;
+  };
+  memoryPrefs: {
+    autoLearn: boolean;
+    historyRecall: boolean;
+    historySimilarityMin: number;
+    historyMaxAgeDays: number;
+  };
+  notificationPrefs: {
+    desktopEnabled: boolean;
+    soundEnabled: boolean;
+  };
+  lastTokenUsage: {
+    prompt_tokens: number;
+    completion_tokens: number;
+    total_tokens: number;
+  } | null;
   appearance: {
     uiLanguage: string;
     colorMode: ColorMode;
@@ -84,11 +105,30 @@ export const useSettingsStore = defineStore('settings', () => {
     stored.taskPrefs ?? { defaultPriority: 'medium', showCompleted: true, defaultRemindHours: 0 }
   );
   const hitlTimeoutSec = ref(stored.hitlTimeoutSec ?? 300);
+  const maxTokens = ref(stored.maxTokens ?? 4096);
+  const searchBackend = ref(stored.searchBackend ?? '');
+  const conversationPrefs = ref(
+    stored.conversationPrefs ?? { maxHistoryMessages: 50, autoTitle: true }
+  );
+  const memoryPrefs = ref(
+    stored.memoryPrefs ?? {
+      autoLearn: false,
+      historyRecall: true,
+      historySimilarityMin: 0.72,
+      historyMaxAgeDays: 90,
+    }
+  );
+  const notificationPrefs = ref(
+    stored.notificationPrefs ?? { desktopEnabled: true, soundEnabled: false }
+  );
   const appearance = ref({
     ...DEFAULT_APPEARANCE,
     ...stored.appearance,
   });
   const lastTurnDurationMs = ref<number | null>(null);
+  const lastTokenUsage = ref<StoredSettings['lastTokenUsage']>(
+    stored.lastTokenUsage ?? null
+  );
 
   watch(
     [
@@ -103,6 +143,12 @@ export const useSettingsStore = defineStore('settings', () => {
       projectPrefs,
       taskPrefs,
       hitlTimeoutSec,
+      maxTokens,
+      searchBackend,
+      conversationPrefs,
+      memoryPrefs,
+      notificationPrefs,
+      lastTokenUsage,
       appearance,
     ],
     () => {
@@ -118,6 +164,12 @@ export const useSettingsStore = defineStore('settings', () => {
         projectPrefs: { ...projectPrefs.value },
         taskPrefs: { ...taskPrefs.value },
         hitlTimeoutSec: hitlTimeoutSec.value,
+        maxTokens: maxTokens.value,
+        searchBackend: searchBackend.value,
+        conversationPrefs: { ...conversationPrefs.value },
+        memoryPrefs: { ...memoryPrefs.value },
+        notificationPrefs: { ...notificationPrefs.value },
+        lastTokenUsage: lastTokenUsage.value ? { ...lastTokenUsage.value } : null,
         appearance: { ...appearance.value },
       });
       localStorage.setItem(WORKSPACE_KEY, workspacePath.value);
@@ -135,6 +187,10 @@ export const useSettingsStore = defineStore('settings', () => {
 
   function setSidecarStatus(status: typeof sidecarStatus.value) {
     sidecarStatus.value = status;
+  }
+
+  function setLastTokenUsage(usage: StoredSettings['lastTokenUsage']) {
+    lastTokenUsage.value = usage;
   }
 
   function setLastTurnDuration(ms: number | null) {
@@ -227,12 +283,19 @@ export const useSettingsStore = defineStore('settings', () => {
     projectPrefs,
     taskPrefs,
     hitlTimeoutSec,
+    maxTokens,
+    searchBackend,
+    conversationPrefs,
+    memoryPrefs,
+    notificationPrefs,
     appearance,
     lastTurnDurationMs,
+    lastTokenUsage,
     setSidecarPort,
     setWsConnected,
     setSidecarStatus,
     setLastTurnDuration,
+    setLastTokenUsage,
     getSelectedModel,
     setSelectedModel,
     setWorkspacePath,

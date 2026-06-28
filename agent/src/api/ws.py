@@ -25,6 +25,8 @@ PROTECTED_MSG_TYPES = frozenset(
         "chat.resume",
         "session.create",
         "session.delete",
+        "session.archive",
+        "session.unarchive",
         "rag.ingest",
         "rag.delete",
         "memory.set",
@@ -137,8 +139,30 @@ def create_ws_router(
                     continue
 
                 if msg_type == "session.list":
-                    sessions = session_store.list_sessions()
+                    include_archived = bool(data.get("include_archived"))
+                    sessions = session_store.list_sessions(include_archived=include_archived)
                     await ws.send_json({"type": "session.list", "sessions": sessions})
+                    continue
+
+                if msg_type == "session.archived":
+                    archived = session_store.list_archived_sessions()
+                    await ws.send_json({"type": "session.archived", "sessions": archived})
+                    continue
+
+                if msg_type == "session.archive":
+                    thread_id = data.get("thread_id", "")
+                    ok = session_store.set_archived(thread_id, True) if thread_id else False
+                    await ws.send_json(
+                        {"type": "session.archived_one", "thread_id": thread_id, "ok": ok}
+                    )
+                    continue
+
+                if msg_type == "session.unarchive":
+                    thread_id = data.get("thread_id", "")
+                    ok = session_store.set_archived(thread_id, False) if thread_id else False
+                    await ws.send_json(
+                        {"type": "session.unarchived", "thread_id": thread_id, "ok": ok}
+                    )
                     continue
 
                 if msg_type == "session.create":
