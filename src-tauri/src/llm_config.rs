@@ -12,6 +12,8 @@ pub struct LlmUserConfig {
     pub default_provider: String,
     #[serde(default)]
     pub custom: Option<CustomProviderConfig>,
+    #[serde(default)]
+    pub provider_models: Option<std::collections::HashMap<String, String>>,
 }
 
 fn config_path(app: &AppHandle) -> Result<std::path::PathBuf, String> {
@@ -28,6 +30,7 @@ pub fn get_llm_user_config(app: AppHandle) -> Result<LlmUserConfig, String> {
         return Ok(LlmUserConfig {
             default_provider: "deepseek".to_string(),
             custom: None,
+            provider_models: None,
         });
     }
     let text = std::fs::read_to_string(&path).map_err(|e| e.to_string())?;
@@ -70,6 +73,24 @@ pub fn store_llm_user_config(app: AppHandle, config: LlmUserConfig) -> Result<()
             data.insert(
                 serde_yaml::Value::from("custom"),
                 serde_yaml::Value::Mapping(custom_map),
+            );
+        }
+    }
+
+    if let Some(models) = config.provider_models {
+        let mut models_map = serde_yaml::Mapping::new();
+        for (name, model) in models {
+            if !model.trim().is_empty() {
+                models_map.insert(
+                    serde_yaml::Value::from(name),
+                    serde_yaml::Value::from(model),
+                );
+            }
+        }
+        if !models_map.is_empty() {
+            data.insert(
+                serde_yaml::Value::from("provider_models"),
+                serde_yaml::Value::Mapping(models_map),
             );
         }
     }

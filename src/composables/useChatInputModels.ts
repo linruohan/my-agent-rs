@@ -1,66 +1,36 @@
 import { computed, onMounted, ref } from 'vue';
 import { useSettingsStore } from '@/stores/settings';
 
+export interface ProviderInfo {
+  id: string;
+  label: string;
+  type: string;
+  model: string;
+  base_url?: string;
+}
+
 export interface ModelOption {
   id: string;
   provider: string;
+  providerLabel: string;
   model: string;
   label: string;
 }
 
-const PROVIDER_MODELS: Record<string, string> = {
-  deepseek: 'deepseek-chat',
-  openai: 'gpt-4o',
-  anthropic: 'claude-sonnet-4-20250514',
-  qwen: 'qwen-plus',
-  ollama: 'qwen2.5:7b',
-};
+export interface ModelGroup {
+  provider: string;
+  providerLabel: string;
+  isPrimary: boolean;
+  models: ModelOption[];
+  loading?: boolean;
+}
 
 export function useChatInputModels() {
   const settings = useSettingsStore();
-  const ollamaModels = ref<string[]>([]);
-  const providers = ref<string[]>([]);
+  const providerList = ref<ProviderInfo[]>([]);
+  const modelsByProvider = ref<Record<string, string[]>>({});
+  const loadingProviders = ref<Set<string>>(new Set());
   const loading = ref(false);
-
-  const modelOptions = computed<ModelOption[]>(() => {
-    const opts: ModelOption[] = [];
-    for (const p of providers.value.length ? providers.value : Object.keys(PROVIDER_MODELS)) {
-      if (p === 'ollama') {
-        const models = ollamaModels.value.length ? ollamaModels.value : [PROVIDER_MODELS.ollama];
-        for (const m of models) {
-          opts.push({
-            id: `ollama:${m}`,
-            provider: 'ollama',
-            model: m,
-            label: m,
-          });
-        }
-        continue;
-      }
-      if (p === 'custom') {
-        const m = settings.customModel.trim() || 'custom-model';
-        opts.push({ id: `custom:${m}`, provider: 'custom', model: m, label: m });
-        continue;
-      }
-      const model = PROVIDER_MODELS[p] || p;
-      opts.push({ id: `${p}:${model}`, provider: p, model, label: model });
-    }
-    return opts;
-  });
-
-  const currentModelLabel = computed(() => {
-    if (settings.provider === 'custom') {
-      return settings.customModel.trim() || 'custom-model';
-    }
-    if (settings.provider === 'ollama') {
-      const cur = modelOptions.value.find(
-        (o) => o.provider === 'ollama' && o.model === (settings.customModel || PROVIDER_MODELS.ollama)
-      );
-      return cur?.label || PROVIDER_MODELS.ollama;
-    }
-    const opt = modelOptions.value.find((o) => o.provider === settings.provider);
-    return opt?.label || settings.provider;
-  });
 
   async function fetchProviders() {
     loading.value = true;
@@ -68,57 +38,200 @@ export function useChatInputModels() {
       const base = `http://127.0.0.1:${settings.sidecarPort}`;
       const resp = await fetch(`${base}/providers`);
       if (resp.ok) {
-        const data = (await resp.json()) as { providers?: string[] };
-        providers.value = data.providers || [];
+        const data = (await resp.json()) as { providers?: ProviderInfo[] };
+        providerList.value = data.providers || [];
       }
     } catch {
-      providers.value = Object.keys(PROVIDER_MODELS).concat(['custom']);
+      providerList.value = [];
     } finally {
       loading.value = false;
     }
   }
 
-  async function fetchOllamaModels() {
+  async function fetchProviderModels(providerId: string, priority = false) {
+    if (modelsByProvider.value[providerId]?.length && !priority) return;
+    loadingProviders.value = new Set([...loadingProviders.value, providerId]);
     try {
-      const resp = await fetch('http://localhost:11434/api/tags');
-      if (!resp.ok) return;
-      const data = (await resp.json()) as { models?: Array<{ name: string }> };
-      ollamaModels.value = (data.models || []).map((m) => m.name);
+      const base = `http://127.0.0.1:${settings.sidecarPort}`;
+      const resp = await fetch(`${base}/providers/${encodeURIComponent(providerId)}/models`);
+      if (resp.ok) {
+        const data = (await resp.json()) as { models?: string[] };
+        modelsByProvider.value = {
+          ...modelsByProvider.value,
+          [providerId]: data.models || [],
+        };
+      }
     } catch {
-      ollamaModels.value = [];
+      const fallback = providerList.value.find((p) => p.id === providerId)?.model;
+      if (fallback) {
+        modelsByProvider.value = { ...modelsByProvider.value, [providerId]: [fallback] };
+      }
+    } finally {
+      const next = new Set(loadingProviders.value);
+      next.delete(providerId);
+      loadingProviders.value = next;
     }
+  }
+
+  async function refreshModels() {
+    await fetchProviders();
+    const current = settings.provider;
+    await fetchProviderModels(current, true);
+    const others = providerList.value.map((p) => p.id).filter((id) => id !== current);
+    await Promise.all(others.map((id) => fetchProviderModels(id)));
+  }
+
+  async function openModelMenu() {
+    const current = settings.provider;
+    await fetchProviders();
+    await fetchProviderModels(current, true);
+    void Promise.all(
+      providerList.value
+        .map((p) => p.id)
+        .filter((id) => id !== current)
+        .map((id) => fetchProviderModels(id))
+    );
+  }
+
+  function buildOptionsForProvider(p: ProviderInfo): ModelOption[] {
+    const models = modelsByProvider.value[p.id];
+    const selected = settings.getSelectedModel(p.id);
+    const defaultModel = p.model;
+    const modelNames =
+      models && models.length
+        ? models
+        : selected
+          ? [selected]
+          : defaultModel
+            ? [defaultModel]
+            : [];
+
+    return modelNames.map((m) => ({
+      id: `${p.id}:${m}`,
+      provider: p.id,
+      providerLabel: p.label || p.id,
+      model: m,
+      label: m,
+    }));
+  }
+
+  const modelGroups = computed<ModelGroup[]>(() => {
+    const list =
+      providerList.value.length > 0
+        ? providerList.value
+        : [{ id: settings.provider, label: settings.provider, type: '', model: '' }];
+
+    const current = settings.provider;
+    const ordered = [
+      ...list.filter((p) => p.id === current),
+      ...list.filter((p) => p.id !== current),
+    ];
+
+    return ordered.map((p) => ({
+      provider: p.id,
+      providerLabel: p.label || p.id,
+      isPrimary: p.id === current,
+      loading: loadingProviders.value.has(p.id),
+      models: buildOptionsForProvider(p),
+    }));
+  });
+
+  const flatModelOptions = computed(() => modelGroups.value.flatMap((g) => g.models));
+
+  const currentModelLabel = computed(() => {
+    const selected = settings.getSelectedModel();
+    if (selected) return selected;
+    const p = providerList.value.find((item) => item.id === settings.provider);
+    return p?.model || settings.provider;
+  });
+
+  function isOptionActive(option: ModelOption): boolean {
+    if (settings.provider !== option.provider) return false;
+    const selected = settings.getSelectedModel(option.provider);
+    return (selected || currentModelLabel.value) === option.model;
+  }
+
+  async function persistModelSelection() {
+    const payload = {
+      default_provider: settings.provider,
+      custom:
+        settings.provider === 'custom'
+          ? {
+              base_url: settings.customBaseUrl.trim(),
+              model: settings.customModel.trim(),
+            }
+          : undefined,
+      provider_models: { ...settings.providerModels },
+    };
+    if (settings.provider === 'ollama' && settings.customModel.trim()) {
+      payload.provider_models = {
+        ...payload.provider_models,
+        ollama: settings.customModel.trim(),
+      };
+    }
+
+    try {
+      const { invoke } = await import('@tauri-apps/api/core');
+      await invoke('store_llm_user_config', { config: payload });
+      return;
+    } catch {
+      /* fall through */
+    }
+
+    const base = `http://127.0.0.1:${settings.sidecarPort}`;
+    await fetch(`${base}/config/llm`, {
+      method: 'PUT',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify(payload),
+    });
   }
 
   function selectModel(option: ModelOption) {
     settings.provider = option.provider;
-    if (option.provider === 'custom' || option.provider === 'ollama') {
-      settings.customModel = option.model;
-    }
+    settings.setSelectedModel(option.provider, option.model);
+    void persistModelSelection();
+  }
+
+  function filterModelGroups(query: string): ModelGroup[] {
+    const q = query.trim().toLowerCase();
+    if (!q) return modelGroups.value;
+
+    return modelGroups.value
+      .map((group) => {
+        const providerMatch =
+          group.provider.toLowerCase().includes(q) ||
+          group.providerLabel.toLowerCase().includes(q);
+        const models = group.models.filter(
+          (o) =>
+            providerMatch ||
+            o.label.toLowerCase().includes(q) ||
+            o.model.toLowerCase().includes(q)
+        );
+        return models.length ? { ...group, models } : null;
+      })
+      .filter((g): g is ModelGroup => g !== null);
   }
 
   function filterModels(query: string): ModelOption[] {
-    const q = query.trim().toLowerCase();
-    if (!q) return modelOptions.value;
-    return modelOptions.value.filter(
-      (o) =>
-        o.label.toLowerCase().includes(q) ||
-        o.provider.toLowerCase().includes(q) ||
-        o.model.toLowerCase().includes(q)
-    );
+    return filterModelGroups(query).flatMap((g) => g.models);
   }
 
   onMounted(() => {
     void fetchProviders();
-    void fetchOllamaModels();
   });
 
   return {
-    modelOptions,
+    modelGroups,
+    flatModelOptions,
     currentModelLabel,
     loading,
     fetchProviders,
-    fetchOllamaModels,
+    fetchProviderModels,
+    refreshModels,
+    openModelMenu,
     selectModel,
     filterModels,
+    filterModelGroups,
+    isOptionActive,
   };
 }

@@ -3,6 +3,35 @@ import { defineStore } from 'pinia';
 import type { InterruptEvent, Message, ToolCall } from '@/types';
 import { useAgentWs } from '@/composables/useAgentWs';
 
+const PINNED_KEY = 'pa-pinned-sessions';
+const PREVIEW_KEY = 'pa-session-previews';
+
+function loadPinned(): string[] {
+  try {
+    const raw = localStorage.getItem(PINNED_KEY);
+    return raw ? JSON.parse(raw) : [];
+  } catch {
+    return [];
+  }
+}
+
+function savePinned(ids: string[]) {
+  localStorage.setItem(PINNED_KEY, JSON.stringify(ids));
+}
+
+function loadPreviews(): Record<string, string> {
+  try {
+    const raw = localStorage.getItem(PREVIEW_KEY);
+    return raw ? JSON.parse(raw) : {};
+  } catch {
+    return {};
+  }
+}
+
+function savePreviews(map: Record<string, string>) {
+  localStorage.setItem(PREVIEW_KEY, JSON.stringify(map));
+}
+
 export const useSessionStore = defineStore('session', () => {
   const currentThreadId = ref<string | null>(null);
   const pendingToolCalls = ref<Map<string, ToolCall>>(new Map());
@@ -10,9 +39,16 @@ export const useSessionStore = defineStore('session', () => {
   const messages = ref<Message[]>([]);
   const isStreaming = ref(false);
   const sessions = ref<Array<{ thread_id: string; title: string; created_at: string }>>([]);
+  const pinnedIds = ref<string[]>(loadPinned());
+  const sessionPreviews = ref<Record<string, string>>(loadPreviews());
 
   function addMessage(msg: Message) {
     messages.value.push(msg);
+    if (currentThreadId.value && msg.role === 'user') {
+      const preview = msg.content.replace(/\n📎 .+$/, '').trim().slice(0, 80);
+      sessionPreviews.value[currentThreadId.value] = preview;
+      savePreviews(sessionPreviews.value);
+    }
   }
 
   function appendToLastAssistant(content: string) {
@@ -105,6 +141,24 @@ export const useSessionStore = defineStore('session', () => {
     pendingToolCalls.value.clear();
   }
 
+  function togglePin(threadId: string) {
+    const idx = pinnedIds.value.indexOf(threadId);
+    if (idx >= 0) {
+      pinnedIds.value.splice(idx, 1);
+    } else {
+      pinnedIds.value.unshift(threadId);
+    }
+    savePinned(pinnedIds.value);
+  }
+
+  function isPinned(threadId: string) {
+    return pinnedIds.value.includes(threadId);
+  }
+
+  function getPreview(threadId: string) {
+    return sessionPreviews.value[threadId] || '';
+  }
+
   return {
     currentThreadId,
     pendingToolCalls,
@@ -112,6 +166,8 @@ export const useSessionStore = defineStore('session', () => {
     messages,
     isStreaming,
     sessions,
+    pinnedIds,
+    sessionPreviews,
     addMessage,
     appendToLastAssistant,
     addPendingToolCall,
@@ -121,5 +177,8 @@ export const useSessionStore = defineStore('session', () => {
     clearMessages,
     loadHistory,
     setCurrentThread,
+    togglePin,
+    isPinned,
+    getPreview,
   };
 });

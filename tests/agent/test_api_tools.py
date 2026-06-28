@@ -71,4 +71,19 @@ async def test_providers_endpoint(test_app):
         assert resp.status_code == 200
         data = resp.json()
         assert "fallback_chain" in data
-        assert "deepseek" in data["providers"]
+        provider_ids = [p["id"] for p in data["providers"]]
+        assert "deepseek" in provider_ids
+
+
+@pytest.mark.asyncio
+async def test_provider_models_endpoint(test_app):
+    from httpx import ASGITransport, AsyncClient
+
+    transport = ASGITransport(app=test_app)
+    async with AsyncClient(transport=transport, base_url="http://test") as client:
+        resp = await client.get("/providers/deepseek/models")
+        assert resp.status_code == 200
+        data = resp.json()
+        assert data["provider"] == "deepseek"
+        assert "models" in data
+        assert len(data["models"]) >= 1

@@ -1,10 +1,15 @@
 <script setup lang="ts">
-import { computed, onMounted, ref, watch } from 'vue';
+import { computed, nextTick, onMounted, ref, watch } from 'vue';
 import { useSettingsStore } from '@/stores/settings';
+import { useNavigationStore } from '@/stores/navigation';
+import type { ProviderInfo } from '@/composables/useChatInputModels';
 
 const settings = useSettingsStore();
+const navigation = useNavigationStore();
+const providerSectionRef = ref<HTMLElement | null>(null);
 const apiKey = ref('');
 const storedProviders = ref<string[]>([]);
+const providerList = ref<ProviderInfo[]>([]);
 const saveMessage = ref('');
 const updateMessage = ref('');
 const pendingUpdate = ref<{ version: string; downloadAndInstall: () => Promise<void> } | null>(null);
@@ -20,14 +25,35 @@ const mcpStatus = ref<{
   loaded_count: number;
   configured: Record<string, { enabled: boolean; transport: string }>;
 } | null>(null);
-const providers = ['deepseek', 'openai', 'anthropic', 'qwen', 'ollama', 'custom'];
+const providers = computed(() =>
+  providerList.value.length
+    ? providerList.value
+    : [{ id: 'deepseek', label: 'DeepSeek', type: 'openai_compatible', model: 'deepseek-chat' }]
+);
+
+const currentProviderInfo = computed(
+  () => providers.value.find((p) => p.id === settings.provider)
+);
 
 const isCustom = computed(() => settings.provider === 'custom');
-const keyProvider = computed(() => (settings.provider === 'custom' ? 'custom' : settings.provider));
+const isOllama = computed(() => settings.provider === 'ollama');
+const keyProvider = computed(() => settings.provider);
 const hasStoredKey = computed(() => storedProviders.value.includes(keyProvider.value));
 const needsApiKey = computed(
-  () => settings.provider !== 'ollama' && !hasStoredKey.value && !apiKey.value.trim()
+  () => !isOllama.value && !hasStoredKey.value && !apiKey.value.trim()
 );
+
+async function loadProviderList() {
+  try {
+    const base = `http://127.0.0.1:${settings.sidecarPort}`;
+    const resp = await fetch(`${base}/providers`);
+    if (!resp.ok) return;
+    const data = (await resp.json()) as { providers?: ProviderInfo[] };
+    providerList.value = data.providers || [];
+  } catch {
+    providerList.value = [];
+  }
+}
 
 async function loadStoredProviders() {
   try {
@@ -44,6 +70,7 @@ async function loadLlmConfig() {
     const cfg = await invoke<{
       default_provider: string;
       custom?: { base_url: string; model: string };
+      provider_models?: Record<string, string>;
     }>('get_llm_user_config');
     settings.applyLlmConfig(cfg);
     return;
@@ -80,7 +107,7 @@ async function loadSidecarInfo() {
     if (mcp?.configured) {
       const toggles: Record<string, boolean> = {};
       for (const [name, server] of Object.entries(mcp.configured)) {
-        toggles[name] = server.enabled;
+        toggles[name] = (server as { enabled?: boolean }).enabled ?? false;
       }
       mcpToggles.value = toggles;
     }
@@ -102,12 +129,19 @@ async function saveLlmConfig() {
             model: settings.customModel.trim(),
           }
         : undefined,
+    provider_models: { ...settings.providerModels },
   };
 
   if (settings.provider === 'custom') {
     if (!payload.custom?.base_url || !payload.custom?.model) {
       throw new Error('请填写自定义 API Base URL 和模型名');
     }
+  }
+  if (settings.provider === 'ollama' && settings.customModel.trim()) {
+    payload.provider_models = {
+      ...payload.provider_models,
+      ollama: settings.customModel.trim(),
+    };
   }
 
   try {
@@ -269,19 +303,51 @@ watch(
 onMounted(async () => {
   await loadLlmConfig();
   await loadStoredProviders();
+  await loadProviderList();
   await loadSidecarInfo();
+  if (navigation.settingsSection === 'provider') {
+    nextTick(() => {
+      providerSectionRef.value?.scrollIntoView({ behavior: 'smooth', block: 'start' });
+      navigation.settingsSection = null;
+    });
+  }
 });
+
+watch(
+  () => navigation.settingsSection,
+  (section) => {
+    if (section === 'provider' && navigation.activeView === 'settings') {
+      nextTick(() => {
+        providerSectionRef.value?.scrollIntoView({ behavior: 'smooth', block: 'start' });
+        navigation.settingsSection = null;
+      });
+    }
+  }
+);
 </script>
 
 <template>
   <div class="settings">
     <h2>设置</h2>
 
-    <section>
+    <section ref="providerSectionRef" class="provider-section">
       <label>LLM Provider</label>
       <select v-model="settings.provider">
-        <option v-for="p in providers" :key="p" :value="p">{{ p }}</option>
+        <option v-for="p in providers" :key="p.id" :value="p.id">
+          {{ p.label || p.id }}
+        </option>
       </select>
+      <p v-if="currentProviderInfo" class="info-inline">
+        类型: {{ currentProviderInfo.type }}
+        <template v-if="currentProviderInfo.model">
+          · 默认模型: {{ currentProviderInfo.model }}
+        </template>
+      </p>
+    </section>
+
+    <section v-if="isOllama">
+      <label>Ollama 模型名</label>
+      <input v-model="settings.customModel" type="text" placeholder="qwen2.5:7b" />
     </section>
 
     <section v-if="isCustom">
@@ -312,7 +378,7 @@ onMounted(async () => {
       <p v-if="sidecarKeyReady === true" class="info-inline">Sidecar 已加载当前 Provider 的 API Key</p>
       <p v-else-if="sidecarKeyReady === false" class="warn">Sidecar 未加载 API Key，聊天会失败</p>
       <div class="btn-row">
-        <button @click="saveApiKey" :disabled="needsApiKey && settings.provider !== 'ollama'">
+        <button @click="saveApiKey" :disabled="needsApiKey && !isOllama">
           保存配置
         </button>
         <button class="btn-secondary" @click="restartSidecarFromUi">重启 Sidecar</button>
@@ -377,6 +443,8 @@ onMounted(async () => {
 
 <style scoped>
 .settings {
+  flex: 1;
+  overflow-y: auto;
   padding: 24px;
   max-width: 480px;
 }

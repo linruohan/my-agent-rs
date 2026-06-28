@@ -67,11 +67,32 @@ def create_tools_router(registry: ToolRegistry, runner: AgentRunner) -> APIRoute
         from llm.fallback import get_fallback_chain
 
         cfg = load_llm_providers_config()
+        raw = cfg.get("providers", {})
+        items = []
+        if isinstance(raw, dict):
+            for name, pcfg in raw.items():
+                if not isinstance(pcfg, dict):
+                    continue
+                items.append(
+                    {
+                        "id": name,
+                        "label": pcfg.get("label") or name,
+                        "type": pcfg.get("type", "openai_compatible"),
+                        "model": pcfg.get("model", ""),
+                        "base_url": pcfg.get("base_url", ""),
+                    }
+                )
         return {
             "default": cfg.get("default_provider"),
             "fallback_chain": get_fallback_chain(),
-            "providers": list(cfg.get("providers", {}).keys()),
+            "providers": items,
         }
+
+    @tools_router.get("/providers/{provider_name}/models")
+    async def list_provider_models_endpoint(provider_name: str):
+        from llm.models import list_provider_models
+
+        return await list_provider_models(provider_name)
 
     @tools_router.get("/mcp/status")
     async def mcp_status():

@@ -7,6 +7,7 @@ default_provider: deepseek
 
 providers:
   deepseek:
+    label: DeepSeek
     type: openai_compatible
     base_url: https://api.deepseek.com/v1
     model: deepseek-chat
@@ -16,6 +17,7 @@ providers:
     max_retries: 2
 
   openai:
+    label: OpenAI
     type: openai_compatible
     base_url: https://api.openai.com/v1
     model: gpt-4o
@@ -25,6 +27,7 @@ providers:
     max_retries: 2
 
   anthropic:
+    label: Anthropic
     type: anthropic
     model: claude-sonnet-4-20250514
     api_key_env: ANTHROPIC_API_KEY
@@ -33,6 +36,7 @@ providers:
     max_retries: 2
 
   qwen:
+    label: 通义千问
     type: openai_compatible
     base_url: https://dashscope.aliyuncs.com/compatible-mode/v1
     model: qwen-plus
@@ -41,7 +45,48 @@ providers:
     timeout_sec: 60
     max_retries: 2
 
+  moonshot:
+    label: Moonshot (Kimi)
+    type: openai_compatible
+    base_url: https://api.moonshot.cn/v1
+    model: moonshot-v1-8k
+    api_key_env: MOONSHOT_API_KEY
+    supports_tool_call: true
+    timeout_sec: 60
+    max_retries: 2
+
+  zhipu:
+    label: 智谱 AI
+    type: openai_compatible
+    base_url: https://open.bigmodel.cn/api/paas/v4
+    model: glm-4-flash
+    api_key_env: ZHIPU_API_KEY
+    supports_tool_call: true
+    timeout_sec: 60
+    max_retries: 2
+
+  groq:
+    label: Groq
+    type: openai_compatible
+    base_url: https://api.groq.com/openai/v1
+    model: llama-3.3-70b-versatile
+    api_key_env: GROQ_API_KEY
+    supports_tool_call: true
+    timeout_sec: 60
+    max_retries: 2
+
+  siliconflow:
+    label: SiliconFlow
+    type: openai_compatible
+    base_url: https://api.siliconflow.cn/v1
+    model: deepseek-ai/DeepSeek-V3
+    api_key_env: SILICONFLOW_API_KEY
+    supports_tool_call: true
+    timeout_sec: 60
+    max_retries: 2
+
   ollama:
+    label: Ollama (本地)
     type: ollama
     base_url: http://localhost:11434
     model: qwen2.5:7b
@@ -50,6 +95,7 @@ providers:
     max_retries: 1
 
   custom:
+    label: 自定义网关
     type: openai_compatible
     base_url: https://your-gateway.com/v1
     model: your-model-name

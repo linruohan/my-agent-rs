@@ -25,6 +25,7 @@ class CustomProviderConfig(BaseModel):
 class LlmUserConfigBody(BaseModel):
     default_provider: str = Field(min_length=1)
     custom: CustomProviderConfig | None = None
+    provider_models: dict[str, str] | None = None
 
 
 class McpServerOverride(BaseModel):
@@ -45,6 +46,12 @@ async def put_llm_user_config(body: LlmUserConfigBody):
     data: dict[str, Any] = {"default_provider": body.default_provider}
     if body.default_provider == "custom" and body.custom:
         data["custom"] = body.custom.model_dump()
+    if body.provider_models:
+        data["provider_models"] = {
+            k: v.strip()
+            for k, v in body.provider_models.items()
+            if isinstance(k, str) and isinstance(v, str) and v.strip()
+        }
     save_user_llm_config(data)
     return {"ok": True, **data}
 

@@ -2,6 +2,7 @@
 import { computed, nextTick, onMounted, onUnmounted, ref, watch } from 'vue';
 import { useSessionStore } from '@/stores/session';
 import { useSettingsStore } from '@/stores/settings';
+import { useNavigationStore } from '@/stores/navigation';
 import { useAgentWs } from '@/composables/useAgentWs';
 import { useChatInputModels } from '@/composables/useChatInputModels';
 import {
@@ -17,13 +18,16 @@ const emit = defineEmits<{
 
 const sessionStore = useSessionStore();
 const settings = useSettingsStore();
+const navigation = useNavigationStore();
 const { createSession, stop, send: wsSend } = useAgentWs();
 const {
   currentModelLabel,
-  fetchProviders,
-  fetchOllamaModels,
   selectModel,
+  filterModelGroups,
   filterModels,
+  refreshModels,
+  openModelMenu,
+  isOptionActive,
 } = useChatInputModels();
 
 const input = ref('');
@@ -51,6 +55,7 @@ const filteredSlash = computed(() => {
   return result;
 });
 
+const filteredModelGroups = computed(() => filterModelGroups(modelSearch.value));
 const filteredModels = computed(() => filterModels(modelSearch.value));
 
 const slashItems = computed(() => [
@@ -384,14 +389,18 @@ function toggleModel(e: Event) {
   modelSearch.value = '';
   modelHighlight.value = 0;
   if (showModelMenu.value) {
-    void fetchProviders();
-    void fetchOllamaModels();
+    void openModelMenu();
   }
 }
 
 function pickModel(option: (typeof filteredModels.value)[0]) {
   selectModel(option);
   showModelMenu.value = false;
+}
+
+function goToProviderSettings() {
+  showModelMenu.value = false;
+  navigation.openSettings('provider');
 }
 
 defineExpose({ pendingAttachments });
@@ -450,23 +459,33 @@ defineExpose({ pendingAttachments });
         @keydown.stop
       />
       <div class="popup-list">
-        <button
-          v-for="(opt, i) in filteredModels"
-          :key="opt.id"
-          type="button"
-          class="popup-item model-item"
-          :class="{ active: modelHighlight === i || settings.provider === opt.provider && currentModelLabel === opt.label }"
-          @click="pickModel(opt)"
-          @mouseenter="modelHighlight = i"
-        >
-          <span class="item-label">{{ opt.label }}</span>
-          <span class="item-desc">{{ opt.provider }}</span>
-        </button>
+        <template v-for="group in filteredModelGroups" :key="group.provider">
+          <div class="popup-label model-group-label">
+            {{ group.providerLabel }}
+            <span v-if="group.isPrimary" class="group-badge">当前</span>
+            <span v-if="group.loading" class="group-loading">加载中…</span>
+          </div>
+          <button
+            v-for="opt in group.models"
+            :key="opt.id"
+            type="button"
+            class="popup-item model-item"
+            :class="{ active: isOptionActive(opt) }"
+            @click="pickModel(opt)"
+            @mouseenter="modelHighlight = filteredModels.findIndex((m) => m.id === opt.id)"
+          >
+            <span class="item-label">{{ opt.label }}</span>
+            <span class="item-desc">{{ group.providerLabel }}</span>
+          </button>
+        </template>
         <div v-if="!filteredModels.length" class="popup-empty">无匹配模型</div>
       </div>
-      <div class="popup-footer">
-        <button type="button" class="footer-btn" @click.stop="fetchOllamaModels(); fetchProviders()">
+      <div class="popup-footer model-footer">
+        <button type="button" class="footer-btn" @click.stop="refreshModels()">
           ↻ 刷新模型
+        </button>
+        <button type="button" class="footer-btn settings-link" @click.stop="goToProviderSettings()">
+          ⚙ Provider 设置
         </button>
       </div>
     </div>
@@ -526,7 +545,7 @@ defineExpose({ pendingAttachments });
       <textarea
         ref="textareaRef"
         v-model="input"
-        placeholder="你在想什么？ (Enter 发送, / 命令, @ 技能)"
+        placeholder="描述你需要什么"
         :disabled="!sessionStore.currentThreadId"
         rows="1"
         @input="autoResize"
@@ -696,6 +715,49 @@ defineExpose({ pendingAttachments });
 
 .model-item .item-desc {
   margin-top: 0;
+}
+
+.model-group-label {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+}
+
+.group-badge {
+  font-size: 10px;
+  font-weight: 500;
+  color: #3b82f6;
+  background: rgba(59, 130, 246, 0.12);
+  padding: 1px 6px;
+  border-radius: 4px;
+  text-transform: none;
+  letter-spacing: 0;
+}
+
+.group-loading {
+  font-size: 10px;
+  font-weight: 400;
+  color: #52525b;
+  text-transform: none;
+  letter-spacing: 0;
+}
+
+.model-footer {
+  display: flex;
+  gap: 4px;
+}
+
+.model-footer .footer-btn {
+  flex: 1;
+}
+
+.settings-link {
+  color: #3b82f6;
+}
+
+.settings-link:hover {
+  background: rgba(59, 130, 246, 0.1);
+  color: #60a5fa;
 }
 
 .popup-empty {

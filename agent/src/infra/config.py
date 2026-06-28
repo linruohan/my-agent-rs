@@ -97,6 +97,14 @@ def load_llm_providers_config() -> dict[str, Any]:
         base = providers.get("custom", {})
         if isinstance(base, dict):
             providers["custom"] = {**base, **custom}
+    provider_models = user.get("provider_models")
+    if isinstance(provider_models, dict):
+        providers = cfg.setdefault("providers", {})
+        for name, model in provider_models.items():
+            if not isinstance(name, str) or not isinstance(model, str) or not model.strip():
+                continue
+            if name in providers and isinstance(providers[name], dict):
+                providers[name] = {**providers[name], "model": model.strip()}
     return cfg
 
 

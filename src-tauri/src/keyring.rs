@@ -7,11 +7,15 @@ use tauri::Manager;
 
 const SERVICE_NAME: &str = "personal-assistant-agent";
 
-const PROVIDER_ENV_MAP: [(&str, &str); 7] = [
+const PROVIDER_ENV_MAP: [(&str, &str); 11] = [
     ("deepseek", "DEEPSEEK_API_KEY"),
     ("openai", "OPENAI_API_KEY"),
     ("anthropic", "ANTHROPIC_API_KEY"),
     ("qwen", "DASHSCOPE_API_KEY"),
+    ("moonshot", "MOONSHOT_API_KEY"),
+    ("zhipu", "ZHIPU_API_KEY"),
+    ("groq", "GROQ_API_KEY"),
+    ("siliconflow", "SILICONFLOW_API_KEY"),
     ("custom", "CUSTOM_API_KEY"),
     ("ollama", "OLLAMA_API_KEY"),
     ("github", "GITHUB_TOKEN"),
@@ -138,11 +142,28 @@ pub fn apply_sidecar_env(
 #[command]
 pub fn list_stored_providers(app: AppHandle) -> Result<Vec<String>, String> {
     let data_dir = app.path().app_data_dir().map_err(|e| e.to_string())?;
-    let mut found = Vec::new();
+    let mut found = std::collections::HashSet::new();
     for (provider, _) in PROVIDER_ENV_MAP {
         if provider_has_key(provider, Some(&data_dir)) {
-            found.push(provider.to_string());
+            found.insert(provider.to_string());
         }
     }
-    Ok(found)
+    let secrets_dir = data_dir.join("secrets");
+    if secrets_dir.is_dir() {
+        if let Ok(entries) = std::fs::read_dir(&secrets_dir) {
+            for entry in entries.flatten() {
+                let path = entry.path();
+                if path.extension().and_then(|s| s.to_str()) == Some("key") {
+                    if let Some(stem) = path.file_stem().and_then(|s| s.to_str()) {
+                        if provider_has_key(stem, Some(&data_dir)) {
+                            found.insert(stem.to_string());
+                        }
+                    }
+                }
+            }
+        }
+    }
+    let mut list: Vec<String> = found.into_iter().collect();
+    list.sort();
+    Ok(list)
 }
