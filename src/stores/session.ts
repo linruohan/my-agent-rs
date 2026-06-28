@@ -5,6 +5,15 @@ import { wsResume } from '@/utils/wsBridge';
 
 const PINNED_KEY = 'pa-pinned-sessions';
 const PREVIEW_KEY = 'pa-session-previews';
+const CURRENT_THREAD_KEY = 'pa-current-thread';
+
+function loadCurrentThread(): string | null {
+  try {
+    return localStorage.getItem(CURRENT_THREAD_KEY);
+  } catch {
+    return null;
+  }
+}
 
 function loadPinned(): string[] {
   try {
@@ -33,7 +42,7 @@ function savePreviews(map: Record<string, string>) {
 }
 
 export const useSessionStore = defineStore('session', () => {
-  const currentThreadId = ref<string | null>(null);
+  const currentThreadId = ref<string | null>(loadCurrentThread());
   const pendingToolCalls = ref<Map<string, ToolCall>>(new Map());
   const interruptQueue = ref<InterruptEvent[]>([]);
   const messages = ref<Message[]>([]);
@@ -157,6 +166,11 @@ export const useSessionStore = defineStore('session', () => {
   function setCurrentThread(threadId: string | null) {
     currentThreadId.value = threadId;
     historyLoadGeneration.value += 1;
+    if (threadId) {
+      localStorage.setItem(CURRENT_THREAD_KEY, threadId);
+    } else {
+      localStorage.removeItem(CURRENT_THREAD_KEY);
+    }
     clearMessages();
   }
 

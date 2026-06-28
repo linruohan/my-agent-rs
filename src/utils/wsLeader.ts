@@ -147,8 +147,16 @@ export function registerLeaderCallbacks(cb: LeaderCallbacks) {
   callbacks = cb;
 }
 
-export function requestSyncFromLeader() {
-  postChannelMessage({ type: 'sync.request', tabId });
+export function requestSyncFromLeader(
+  threadId?: string | null,
+  opts?: { historyOnly?: boolean }
+) {
+  postChannelMessage({
+    type: 'sync.request',
+    tabId,
+    threadId: threadId ?? null,
+    historyOnly: !!opts?.historyOnly,
+  });
 }
 
 export function initWsLeaderElection() {

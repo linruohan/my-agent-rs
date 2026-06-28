@@ -46,15 +46,36 @@ let leaderHooksReady = false;
 let channelHandlerReady = false;
 
 function scheduleFollowerSync(sessionStore: ReturnType<typeof useSessionStore>) {
-  requestSyncFromLeader();
+  const threadId = sessionStore.currentThreadId;
+  if (threadId) {
+    pendingHistoryLoads.set(threadId, sessionStore.historyLoadGeneration);
+  }
+  requestSyncFromLeader(threadId);
   window.setTimeout(() => {
     const pinia = getActivePinia();
     if (!pinia) return;
     const settings = useSettingsStore(pinia);
-    if (settings.wsReadOnly && sessionStore.sessions.length === 0) {
-      requestSyncFromLeader();
+    const tid = sessionStore.currentThreadId;
+    if (
+      settings.wsReadOnly &&
+      tid &&
+      sessionStore.messages.length === 0
+    ) {
+      pendingHistoryLoads.set(tid, sessionStore.historyLoadGeneration);
+      requestSyncFromLeader(tid, { historyOnly: true });
     }
   }, 800);
+}
+
+function bootstrapFollowerSession(sessionStore: ReturnType<typeof useSessionStore>) {
+  if (sessionStore.sessions.length === 0) return;
+  let tid = sessionStore.currentThreadId;
+  if (!tid || !sessionStore.sessions.some((s) => s.thread_id === tid)) {
+    tid = sessionStore.sessions[0].thread_id;
+    sessionStore.setCurrentThread(tid);
+  }
+  pendingHistoryLoads.set(tid, sessionStore.historyLoadGeneration);
+  requestSyncFromLeader(tid, { historyOnly: true });
 }
 
 function setupChannelHandler(sessionStore: ReturnType<typeof useSessionStore>) {
@@ -76,8 +97,14 @@ function setupChannelHandler(sessionStore: ReturnType<typeof useSessionStore>) {
       }
     }
     if (data.type === 'sync.request' && isWsLeader()) {
-      sendRaw({ type: 'session.list' });
-      sendRaw({ type: 'session.archived' });
+      if (!data.historyOnly) {
+        sendRaw({ type: 'session.list' });
+        sendRaw({ type: 'session.archived' });
+      }
+      const threadId = data.threadId as string | null | undefined;
+      if (threadId) {
+        sendRaw({ type: 'session.history', thread_id: threadId });
+      }
     }
   });
 }
@@ -347,7 +374,11 @@ export function useAgentWs() {
 
       case 'session.list':
         sessionStore.sessions = (msg.sessions as typeof sessionStore.sessions) || [];
-        bootstrapInitialSession();
+        if (settingsStore.wsReadOnly) {
+          bootstrapFollowerSession(sessionStore);
+        } else {
+          bootstrapInitialSession();
+        }
         break;
 
       case 'session.created': {
@@ -556,6 +587,11 @@ export function useAgentWs() {
     if (sessionStore.currentThreadId || initialSessionBootstrapped) return;
     initialSessionBootstrapped = true;
 
+    if (settingsStore.wsReadOnly) {
+      bootstrapFollowerSession(sessionStore);
+      return;
+    }
+
     if (sessionStore.sessions.length > 0) {
       const latest = sessionStore.sessions[0];
       sessionStore.setCurrentThread(latest.thread_id);
@@ -581,6 +617,10 @@ export function useAgentWs() {
 
   function loadSessionHistory(threadId: string) {
     pendingHistoryLoads.set(threadId, sessionStore.historyLoadGeneration);
+    if (settingsStore.wsReadOnly) {
+      requestSyncFromLeader(threadId, { historyOnly: true });
+      return;
+    }
     sendRaw({ type: 'session.history', thread_id: threadId });
   }
 

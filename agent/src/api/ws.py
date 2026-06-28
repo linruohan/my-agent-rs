@@ -307,12 +307,27 @@ def create_ws_router(
                 if msg_type == "rag.ingest":
                     import io
 
+                    from infra.rate_limit import check_rag_ingest_allowed
                     from infra.rag_paths import (
                         validate_rag_ingest_path,
                         validate_rag_inline_content,
                         validate_rag_pdf_b64,
                     )
                     from memory.rag import RagStore
+
+                    allowed, retry_after = check_rag_ingest_allowed(str(ws_id))
+                    if not allowed:
+                        await ws.send_json(
+                            {
+                                "type": "error",
+                                "message": (
+                                    f"RAG ingest rate limit exceeded; "
+                                    f"retry after {retry_after}s"
+                                ),
+                                "code": "RATE_LIMIT",
+                            }
+                        )
+                        continue
 
                     rag = RagStore()
                     path = data.get("path", "")
