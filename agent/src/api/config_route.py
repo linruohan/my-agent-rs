@@ -6,10 +6,13 @@ from fastapi import APIRouter
 from pydantic import BaseModel, Field
 
 from infra.config import (
+    list_configurable_tools,
     load_effective_tools_config,
     load_mcp_user_config,
     load_tools_config,
+    load_tools_user_config,
     save_mcp_user_config,
+    save_tools_user_config,
     load_user_llm_config,
     save_user_llm_config,
 )
@@ -49,6 +52,15 @@ class McpConfigBody(BaseModel):
     servers: dict[str, McpServerOverride] = Field(default_factory=dict)
 
 
+class ToolOverride(BaseModel):
+    enabled: bool
+
+
+class ToolsConfigBody(BaseModel):
+    capability: dict[str, ToolOverride] = Field(default_factory=dict)
+    business: dict[str, ToolOverride] = Field(default_factory=dict)
+
+
 class WorkspaceConfigBody(BaseModel):
     workspace: str = Field(min_length=1)
 
@@ -77,7 +89,7 @@ class MemorySettingsBody(BaseModel):
     auto_learn: bool = False
     history_recall: bool = True
     history_similarity_min: float = Field(default=0.72, ge=0.5, le=1.0)
-    history_max_age_days: int = Field(default=90, ge=1, le=365)
+    history_max_age_days: int = Field(default=90, ge=1, le=36500)
 
 
 class NotificationSettingsBody(BaseModel):
@@ -145,6 +157,46 @@ async def put_mcp_config(body: McpConfigBody):
     return {
         "ok": True,
         "servers": effective.get("mcp_servers", {}),
+    }
+
+
+@router.get("/config/tools")
+async def get_tools_config():
+    tools = list_configurable_tools()
+    enabled = [t for t in tools if t.get("enabled")]
+    return {
+        "tools": tools,
+        "count": len(tools),
+        "enabled_count": len(enabled),
+        "user_overrides": load_tools_user_config(),
+    }
+
+
+@router.put("/config/tools")
+async def put_tools_config(body: ToolsConfigBody):
+    base = load_tools_config()
+    payload: dict[str, Any] = {}
+    for cat in ("capability", "business"):
+        incoming = getattr(body, cat, {})
+        if not incoming:
+            continue
+        base_cat = base.get(cat, {}) if isinstance(base.get(cat), dict) else {}
+        merged_cat: dict[str, Any] = {}
+        for name, override in incoming.items():
+            base_cfg = base_cat.get(name, {}) if isinstance(base_cat.get(name), dict) else {}
+            default_enabled = bool(base_cfg.get("enabled", True))
+            if override.enabled != default_enabled:
+                merged_cat[name] = {"enabled": override.enabled}
+        if merged_cat:
+            payload[cat] = merged_cat
+    save_tools_user_config(payload)
+    tools = list_configurable_tools()
+    enabled = [t for t in tools if t.get("enabled")]
+    return {
+        "ok": True,
+        "tools": tools,
+        "count": len(tools),
+        "enabled_count": len(enabled),
     }
 
 

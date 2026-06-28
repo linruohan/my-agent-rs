@@ -77,12 +77,40 @@ export function buildUserConfigPayload(store: SettingsStore): UserAppConfig {
 }
 
 export async function syncUserConfigToSidecar(store: SettingsStore): Promise<void> {
+  const payload = buildUserConfigPayload(store);
+  const memory = payload.memory;
+  if (memory?.history_max_age_days != null) {
+    memory.history_max_age_days = Math.min(
+      36500,
+      Math.max(1, Math.round(memory.history_max_age_days))
+    );
+  }
+  if (memory?.history_similarity_min != null) {
+    memory.history_similarity_min = Math.min(
+      1,
+      Math.max(0.5, Number(memory.history_similarity_min))
+    );
+  }
+
   const resp = await fetch(`${sidecarBase(store.sidecarPort)}/config/user`, {
     method: 'PUT',
     headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify(buildUserConfigPayload(store)),
+    body: JSON.stringify(payload),
   });
-  if (!resp.ok) throw new Error('保存用户配置失败');
+  if (!resp.ok) {
+    let detail = '保存用户配置失败';
+    try {
+      const err = (await resp.json()) as { detail?: unknown };
+      if (Array.isArray(err.detail)) {
+        detail = err.detail.map((d) => d.msg || JSON.stringify(d)).join('; ');
+      } else if (typeof err.detail === 'string') {
+        detail = err.detail;
+      }
+    } catch {
+      /* ignore */
+    }
+    throw new Error(detail);
+  }
 }
 
 export function applyUserConfigToStore(store: SettingsStore, cfg: UserAppConfig) {

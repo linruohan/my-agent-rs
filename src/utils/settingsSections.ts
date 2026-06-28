@@ -29,6 +29,7 @@ export const SETTINGS_NAV_GROUPS: SettingsNavGroup[] = [
     label: '集成',
     items: [
       { id: 'provider', label: '提供方', icon: '🔌' },
+      { id: 'tools', label: '工具', icon: '⚡' },
       { id: 'tools-keys', label: '工具与密钥', icon: '🔑' },
       { id: 'mcp', label: 'MCP', icon: '🔗' },
       { id: 'project', label: '项目', icon: '📋' },

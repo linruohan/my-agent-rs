@@ -217,6 +217,9 @@ def _register_capability(registry: ToolRegistry, config: dict[str, Any]) -> None
         cfg = cap["cli_tools"]
         cap_cfg = registry.config.setdefault("capability", {})
         for cli_tool in create_cli_tools(cfg):
+            per_tool = cap.get(cli_tool.name, {})
+            if isinstance(per_tool, dict) and per_tool.get("enabled") is False:
+                continue
             meta = cli_tool_meta(cli_tool)
             cap_cfg[cli_tool.name] = {
                 "enabled": True,

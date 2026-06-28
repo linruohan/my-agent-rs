@@ -8,7 +8,7 @@ from pydantic import BaseModel, Field
 from agent.graph import create_agent_graph
 from agent.runner import AgentRunner
 from api.health import get_version
-from infra.config import load_effective_tools_config, load_tools_config
+from infra.config import load_effective_tools_config, load_tools_config, list_configurable_tools
 from tools.mcp_loader import any_mcp_enabled
 from tools.registry import ToolRegistry
 
@@ -16,7 +16,7 @@ router = APIRouter()
 
 
 def build_tools_payload(registry: ToolRegistry) -> dict[str, Any]:
-    tools = registry.list_all()
+    tools = list_configurable_tools()
     enabled = [t for t in tools if t.get("enabled")]
     return {"tools": tools, "count": len(tools), "enabled_count": len(enabled)}
 

@@ -6,7 +6,6 @@ from datetime import datetime, timedelta, timezone
 from typing import Any
 
 from infra.config import get_data_dir
-from infra.time_context import is_fresh_info_query
 from infra.user_settings import get_memory_settings
 
 _RECALL_SKIP_PATTERNS = (
@@ -48,18 +47,17 @@ def question_similarity(a: str, b: str) -> float:
 
 
 def should_skip_history_recall(text: str, *, has_attachments: bool = False) -> bool:
+    """Only skip recall when user explicitly wants a fresh run or input is invalid.
+
+    Do NOT skip for 'fresh info' heuristics (e.g. 新特性 / python 3.14) — if the user
+    already got an answer, repeating the same question should reuse history.
+    """
     if has_attachments:
         return True
     stripped = (text or "").strip()
     if len(stripped) < 4:
         return True
     if stripped.startswith("/"):
-        return True
-    if is_fresh_info_query(stripped):
-        return True
-    from infra.weather_context import is_weather_query
-
-    if is_weather_query(stripped):
         return True
     lower = stripped.lower()
     return any(re.search(p, lower, re.I) for p in _RECALL_SKIP_PATTERNS)
@@ -162,6 +160,27 @@ class ChatHistoryStore:
 
         with sqlite3.connect(self.db_path) as conn:
             conn.row_factory = sqlite3.Row
+            exact = conn.execute(
+                """
+                SELECT id, thread_id, question, answer, created_at, hit_count
+                FROM chat_history
+                WHERE question_norm = ? AND created_at >= ?
+                ORDER BY created_at DESC
+                LIMIT 1
+                """,
+                (norm, cutoff),
+            ).fetchone()
+            if exact:
+                return {
+                    "id": exact["id"],
+                    "thread_id": exact["thread_id"],
+                    "question": exact["question"],
+                    "answer": exact["answer"],
+                    "created_at": exact["created_at"],
+                    "hit_count": exact["hit_count"],
+                    "similarity": 1.0,
+                }
+
             rows = conn.execute(
                 """
                 SELECT id, thread_id, question, answer, created_at, hit_count

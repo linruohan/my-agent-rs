@@ -15,6 +15,11 @@ import {
   loadUserConfigFromSidecar,
   syncUserConfigToSidecar,
 } from '@/utils/userConfig';
+import {
+  loadToolsConfigFromSidecar,
+  saveToolsConfigToSidecar,
+  type ConfigurableTool,
+} from '@/utils/toolsConfig';
 import { useSessionStore } from '@/stores/session';
 import { useAgentWs } from '@/composables/useAgentWs';
 
@@ -46,6 +51,8 @@ const mcpStatus = ref<{
   loaded_count: number;
   configured: Record<string, { enabled: boolean; transport: string }>;
 } | null>(null);
+const toolItems = ref<ConfigurableTool[]>([]);
+const toolSaving = ref(false);
 
 const providers = computed(() =>
   providerList.value.length
@@ -334,6 +341,35 @@ async function restartSidecarFromUi() {
   }
 }
 
+async function loadToolsConfig() {
+  const data = await loadToolsConfigFromSidecar(settings.sidecarPort);
+  toolItems.value = data?.tools ?? [];
+}
+
+async function saveToolsConfig() {
+  toolSaving.value = true;
+  saveMessage.value = '';
+  try {
+    const data = await saveToolsConfigToSidecar(settings.sidecarPort, toolItems.value);
+    toolItems.value = data.tools ?? toolItems.value;
+    toolStats.value = {
+      count: data.count ?? toolItems.value.length,
+      enabled_count: data.enabled_count ?? toolItems.value.filter((t) => t.enabled).length,
+    };
+    saveMessage.value = '工具配置已保存并生效';
+  } catch (e) {
+    saveMessage.value = `工具保存失败: ${e instanceof Error ? e.message : String(e)}`;
+  } finally {
+    toolSaving.value = false;
+  }
+}
+
+function toggleToolEnabled(name: string, enabled: boolean) {
+  toolItems.value = toolItems.value.map((t) =>
+    t.name === name ? { ...t, enabled } : t
+  );
+}
+
 async function saveMcpConfig() {
   mcpSaving.value = true;
   saveMessage.value = '';
@@ -412,6 +448,15 @@ watch(
   }
 );
 
+watch(
+  () => activeSection.value,
+  (section) => {
+    if (section === 'tools' && settings.sidecarStatus === 'running') {
+      void loadToolsConfig();
+    }
+  }
+);
+
 onMounted(async () => {
   await loadLlmConfig();
   await loadUserAppConfig();
@@ -420,6 +465,7 @@ onMounted(async () => {
   await loadSidecarInfo();
   await loadWorkspaceConfig();
   await loadMemorySummary();
+  await loadToolsConfig();
   listArchivedSessions();
   applyNavigationSection(navigation.settingsSection);
 });
@@ -538,9 +584,10 @@ onMounted(async () => {
               v-model.number="settings.memoryPrefs.historyMaxAgeDays"
               type="number"
               min="1"
-              max="365"
+              max="36500"
             />
           </div>
+          <p class="field-hint">历史问答索引保留天数，设为较大值可长期复用（最大 36500 天）</p>
           <div class="field-row mcp-row">
             <label>AUTO LEARN</label>
             <label class="checkbox-label">
@@ -638,6 +685,34 @@ onMounted(async () => {
             />
           </div>
           <p class="field-hint">密钥保存在本地设置中，不会写入日志</p>
+        </template>
+
+        <!-- 工具 -->
+        <template v-else-if="activeSection === 'tools'">
+          <p class="field-hint">控制 Agent 可调用的能力工具与业务工具。保存后立即生效。</p>
+          <div v-if="!toolItems.length" class="placeholder-text">Sidecar 未连接或暂无工具</div>
+          <ul v-else class="tool-settings-grid">
+            <li v-for="t in toolItems" :key="t.name" :class="{ disabled: t.enabled === false }">
+              <div class="tool-settings-head">
+                <span class="tool-settings-name">{{ t.name }}</span>
+                <span v-if="t.category" class="tool-settings-cat">{{ t.category }}</span>
+              </div>
+              <p v-if="t.description" class="tool-settings-desc">{{ t.description }}</p>
+              <label class="checkbox-label tool-toggle">
+                <input
+                  type="checkbox"
+                  :checked="t.enabled !== false"
+                  @change="toggleToolEnabled(t.name, ($event.target as HTMLInputElement).checked)"
+                />
+                {{ t.enabled !== false ? '已启用' : '已禁用' }}
+              </label>
+            </li>
+          </ul>
+          <div class="actions">
+            <button type="button" class="btn-secondary" :disabled="toolSaving" @click="saveToolsConfig">
+              {{ toolSaving ? '保存中…' : '保存工具配置' }}
+            </button>
+          </div>
         </template>
 
         <!-- MCP -->
@@ -1030,6 +1105,57 @@ onMounted(async () => {
 
 .save-msg.error {
   color: var(--danger);
+}
+
+.tool-settings-grid {
+  list-style: none;
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(280px, 1fr));
+  gap: 12px;
+  margin: 16px 0;
+  padding: 0;
+}
+
+.tool-settings-grid li {
+  background: var(--bg-input);
+  border: 1px solid var(--border);
+  border-radius: 10px;
+  padding: 14px;
+}
+
+.tool-settings-grid li.disabled {
+  opacity: 0.55;
+}
+
+.tool-settings-head {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  margin-bottom: 6px;
+}
+
+.tool-settings-name {
+  font-size: 13px;
+  font-weight: 600;
+  color: var(--text-primary);
+}
+
+.tool-settings-cat {
+  font-size: 10px;
+  color: var(--accent);
+  text-transform: uppercase;
+}
+
+.tool-settings-desc {
+  font-size: 12px;
+  color: var(--text-secondary);
+  margin: 0 0 10px;
+  line-height: 1.45;
+}
+
+.tool-toggle {
+  font-size: 12px;
+  color: var(--text-muted);
 }
 
 .archived-list {

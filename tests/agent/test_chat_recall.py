@@ -36,8 +36,31 @@ def test_chat_history_recall(tmp_path, monkeypatch):
     assert "编程语言" in hit["answer"]
 
 
-def test_skip_fresh_info_recall():
-    assert should_skip_history_recall("Python 3.13 最新版本有什么新特性")
+def test_fresh_info_question_can_recall_after_record(tmp_path, monkeypatch):
+    monkeypatch.setenv("AGENT_DATA_DIR", str(tmp_path))
+    import memory.chat_recall as cr
+
+    cr._store = None
+    monkeypatch.setattr(
+        cr,
+        "get_memory_settings",
+        lambda: {
+            "history_recall": True,
+            "history_similarity_min": 0.72,
+            "history_max_age_days": 90,
+        },
+    )
+    store = cr.get_chat_history_store()
+    store.record("t1", "python 3.14新特性", "Python 3.14 引入了更好的 typing 支持。")
+
+    assert not cr.should_skip_history_recall("python 3.14新特性")
+    hit = cr.find_cached_answer("python 3.14新特性")
+    assert hit is not None
+    assert "typing" in hit["answer"]
+
+
+def test_skip_when_user_wants_refresh():
+    assert should_skip_history_recall("请重新查一下 python 3.14 最新新特性")
 
 
 def test_auto_learn_explicit_phrases(tmp_path, monkeypatch):

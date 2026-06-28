@@ -382,8 +382,6 @@ class AgentRunner:
             return ""
         for msg in reversed(state.values.get("messages", [])):
             if isinstance(msg, AIMessage):
-                if getattr(msg, "tool_calls", None):
-                    continue
                 content = msg.content
                 if isinstance(content, list):
                     content = "".join(
@@ -391,8 +389,11 @@ class AgentRunner:
                         for block in content
                     )
                 text = str(content or "").strip()
-                if text:
-                    return text
+                if not text:
+                    continue
+                if getattr(msg, "tool_calls", None) and len(text) < 80:
+                    continue
+                return text
         return ""
 
     async def _append_local_turn(

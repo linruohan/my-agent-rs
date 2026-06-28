@@ -22,6 +22,7 @@ export type SettingsSectionId =
   | 'advanced'
   | 'notification'
   | 'provider'
+  | 'tools'
   | 'tools-keys'
   | 'mcp'
   | 'project'

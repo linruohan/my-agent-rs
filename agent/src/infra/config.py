@@ -60,13 +60,142 @@ def save_mcp_user_config(data: dict[str, Any]) -> None:
         yaml.safe_dump(data, f, allow_unicode=True, default_flow_style=False)
 
 
+def load_tools_user_config() -> dict[str, Any]:
+    path = get_data_dir() / "tools_user.yaml"
+    if not path.exists():
+        return {}
+    with path.open(encoding="utf-8") as f:
+        return yaml.safe_load(f) or {}
+
+
+def save_tools_user_config(data: dict[str, Any]) -> None:
+    path = get_data_dir() / "tools_user.yaml"
+    get_data_dir().mkdir(parents=True, exist_ok=True)
+    with path.open("w", encoding="utf-8") as f:
+        yaml.safe_dump(data, f, allow_unicode=True, default_flow_style=False)
+
+
+def _merge_tool_category(
+    base_cat: dict[str, Any], user_cat: dict[str, Any] | None
+) -> dict[str, Any]:
+    import copy
+
+    merged = copy.deepcopy(base_cat)
+    if not isinstance(user_cat, dict):
+        return merged
+    for name, overrides in user_cat.items():
+        if not isinstance(overrides, dict):
+            continue
+        if name in merged and isinstance(merged[name], dict):
+            merged[name] = {**merged[name], **overrides}
+        else:
+            merged[name] = dict(overrides)
+    return merged
+
+
+def list_configurable_tools() -> list[dict[str, Any]]:
+    """Return all user-configurable tools with effective enabled state."""
+    base = load_tools_config()
+    effective = load_effective_tools_config()
+    user = load_tools_user_config()
+
+    from tools.registry import build_registry
+
+    registry = build_registry(effective)
+    desc_map = {t["name"]: t for t in registry.list_all()}
+
+    tools: list[dict[str, Any]] = []
+    seen: set[str] = set()
+
+    for category in ("capability", "business"):
+        base_cat = base.get(category, {}) if isinstance(base.get(category), dict) else {}
+        eff_cat = (
+            effective.get(category, {}) if isinstance(effective.get(category), dict) else {}
+        )
+        user_cat = user.get(category, {}) if isinstance(user.get(category), dict) else {}
+        names = set(base_cat) | set(user_cat)
+        for name in sorted(names):
+            if name == "cli_tools" or name in seen:
+                continue
+            if not isinstance(base_cat.get(name), dict) and name not in user_cat:
+                continue
+            eff_cfg = eff_cat.get(name, {}) if isinstance(eff_cat.get(name), dict) else {}
+            base_cfg = (
+                base_cat.get(name, {}) if isinstance(base_cat.get(name), dict) else {}
+            )
+            enabled = bool(eff_cfg.get("enabled", base_cfg.get("enabled", False)))
+            meta = desc_map.get(name, {})
+            tools.append(
+                {
+                    "name": name,
+                    "description": meta.get("description", ""),
+                    "category": category,
+                    "enabled": enabled,
+                    "risk": eff_cfg.get("risk", base_cfg.get("risk", "low")),
+                    "has_user_override": name in user_cat,
+                }
+            )
+            seen.add(name)
+
+    eff_cap = (
+        effective.get("capability", {})
+        if isinstance(effective.get("capability"), dict)
+        else {}
+    )
+    bundle_on = bool(eff_cap.get("cli_tools", {}).get("enabled", False))
+    if bundle_on or isinstance(user.get("capability"), dict):
+        from tools.capability.cli_tools import load_cli_tools_config
+
+        cli_cfg = load_cli_tools_config()
+        programs = cli_cfg.get("programs", {})
+        user_cap = user.get("capability", {}) if isinstance(user.get("capability"), dict) else {}
+        if isinstance(programs, dict):
+            for prog in programs.values():
+                if not isinstance(prog, dict):
+                    continue
+                tool_name = str(prog.get("tool_name") or "").strip()
+                if not tool_name or tool_name in seen:
+                    continue
+                per = (
+                    eff_cap.get(tool_name, {})
+                    if isinstance(eff_cap.get(tool_name), dict)
+                    else {}
+                )
+                prog_enabled = bool(prog.get("enabled", True))
+                tool_enabled = bundle_on and prog_enabled and bool(
+                    per.get("enabled", True)
+                )
+                meta = desc_map.get(tool_name, {})
+                tools.append(
+                    {
+                        "name": tool_name,
+                        "description": meta.get("description")
+                        or str(prog.get("description", "")),
+                        "category": "capability",
+                        "enabled": tool_enabled,
+                        "risk": per.get("risk", prog.get("risk", "low")),
+                        "has_user_override": tool_name in user_cap,
+                    }
+                )
+                seen.add(tool_name)
+
+    tools.sort(key=lambda t: (t["category"], t["name"]))
+    return tools
+
+
 def load_effective_tools_config() -> dict[str, Any]:
-    """Merge tools.yaml with user MCP overrides from data/mcp_user.yaml."""
+    """Merge tools.yaml with user overrides from data/tools_user.yaml and mcp_user.yaml."""
     import copy
 
     cfg = copy.deepcopy(load_tools_config())
-    user = load_mcp_user_config()
-    user_mcp = user.get("mcp_servers")
+    user_tools = load_tools_user_config()
+    for cat in ("capability", "business"):
+        base_cat = cfg.get(cat, {}) if isinstance(cfg.get(cat), dict) else {}
+        user_cat = user_tools.get(cat) if isinstance(user_tools.get(cat), dict) else {}
+        if user_cat:
+            cfg[cat] = _merge_tool_category(base_cat, user_cat)
+
+    user_mcp = load_mcp_user_config().get("mcp_servers")
     if isinstance(user_mcp, dict) and user_mcp:
         base_mcp = cfg.setdefault("mcp_servers", {})
         for name, overrides in user_mcp.items():

@@ -31,6 +31,13 @@ def config_client(monkeypatch, tmp_path):
         yield client
 
 
+def test_user_config_history_max_age_9000(config_client):
+    payload = {"memory": {"history_max_age_days": 9000}}
+    put = config_client.put("/config/user", json=payload)
+    assert put.status_code == 200
+    assert put.json()["memory"]["history_max_age_days"] == 9000
+
+
 def test_user_config_roundtrip(config_client):
     payload = {
         "hitl": {"timeout_sec": 120, "on_timeout": "reject", "notify_before_sec": 15},

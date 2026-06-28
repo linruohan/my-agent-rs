@@ -13,7 +13,6 @@ def test_client(monkeypatch, tmp_path):
     monkeypatch.setenv("AGENT_DATA_DIR", str(tmp_path))
     monkeypatch.setenv("AGENT_CONFIG_DIR", str(config_dir))
     monkeypatch.setenv("SIDECAR_AUTH_TOKEN", "test-ws-token")
-    monkeypatch.setattr("tools.business.todo.DB_PATH", tmp_path / "todos.db")
     monkeypatch.setattr("tools.business.calendar.DB_PATH", tmp_path / "calendar.db")
 
     from langgraph.checkpoint.memory import MemorySaver
