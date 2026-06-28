@@ -4,7 +4,7 @@ import { useSettingsStore } from '@/stores/settings';
 import { useAgentWs } from '@/composables/useAgentWs';
 import { isTauriEnv } from '@/utils/tauri';
 import { logStartupMilestone } from '@/utils/startupTiming';
-import { hydrateUserConfigFromSidecar } from '@/utils/userConfig';
+import { hydrateSettingsFromSidecar } from '@/utils/sidecarSettingsHydrate';
 
 type SidecarStatus = 'stopped' | 'starting' | 'running' | 'error';
 
@@ -37,7 +37,7 @@ export function useTauriNative() {
       }
       if (status === 'running' && port) {
         logStartupMilestone('Sidecar running', { port });
-        void hydrateUserConfigFromSidecar(port);
+        void hydrateSettingsFromSidecar(port);
         connect();
         if (pollTimer) {
           clearInterval(pollTimer);
@@ -51,7 +51,7 @@ export function useTauriNative() {
 
   async function setup() {
     if (!isTauriEnv()) {
-      void hydrateUserConfigFromSidecar(settings.sidecarPort);
+      void hydrateSettingsFromSidecar(settings.sidecarPort);
       connect();
       return;
     }
@@ -64,7 +64,7 @@ export function useTauriNative() {
           disconnect();
           settings.setSidecarPort(e.payload);
           settings.setSidecarStatus('running');
-          void hydrateUserConfigFromSidecar(e.payload);
+          void hydrateSettingsFromSidecar(e.payload);
           connect();
         })
       );

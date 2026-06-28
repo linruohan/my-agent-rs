@@ -15,6 +15,7 @@ import {
   loadUserConfigFromSidecar,
   syncUserConfigToSidecar,
 } from '@/utils/userConfig';
+import { syncLlmConfigToSidecar } from '@/utils/llmUserConfig';
 import {
   loadToolsConfigFromSidecar,
   saveToolsConfigToSidecar,
@@ -213,16 +214,17 @@ async function loadSidecarInfo() {
 }
 
 async function saveLlmConfig() {
-  const payload = buildLlmConfigPayload(settings);
   try {
     const { invoke } = await import('@tauri-apps/api/core');
+    const payload = buildLlmConfigPayload(settings);
     await invoke('store_llm_user_config', { config: payload });
+    const { purgeLegacySidecarFieldsFromStorage } = await import('@/utils/settingsStorage');
+    purgeLegacySidecarFieldsFromStorage();
     return;
   } catch {
     /* HTTP */
   }
-  const resp = await putSidecarJson(settings.sidecarPort, '/config/llm', payload);
-  if (!resp.ok) throw new Error('保存 LLM 配置失败');
+  await syncLlmConfigToSidecar(settings);
 }
 
 async function loadUserAppConfig() {

@@ -5,7 +5,8 @@ import type { useSessionStore } from '@/stores/session';
 import type { useSettingsStore } from '@/stores/settings';
 import type { useTasksStore } from '@/stores/tasks';
 import type { ToolCall } from '@/types';
-import { hydrateUserConfigFromSidecar } from '@/utils/userConfig';
+import type { SidecarWsServerMessage } from '@/types/wsEvents.generated';
+import { hydrateSettingsFromSidecar } from '@/utils/sidecarSettingsHydrate';
 import { WS_TOKEN_FLUSH_MS } from '@/utils/sidecarWsConnection';
 import { isWsLeader, postChannelMessage } from '@/utils/wsLeader';
 
@@ -45,14 +46,15 @@ export function createSidecarWsMessageHandler(ctx: SidecarWsHandlerContext) {
     tokenFlushTimer = null;
   }
 
+  /** Runtime JSON from WebSocket; schema in agent/src/api/ws_protocol.py → `npm run gen:ws-types` */
   return function handleMessage(msg: Record<string, unknown>) {
-    const type = msg.type as string;
+    const type = msg.type as SidecarWsServerMessage['type'];
 
     switch (type) {
       case 'connected':
         if (msg.port) {
           ctx.settingsStore.setSidecarPort(msg.port as number);
-          void hydrateUserConfigFromSidecar(msg.port as number);
+          void hydrateSettingsFromSidecar(msg.port as number);
         }
         ctx.settingsStore.setWsConnected(true);
         ctx.connectionError.value = '';

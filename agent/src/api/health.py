@@ -86,3 +86,11 @@ async def auth_token(request: Request):
     if host not in ("127.0.0.1", "::1", "localhost", "testserver", "testclient"):
         return {"error": "forbidden"}
     return {"token": get_or_create_token()}
+
+
+@router.get("/openapi/ws-protocol.json", include_in_schema=True, tags=["protocol"])
+async def ws_protocol_json():
+    """WebSocket server event schemas (companion to REST OpenAPI)."""
+    from api.ws_protocol import export_ws_protocol_json
+
+    return export_ws_protocol_json()

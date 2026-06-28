@@ -28,6 +28,8 @@ export interface InterruptEvent {
   args?: Record<string, unknown>;
 }
 
+export type { SidecarWsServerMessage, SidecarWsMessage } from '@/types/wsEvents.generated';
+
 export interface Session {
   thread_id: string;
   title: string;

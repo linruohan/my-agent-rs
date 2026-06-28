@@ -1,7 +1,6 @@
 import { ref, watch } from 'vue';
 import { defineStore } from 'pinia';
 import {
-  DEFAULT_APPEARANCE,
   type ColorMode,
   type InlinePreviewMode,
   type ToolCallDisplayMode,
@@ -9,9 +8,7 @@ import {
 import { isTauriEnv } from '@/utils/tauri';
 import { mapCustomProvidersFromApi, isUserCustomProviderId } from '@/utils/llmConfig';
 import { syncWorkspaceToSidecar } from '@/utils/workspaceConfig';
-
-const STORAGE_KEY = 'pa-agent-settings';
-const WORKSPACE_KEY = 'pa-workspace-path';
+import { defaultLocalSettings, loadLocalSettings, saveLocalSettings } from '@/utils/settingsStorage';
 
 export interface CustomProviderEntry {
   id: string;
@@ -20,160 +17,53 @@ export interface CustomProviderEntry {
   model: string;
 }
 
-type StoredSettings = {
-  provider: string;
-  temperature: number;
-  customBaseUrl: string;
-  customModel: string;
-  customProviders: CustomProviderEntry[];
-  providerModels: Record<string, string>;
-  workspacePath: string;
-  toolKeys: Record<string, string>;
-  projectPrefs: {
-    defaultStatus: string;
-    autoIndexDocs: boolean;
-  };
-  taskPrefs: {
-    defaultPriority: string;
-    showCompleted: boolean;
-    defaultRemindHours: number;
-  };
-  hitlTimeoutSec: number;
-  maxTokens: number;
-  searchBackend: string;
-  conversationPrefs: {
-    maxHistoryMessages: number;
-    autoTitle: boolean;
-  };
-  memoryPrefs: {
-    autoLearn: boolean;
-    historyRecall: boolean;
-    historySimilarityMin: number;
-    historyMaxAgeDays: number;
-  };
-  notificationPrefs: {
-    desktopEnabled: boolean;
-    soundEnabled: boolean;
-  };
-  lastTokenUsage: {
-    prompt_tokens: number;
-    completion_tokens: number;
-    total_tokens: number;
-  } | null;
-  appearance: {
-    uiLanguage: string;
-    colorMode: ColorMode;
-    themeId: string;
-    windowTransparency: number;
-    toolCallDisplay: ToolCallDisplayMode;
-    inlinePreview: InlinePreviewMode;
-  };
-};
-
-function loadStored(): Partial<StoredSettings> {
-  try {
-    const raw = localStorage.getItem(STORAGE_KEY);
-    return raw ? JSON.parse(raw) : {};
-  } catch {
-    return {};
-  }
-}
-
-function saveStored(data: StoredSettings) {
-  localStorage.setItem(STORAGE_KEY, JSON.stringify(data));
-}
-
 export const useSettingsStore = defineStore('settings', () => {
-  const stored = loadStored();
+  const local = loadLocalSettings();
   const sidecarPort = ref(Number(import.meta.env.VITE_SIDECAR_PORT) || 8765);
   const wsConnected = ref(false);
   const wsReadOnly = ref(false);
   const sidecarStatus = ref<'stopped' | 'starting' | 'running' | 'error'>(
     isTauriEnv() ? 'starting' : 'stopped'
   );
-  const provider = ref(stored.provider ?? 'deepseek');
-  const temperature = ref(stored.temperature ?? 0.7);
-  const customBaseUrl = ref(stored.customBaseUrl ?? '');
-  const customModel = ref(stored.customModel ?? '');
-  const customProviders = ref<CustomProviderEntry[]>(stored.customProviders ?? []);
-  const providerModels = ref<Record<string, string>>(stored.providerModels ?? {});
-  const workspacePath = ref(stored.workspacePath ?? localStorage.getItem(WORKSPACE_KEY) ?? '~/AssistantWorkspace');
-  const toolKeys = ref<Record<string, string>>(stored.toolKeys ?? {});
-  const projectPrefs = ref(
-    stored.projectPrefs ?? { defaultStatus: 'active', autoIndexDocs: true }
-  );
-  const taskPrefs = ref(
-    stored.taskPrefs ?? { defaultPriority: 'medium', showCompleted: true, defaultRemindHours: 0 }
-  );
-  const hitlTimeoutSec = ref(stored.hitlTimeoutSec ?? 300);
-  const maxTokens = ref(stored.maxTokens ?? 4096);
-  const searchBackend = ref(stored.searchBackend ?? '');
-  const conversationPrefs = ref(
-    stored.conversationPrefs ?? { maxHistoryMessages: 50, autoTitle: true }
-  );
-  const memoryPrefs = ref(
-    stored.memoryPrefs ?? {
-      autoLearn: false,
-      historyRecall: true,
-      historySimilarityMin: 0.72,
-      historyMaxAgeDays: 90,
-    }
-  );
-  const notificationPrefs = ref(
-    stored.notificationPrefs ?? { desktopEnabled: true, soundEnabled: false }
-  );
-  const appearance = ref({
-    ...DEFAULT_APPEARANCE,
-    ...stored.appearance,
+
+  // Sidecar-backed runtime settings (defaults until hydrate from Sidecar)
+  const provider = ref('deepseek');
+  const temperature = ref(0.7);
+  const customBaseUrl = ref('');
+  const customModel = ref('');
+  const customProviders = ref<CustomProviderEntry[]>([]);
+  const providerModels = ref<Record<string, string>>({});
+  const workspacePath = ref('~/AssistantWorkspace');
+  const hitlTimeoutSec = ref(300);
+  const maxTokens = ref(4096);
+  const searchBackend = ref('');
+  const conversationPrefs = ref({ maxHistoryMessages: 50, autoTitle: true });
+  const memoryPrefs = ref({
+    autoLearn: false,
+    historyRecall: true,
+    historySimilarityMin: 0.72,
+    historyMaxAgeDays: 90,
   });
+  const notificationPrefs = ref({ desktopEnabled: true, soundEnabled: false });
+
+  // Local UI-only settings (persisted in localStorage)
+  const toolKeys = ref<Record<string, string>>(local.toolKeys);
+  const projectPrefs = ref(local.projectPrefs);
+  const taskPrefs = ref(local.taskPrefs);
+  const appearance = ref(local.appearance);
   const lastTurnDurationMs = ref<number | null>(null);
-  const lastTokenUsage = ref<StoredSettings['lastTokenUsage']>(
-    stored.lastTokenUsage ?? null
-  );
+  const lastTokenUsage = ref(local.lastTokenUsage);
 
   watch(
-    [
-      provider,
-      temperature,
-      customBaseUrl,
-      customModel,
-      customProviders,
-      providerModels,
-      workspacePath,
-      toolKeys,
-      projectPrefs,
-      taskPrefs,
-      hitlTimeoutSec,
-      maxTokens,
-      searchBackend,
-      conversationPrefs,
-      memoryPrefs,
-      notificationPrefs,
-      lastTokenUsage,
-      appearance,
-    ],
+    [toolKeys, projectPrefs, taskPrefs, lastTokenUsage, appearance],
     () => {
-      saveStored({
-        provider: provider.value,
-        temperature: temperature.value,
-        customBaseUrl: customBaseUrl.value,
-        customModel: customModel.value,
-        customProviders: customProviders.value.map((e) => ({ ...e })),
-        providerModels: { ...providerModels.value },
-        workspacePath: workspacePath.value,
+      saveLocalSettings({
         toolKeys: { ...toolKeys.value },
         projectPrefs: { ...projectPrefs.value },
         taskPrefs: { ...taskPrefs.value },
-        hitlTimeoutSec: hitlTimeoutSec.value,
-        maxTokens: maxTokens.value,
-        searchBackend: searchBackend.value,
-        conversationPrefs: { ...conversationPrefs.value },
-        memoryPrefs: { ...memoryPrefs.value },
-        notificationPrefs: { ...notificationPrefs.value },
         lastTokenUsage: lastTokenUsage.value ? { ...lastTokenUsage.value } : null,
         appearance: { ...appearance.value },
       });
-      localStorage.setItem(WORKSPACE_KEY, workspacePath.value);
     },
     { deep: true }
   );
@@ -194,7 +84,7 @@ export const useSettingsStore = defineStore('settings', () => {
     sidecarStatus.value = status;
   }
 
-  function setLastTokenUsage(usage: StoredSettings['lastTokenUsage']) {
+  function setLastTokenUsage(usage: typeof lastTokenUsage.value) {
     lastTokenUsage.value = usage;
   }
 
@@ -281,6 +171,15 @@ export const useSettingsStore = defineStore('settings', () => {
     if (first?.id) provider.value = first.id;
   }
 
+  function resetLocalUiSettings() {
+    const defaults = defaultLocalSettings();
+    toolKeys.value = defaults.toolKeys;
+    projectPrefs.value = defaults.projectPrefs;
+    taskPrefs.value = defaults.taskPrefs;
+    appearance.value = defaults.appearance;
+    lastTokenUsage.value = defaults.lastTokenUsage;
+  }
+
   return {
     sidecarPort,
     wsConnected,
@@ -315,5 +214,12 @@ export const useSettingsStore = defineStore('settings', () => {
     setSelectedModel,
     setWorkspacePath,
     applyLlmConfig,
+    resetLocalUiSettings,
   };
 });
+
+export type {
+  ColorMode,
+  InlinePreviewMode,
+  ToolCallDisplayMode,
+};

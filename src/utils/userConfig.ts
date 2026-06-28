@@ -1,5 +1,6 @@
 import type { useSettingsStore } from '@/stores/settings';
 import { parseResponseError, sidecarBaseUrl } from '@/utils/sidecarFetch';
+import { purgeLegacySidecarFieldsFromStorage } from '@/utils/settingsStorage';
 
 export type UserAppConfig = {
   hitl?: {
@@ -97,6 +98,7 @@ export async function syncUserConfigToSidecar(store: SettingsStore): Promise<voi
   if (!resp.ok) {
     throw new Error(await parseResponseError(resp));
   }
+  purgeLegacySidecarFieldsFromStorage();
 }
 
 export function applyUserConfigToStore(store: SettingsStore, cfg: UserAppConfig) {

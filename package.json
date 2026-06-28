@@ -7,6 +7,7 @@
     "dev": "vite",
     "build": "vue-tsc --noEmit && vite build",
     "themes:generate": "node scripts/generate-themes-from-gpui.mjs",
+    "gen:ws-types": "python scripts/generate_ws_types.py",
     "preview": "vite preview",
     "tauri": "tauri",
     "setup": "powershell -NoProfile -ExecutionPolicy Bypass -File scripts/setup.ps1",
